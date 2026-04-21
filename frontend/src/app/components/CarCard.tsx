@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { Car as CarType } from '../types/car';
+import { type Car as CarType } from '../types/car';
 import { Heart, Eye } from 'lucide-react';
 import { formatPrice, formatMileage, getTransmissionLabel, getFuelLabel } from '../data/mockData';
 import { useState } from 'react';

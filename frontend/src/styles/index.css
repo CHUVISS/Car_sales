@@ -1,6 +1,24 @@
-@import './fonts.css';
-@import './tailwind.css';
+@import 'tailwindcss';
+@import 'tw-animate-css';
 @import './theme.css';
+@import './fonts.css';
+
+/* Стили для react-slick */
+.slick-slider {
+  position: relative;
+  display: block;
+  box-sizing: border-box;
+  user-select: none;
+  touch-action: pan-y;
+}
+
+.slick-list {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+}
 
 /* Стили для react-slick */
 .slick-slider {

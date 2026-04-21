@@ -2,7 +2,6 @@ import { useSearchParams } from 'react-router';
 import { useState, useEffect, useMemo } from 'react';
 import { CarCard } from '../components/CarCard';
 import { getCars, getAllBrands, getAllColors } from '../data/mockData';
-import { Car } from '../types/car';
 import { SlidersHorizontal, X } from 'lucide-react';
 
 export function CatalogPage() {

@@ -27,15 +27,6 @@ export function CarDetailPage() {
     );
   }
 
-  const sliderSettings = {
-    dots: true,
-    infinite: true,
-    speed: 500,
-    slidesToShow: 1,
-    slidesToScroll: 1,
-    autoplay: false,
-  };
-
   const carImages = [
     `https://images.unsplash.com/photo-${car.id === '1' ? '1621007947622-7c9b888c6cc1' : car.id === '2' ? '1617531653332-bd46c24f2068' : car.id === '3' ? '1618843479313-40f8afb4b4d8' : car.id === '4' ? '1551972104-ec7e52e0133e' : car.id === '5' ? '1606664515524-ed2f786a0bd6' : car.id === '6' ? '1611566026373-c54afa09f44a' : car.id === '7' ? '1619405399517-d7fce0f13302' : car.id === '8' ? '1560958089-b8a1929cea89' : car.id === '9' ? '1616422285623-13ff0162193c' : car.id === '10' ? '1600705722908-bab1e61c0b4d' : car.id === '11' ? '1549927681-0b673b8243ab' : '1627454820516-b26085b8aec0'}?w=1200&q=80`,
     `https://images.unsplash.com/photo-1502877338535-766e1452684a?w=1200&q=80`,
@@ -57,17 +48,7 @@ export function CarDetailPage() {
           <div className="lg:col-span-2 space-y-6">
             {/* Галерея */}
             <div className="bg-white rounded-lg overflow-hidden">
-              <Slider {...sliderSettings}>
-                {carImages.map((image, index) => (
-                  <div key={index} className="aspect-[16/10] bg-secondary">
-                    <ImageWithFallback
-                      src={image}
-                      alt={`${car.brand} ${car.model} - фото ${index + 1}`}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                ))}
-              </Slider>
+
             </div>
 
             {/* Заголовок и основная информация */}
