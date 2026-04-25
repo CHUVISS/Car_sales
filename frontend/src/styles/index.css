@@ -1,24 +1,7 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import './theme.css';
-@import './fonts.css';
-
-/* Стили для react-slick */
-.slick-slider {
-  position: relative;
-  display: block;
-  box-sizing: border-box;
-  user-select: none;
-  touch-action: pan-y;
-}
-
-.slick-list {
-  position: relative;
-  display: block;
-  overflow: hidden;
-  margin: 0;
-  padding: 0;
-}
 
 /* Стили для react-slick */
 .slick-slider {

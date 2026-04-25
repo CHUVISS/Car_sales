@@ -1,11 +1,8 @@
 import { useParams, Link } from 'react-router';
 import { getCarById, formatPrice, formatMileage, getTransmissionLabel, getFuelLabel, getDriveLabel, getBodyLabel } from '../data/mockData';
-import { ArrowLeft, Heart, Share2, Phone, Calendar, Check } from 'lucide-react';
+import { ArrowLeft, Heart, Share2, Phone, Calendar, Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
-import Slider from 'react-slick';
-import 'slick-carousel/slick/slick.css';
-import 'slick-carousel/slick/slick-theme.css';
 import { toast } from 'sonner';
 
 export function CarDetailPage() {
@@ -13,6 +10,7 @@ export function CarDetailPage() {
   const car = id ? getCarById(id) : undefined;
   const [showAppointmentForm, setShowAppointmentForm] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
+  const [activeSlide, setActiveSlide] = useState(0);
 
   if (!car) {
     return (
@@ -27,31 +25,93 @@ export function CarDetailPage() {
     );
   }
 
+  const photoId = car.id === '1' ? '1621007947622-7c9b888c6cc1'
+    : car.id === '2' ? '1617531653332-bd46c24f2068'
+    : car.id === '3' ? '1618843479313-40f8afb4b4d8'
+    : car.id === '4' ? '1551972104-ec7e52e0133e'
+    : car.id === '5' ? '1606664515524-ed2f786a0bd6'
+    : car.id === '6' ? '1611566026373-c54afa09f44a'
+    : car.id === '7' ? '1619405399517-d7fce0f13302'
+    : car.id === '8' ? '1560958089-b8a1929cea89'
+    : car.id === '9' ? '1616422285623-13ff0162193c'
+    : car.id === '10' ? '1600705722908-bab1e61c0b4d'
+    : car.id === '11' ? '1549927681-0b673b8243ab'
+    : '1627454820516-b26085b8aec0';
+
   const carImages = [
-    `https://images.unsplash.com/photo-${car.id === '1' ? '1621007947622-7c9b888c6cc1' : car.id === '2' ? '1617531653332-bd46c24f2068' : car.id === '3' ? '1618843479313-40f8afb4b4d8' : car.id === '4' ? '1551972104-ec7e52e0133e' : car.id === '5' ? '1606664515524-ed2f786a0bd6' : car.id === '6' ? '1611566026373-c54afa09f44a' : car.id === '7' ? '1619405399517-d7fce0f13302' : car.id === '8' ? '1560958089-b8a1929cea89' : car.id === '9' ? '1616422285623-13ff0162193c' : car.id === '10' ? '1600705722908-bab1e61c0b4d' : car.id === '11' ? '1549927681-0b673b8243ab' : '1627454820516-b26085b8aec0'}?w=1200&q=80`,
+    `https://images.unsplash.com/photo-${photoId}?w=1200&q=80`,
     `https://images.unsplash.com/photo-1502877338535-766e1452684a?w=1200&q=80`,
     `https://images.unsplash.com/photo-1494905998402-395d579af36f?w=1200&q=80`,
     `https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=1200&q=80`,
   ];
 
+  const prevSlide = () => {
+    setActiveSlide(prev => (prev === 0 ? carImages.length - 1 : prev - 1));
+  };
+
+  const nextSlide = () => {
+    setActiveSlide(prev => (prev === carImages.length - 1 ? 0 : prev + 1));
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Навигация */}
         <Link to="/catalog" className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground mb-6">
           <ArrowLeft className="w-5 h-5" />
           <span>Назад к каталогу</span>
         </Link>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Основной контент */}
           <div className="lg:col-span-2 space-y-6">
+
             {/* Галерея */}
             <div className="bg-white rounded-lg overflow-hidden">
-
+              <div className="relative aspect-[16/9]">
+                <ImageWithFallback
+                  src={carImages[activeSlide]}
+                  alt={`${car.brand} ${car.model} — фото ${activeSlide + 1}`}
+                  className="w-full h-full object-cover"
+                />
+                <button
+                  onClick={prevSlide}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/90 hover:bg-white rounded-full flex items-center justify-center shadow transition-colors"
+                >
+                  <ChevronLeft className="w-5 h-5 text-foreground" />
+                </button>
+                <button
+                  onClick={nextSlide}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/90 hover:bg-white rounded-full flex items-center justify-center shadow transition-colors"
+                >
+                  <ChevronRight className="w-5 h-5 text-foreground" />
+                </button>
+                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2">
+                  {carImages.map((_, index) => (
+                    <button
+                      key={index}
+                      onClick={() => setActiveSlide(index)}
+                      className={`w-10 h-1 rounded-full transition-colors ${index === activeSlide ? 'bg-white' : 'bg-white/50'}`}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div className="flex gap-2 p-3 overflow-x-auto">
+                {carImages.map((src, index) => (
+                  <button
+                    key={index}
+                    onClick={() => setActiveSlide(index)}
+                    className={`flex-shrink-0 w-20 h-14 rounded overflow-hidden border-2 transition-colors ${activeSlide === index ? 'border-primary' : 'border-transparent'}`}
+                  >
+                    <ImageWithFallback
+                      src={src}
+                      alt={`Миниатюра ${index + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {/* Заголовок и основная информация */}
+            {/* Заголовок */}
             <div className="bg-white rounded-lg p-6">
               <div className="flex items-start justify-between mb-4">
                 <div>
@@ -84,7 +144,6 @@ export function CarDetailPage() {
                 {formatPrice(car.price)}
               </div>
 
-              {/* Характеристики */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="p-4 bg-secondary rounded-lg">
                   <p className="text-sm text-muted-foreground mb-1">Год</p>
@@ -105,87 +164,53 @@ export function CarDetailPage() {
               </div>
             </div>
 
-            {/* Подробные характеристики */}
+            {/* Характеристики */}
             <div className="bg-white rounded-lg p-6">
               <h2 className="text-2xl font-semibold mb-4">Характеристики</h2>
               <div className="space-y-3">
-                <div className="flex justify-between py-3 border-b border-border">
-                  <span className="text-muted-foreground">Марка</span>
-                  <span className="font-semibold">{car.brand}</span>
-                </div>
-                <div className="flex justify-between py-3 border-b border-border">
-                  <span className="text-muted-foreground">Модель</span>
-                  <span className="font-semibold">{car.model}</span>
-                </div>
-                <div className="flex justify-between py-3 border-b border-border">
-                  <span className="text-muted-foreground">Год выпуска</span>
-                  <span className="font-semibold">{car.year}</span>
-                </div>
-                <div className="flex justify-between py-3 border-b border-border">
-                  <span className="text-muted-foreground">Пробег</span>
-                  <span className="font-semibold">{formatMileage(car.mileage)}</span>
-                </div>
-                <div className="flex justify-between py-3 border-b border-border">
-                  <span className="text-muted-foreground">Тип кузова</span>
-                  <span className="font-semibold">{getBodyLabel(car.body)}</span>
-                </div>
-                <div className="flex justify-between py-3 border-b border-border">
-                  <span className="text-muted-foreground">Цвет</span>
-                  <span className="font-semibold">{car.color}</span>
-                </div>
-                <div className="flex justify-between py-3 border-b border-border">
-                  <span className="text-muted-foreground">Двигатель</span>
-                  <span className="font-semibold">{car.engineVolume} л</span>
-                </div>
-                <div className="flex justify-between py-3 border-b border-border">
-                  <span className="text-muted-foreground">Мощность</span>
-                  <span className="font-semibold">{car.power} л.с.</span>
-                </div>
-                <div className="flex justify-between py-3 border-b border-border">
-                  <span className="text-muted-foreground">Тип топлива</span>
-                  <span className="font-semibold">{getFuelLabel(car.fuel)}</span>
-                </div>
-                <div className="flex justify-between py-3 border-b border-border">
-                  <span className="text-muted-foreground">Коробка передач</span>
-                  <span className="font-semibold">{getTransmissionLabel(car.transmission)}</span>
-                </div>
-                <div className="flex justify-between py-3 border-b border-border">
-                  <span className="text-muted-foreground">Привод</span>
-                  <span className="font-semibold">{getDriveLabel(car.drive)}</span>
-                </div>
-                {car.vin && (
-                  <div className="flex justify-between py-3">
-                    <span className="text-muted-foreground">VIN</span>
-                    <span className="font-semibold font-mono text-sm">{car.vin}</span>
+                {[
+                  ['Марка', car.brand],
+                  ['Модель', car.model],
+                  ['Год выпуска', String(car.year)],
+                  ['Пробег', formatMileage(car.mileage)],
+                  ['Тип кузова', getBodyLabel(car.body)],
+                  ['Цвет', car.color],
+                  ['Двигатель', `${car.engineVolume} л`],
+                  ['Мощность', `${car.power} л.с.`],
+                  ['Тип топлива', getFuelLabel(car.fuel)],
+                  ['Коробка передач', getTransmissionLabel(car.transmission)],
+                  ['Привод', getDriveLabel(car.drive)],
+                  ...(car.vin ? [['VIN', car.vin]] : []),
+                ].map(([label, value], i, arr) => (
+                  <div key={label} className={`flex justify-between py-3 ${i < arr.length - 1 ? 'border-b border-border' : ''}`}>
+                    <span className="text-muted-foreground">{label}</span>
+                    <span className="font-semibold font-mono text-sm">{value}</span>
                   </div>
-                )}
+                ))}
               </div>
             </div>
 
             {/* Описание */}
             <div className="bg-white rounded-lg p-6">
               <h2 className="text-2xl font-semibold mb-4">Описание</h2>
-              <p className="text-muted-foreground leading-relaxed">
-                {car.description}
-              </p>
+              <p className="text-muted-foreground leading-relaxed">{car.description}</p>
             </div>
           </div>
 
           {/* Боковая панель */}
           <div className="space-y-6">
-            {/* Контакты менеджера */}
             <div className="bg-white rounded-lg p-6 sticky top-20">
               <h3 className="font-semibold mb-4">Свяжитесь с нами</h3>
-              
+
               <div className="space-y-3 mb-6">
-                <a
-                  href="tel:+79001234567"
+                <button
+                  onClick={() => { window.location.href = 'tel:+79001234567'; }}
                   className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-accent text-accent-foreground rounded-lg hover:opacity-90 transition-opacity"
                 >
                   <Phone className="w-5 h-5" />
                   <span>Позвонить</span>
-                </a>
-                
+                </button>
+
                 <button
                   onClick={() => setShowAppointmentForm(!showAppointmentForm)}
                   className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity"
@@ -196,7 +221,7 @@ export function CarDetailPage() {
               </div>
 
               {showAppointmentForm && (
-                <form 
+                <form
                   className="space-y-3 pt-4 border-t border-border"
                   onSubmit={(e) => {
                     e.preventDefault();
@@ -205,32 +230,11 @@ export function CarDetailPage() {
                     (e.target as HTMLFormElement).reset();
                   }}
                 >
-                  <input
-                    type="text"
-                    placeholder="Ваше имя"
-                    required
-                    className="w-full px-4 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary"
-                  />
-                  <input
-                    type="tel"
-                    placeholder="Телефон"
-                    required
-                    className="w-full px-4 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary"
-                  />
-                  <input
-                    type="date"
-                    required
-                    className="w-full px-4 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary"
-                  />
-                  <textarea
-                    placeholder="Комментарий"
-                    rows={3}
-                    className="w-full px-4 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary resize-none"
-                  />
-                  <button
-                    type="submit"
-                    className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity text-sm"
-                  >
+                  <input type="text" placeholder="Ваше имя" required className="w-full px-4 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary" />
+                  <input type="tel" placeholder="Телефон" required className="w-full px-4 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary" />
+                  <input type="date" required className="w-full px-4 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary" />
+                  <textarea placeholder="Комментарий" rows={3} className="w-full px-4 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary resize-none" />
+                  <button type="submit" className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity text-sm">
                     Отправить заявку
                   </button>
                 </form>
@@ -247,31 +251,23 @@ export function CarDetailPage() {
                     <p className="text-sm text-muted-foreground">Менеджер по продажам</p>
                   </div>
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  Помогу подобрать автомобиль и организую тест-драйв
-                </p>
+                <p className="text-sm text-muted-foreground">Помогу подобрать автомобиль и организую тест-драйв</p>
               </div>
 
-              {/* Преимущества */}
               <div className="mt-6 pt-6 border-t border-border">
                 <h4 className="font-semibold mb-3">Гарантии</h4>
                 <div className="space-y-2">
-                  <div className="flex items-start gap-2">
-                    <Check className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
-                    <span className="text-sm">Проверка юридической чистоты</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <Check className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
-                    <span className="text-sm">Техническая диагностика</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <Check className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
-                    <span className="text-sm">Гарантия на автомобиль</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <Check className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
-                    <span className="text-sm">Помощь в оформлении</span>
-                  </div>
+                  {[
+                    'Проверка юридической чистоты',
+                    'Техническая диагностика',
+                    'Гарантия на автомобиль',
+                    'Помощь в оформлении',
+                  ].map(text => (
+                    <div key={text} className="flex items-start gap-2">
+                      <Check className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
+                      <span className="text-sm">{text}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
