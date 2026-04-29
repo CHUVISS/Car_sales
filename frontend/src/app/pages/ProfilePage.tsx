@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { User, Heart, Eye, FileText, LogOut } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../hooks/useAuth';
@@ -24,6 +24,11 @@ export function ProfilePage() {
   const [editPhone, setEditPhone] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // При любом монтировании/перезагрузке страница будет вверху
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthLoading(true);
@@ -35,6 +40,8 @@ export function ProfilePage() {
         await login(email, password);
         toast.success('Добро пожаловать!');
       }
+      // Перезагрузка страницы
+      window.location.reload();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Ошибка';
       toast.error(message === 'Incorrect email or password' ? 'Неверный email или пароль' : message);
@@ -58,6 +65,8 @@ export function ProfilePage() {
         phone: editPhone || undefined,
       });
       toast.success('Изменения сохранены!');
+      // Перезагрузка страницы
+      window.location.reload();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Ошибка';
       toast.error(message);

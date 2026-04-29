@@ -11,7 +11,7 @@ interface Car {
   price: number;
   mileage: number;
   transmission: 'automatic' | 'manual';
-  fuel: 'petrol' | 'diesel' | 'electric' | 'hybrid';
+  fuel: 'petrol' | 'diesel' | 'electric' | 'hybrid' | 'gas';
   color: string;
   engineVolume: number;
   drive: 'front' | 'rear' | 'all';

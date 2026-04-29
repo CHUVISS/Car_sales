@@ -1,5 +1,5 @@
 import { Link, useNavigate } from 'react-router';
-import { Car, Phone, User, Menu, LogOut } from 'lucide-react';
+import { Car, Phone, User, Menu, LogOut, Bot } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { toast } from 'sonner';
@@ -26,8 +26,9 @@ export function Header() {
 
           <nav className="hidden md:flex items-center gap-8">
             <Link to="/catalog" className="text-foreground hover:text-primary transition-colors">Каталог</Link>
-            <Link to="/catalog" className="text-foreground hover:text-primary transition-colors">Новые авто</Link>
-            <Link to="/catalog" className="text-foreground hover:text-primary transition-colors">С пробегом</Link>
+            {/* <Link to="/catalog" className="text-foreground hover:text-primary transition-colors">Новые авто</Link>
+            <Link to="/catalog" className="text-foreground hover:text-primary transition-colors">С пробегом</Link> */}
+            <Link to="/ai" className="flex items-center gap-1.5 text-foreground hover:text-primary transition-colors"><Bot className="w-4 h-4" />AI-ассистент</Link>
             <Link to="/about" className="text-foreground hover:text-primary transition-colors">О нас</Link>
           </nav>
 
@@ -43,9 +44,14 @@ export function Header() {
                   <User className="w-5 h-5" />
                   <span>{user.full_name.split(' ')[0]}</span>
                 </Link>
-                {(user.role === 'admin' || user.role === 'manager') && (
+                {(user.role === 'admin') && (
                   <Link to="/admin" className="px-3 py-2 bg-secondary text-foreground rounded-lg hover:bg-secondary/80 text-sm">
                     Админ
+                  </Link>
+                )}
+                {(user.role === 'manager') && (
+                  <Link to="/admin" className="px-3 py-2 bg-secondary text-foreground rounded-lg hover:bg-secondary/80 text-sm">
+                    Менеджер
                   </Link>
                 )}
                 <button onClick={handleLogout} className="p-2 text-muted-foreground hover:text-destructive transition-colors">

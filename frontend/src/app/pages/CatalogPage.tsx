@@ -5,7 +5,7 @@ import { SlidersHorizontal, X } from 'lucide-react';
 import { useCars } from '../hooks/useCars';
 import type { CarFilters, FuelType, Transmission } from '../api/cars';
 
-const ALL_BRANDS = ['Audi', 'BMW', 'Hyundai', 'Kia', 'Lexus', 'Mazda', 'Mercedes-Benz', 'Nissan', 'Skoda', 'Tesla', 'Toyota', 'Volkswagen'];
+const ALL_BRANDS = ['Audi', 'BMW', 'Hyundai', 'Kia', 'Lexus', 'Mazda', 'Mercedes', 'Nissan', 'Skoda', 'Tesla', 'Toyota', 'Volkswagen'];
 const ALL_COLORS = ['Белый', 'Синий', 'Серый', 'Красный', 'Серебристый', 'Черный'];
 
 export function CatalogPage() {
@@ -68,7 +68,7 @@ export function CatalogPage() {
     price: Number(car.price),
     mileage: car.mileage,
     transmission: (car.transmission === 'automatic' || car.transmission === 'robot' || car.transmission === 'variator') ? 'automatic' as const : 'manual' as const,
-    fuel: (car.fuel_type ?? 'petrol') as 'petrol' | 'diesel' | 'electric' | 'hybrid',
+    fuel: (car.fuel_type ?? 'petrol') as 'petrol' | 'diesel' | 'electric' | 'hybrid' | 'gas',
     color: car.color ?? '',
     engineVolume: Number(car.engine_volume ?? 0),
     drive: 'front' as const,
@@ -134,7 +134,7 @@ export function CatalogPage() {
       <div>
         <h3 className="font-semibold mb-3">Тип топлива</h3>
         <div className="space-y-2">
-          {[['petrol', 'Бензин'], ['diesel', 'Дизель'], ['electric', 'Электро'], ['hybrid', 'Гибрид']].map(([val, label]) => (
+          {[['petrol', 'Бензин'], ['diesel', 'Дизель'], ['electric', 'Электро'], ['hybrid', 'Гибрид'], ['gas', 'Газ']].map(([val, label]) => (
             <label key={val} className="flex items-center gap-2 cursor-pointer hover:bg-secondary/50 p-1 rounded">
               <input type="checkbox" checked={selectedFuels.includes(val)} onChange={() => toggleFuel(val)}
                 className="w-4 h-4 text-primary rounded border-border focus:ring-primary" />
