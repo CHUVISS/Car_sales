@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Car, Users, FileText, BarChart3, Plus, Edit, Trash2,
   Check, X, RefreshCw, Loader2, ChevronLeft, ChevronRight,
-  MessageSquare, DollarSign, AlertCircle, Eye, Search,
+  MessageSquare, DollarSign, AlertCircle, Eye, Search, Upload,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../hooks/useAuth';
@@ -210,6 +210,10 @@ function CarsTab() {
   // 🔽 Фильтр по статусу
   const [filterStatus, setFilterStatus] = useState<string>('');
 
+  // 🔽 Загрузка фотографий
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [previews, setPreviews] = useState<string[]>([]);
+
   const load = useCallback(async () => {
     if (searchQuery.trim()) return;
     setLoading(true);
@@ -251,19 +255,51 @@ function CarsTab() {
   useEffect(() => { performSearch(debouncedSearch); }, [debouncedSearch, performSearch]);
   useEffect(() => { load(); }, [load]);
 
-  const clearSearch = () => { setSearchQuery(''); setSearchResults([]); setSkip(0); };
-  
-  // 🔽 Исправлено: сбрасывает фильтр И пагинацию одновременно
-  const handleFilterChange = (status: string) => {
-    setFilterStatus(prev => prev === status ? '' : status);
-    setSkip(0);
+  // 🔽 Очистка URL превью при размонтировании
+  useEffect(() => {
+    return () => {
+      previews.forEach(url => URL.revokeObjectURL(url));
+    };
+  }, [previews]);
+
+  const handleFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files) return;
+    const newFiles = Array.from(e.target.files);
+    const newPreviews = newFiles.map(file => URL.createObjectURL(file));
+    setSelectedFiles(prev => [...prev, ...newFiles]);
+    setPreviews(prev => [...prev, ...newPreviews]);
   };
-  
+
+  const handleDragOver = (e: React.DragEvent) => e.preventDefault();
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (!e.dataTransfer.files) return;
+    const newFiles = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    const newPreviews = newFiles.map(file => URL.createObjectURL(file));
+    setSelectedFiles(prev => [...prev, ...newFiles]);
+    setPreviews(prev => [...prev, ...newPreviews]);
+  };
+
+  const removeFile = (index: number) => {
+    URL.revokeObjectURL(previews[index]);
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+    setPreviews(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const clearFiles = () => {
+    previews.forEach(url => URL.revokeObjectURL(url));
+    setSelectedFiles([]);
+    setPreviews([]);
+  };
+
+  const clearSearch = () => { setSearchQuery(''); setSearchResults([]); setSkip(0); };
+  const handleFilterChange = (status: string) => { setFilterStatus(prev => prev === status ? '' : status); setSkip(0); };
   const clearFilters = () => { setFilterStatus(''); setSkip(0); };
 
   const openCreate = () => {
     setEditCar(null);
     setForm({ brand: '', model: '', year: '', price: '', mileage: '0', color: '', fuel_type: '', transmission: '', body_type: '', engine_volume: '', engine_power: '', description: '', vin: '' });
+    clearFiles();
     setShowForm(true);
   };
 
@@ -277,6 +313,7 @@ function CarsTab() {
       engine_volume: car.engine_volume ?? '', engine_power: String(car.engine_power ?? ''),
       description: car.description ?? '', vin: car.vin ?? '',
     });
+    clearFiles(); // При редактировании не подгружаем старые фото в форму загрузки (можно доработать)
     setShowForm(true);
   };
 
@@ -292,13 +329,34 @@ function CarsTab() {
         ...(form.engine_volume && { engine_volume: Number(form.engine_volume) }), ...(form.engine_power && { engine_power: Number(form.engine_power) }),
         ...(form.description && { description: form.description }), ...(form.vin && { vin: form.vin }),
       };
-      if (editCar) await adminApi.updateCar(editCar.id, body);
-      else await adminApi.createCar(body);
-      toast.success(editCar ? 'Автомобиль обновлён' : 'Автомобиль добавлен');
+
+      let carId = editCar?.id;
+      if (!editCar) {
+        const created = await adminApi.createCar(body);
+        carId = created.id; // ⚠️ Адаптируйте под ответ вашего API
+        toast.success('Автомобиль добавлен');
+      } else {
+        await adminApi.updateCar(editCar.id, body);
+        toast.success('Автомобиль обновлён');
+      }
+
+      // 🔽 Загрузка фото в MinIO через бэкенд
+      if (selectedFiles.length > 0 && carId) {
+        const formData = new FormData();
+        selectedFiles.forEach(file => formData.append('images', file));
+        
+        // ⚠️ Замените на реальный метод вашего adminApi, например:
+        // await adminApi.uploadCarImages(carId, formData);
+        await adminApi.uploadCarImages?.(carId, formData); 
+        toast.success(`${selectedFiles.length} фото загружено`);
+      }
+
       setShowForm(false);
+      clearFiles();
       if (searchQuery.trim()) performSearch(searchQuery); else load();
-    } catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Ошибка'); }
-    finally { setSaving(false); }
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Ошибка при сохранении');
+    } finally { setSaving(false); }
   };
 
   const handleDelete = async (id: string, name: string) => {
@@ -356,7 +414,6 @@ function CarsTab() {
           {searchQuery && <button onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-secondary rounded transition-colors"><X className="w-4 h-4 text-muted-foreground" /></button>}
         </div>
 
-        {/* 🔽 Фильтр по статусу */}
         <div className="flex flex-wrap gap-3">
           <div className="flex items-center gap-1.5 bg-secondary/50 rounded-lg px-2 py-1.5">
             <span className="text-xs font-medium text-muted-foreground">Статус:</span>
@@ -390,12 +447,11 @@ function CarsTab() {
         </div>
       </div>
       
-      {/* 🔽 Пагинация скрывается при поиске ИЛИ активном фильтре */}
       {!isSearching && !hasActiveFilters && <Pagination skip={skip} limit={20} count={count} onChange={setSkip} />}
 
       {showForm && (
         <Modal title={editCar ? 'Редактировать авто' : 'Добавить авто'} onClose={() => setShowForm(false)}>
-          <form onSubmit={handleSave} className="space-y-4">
+          <form onSubmit={handleSave} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
             <div className="grid grid-cols-2 gap-3">
               {[['brand', 'Марка *', 'text', true], ['model', 'Модель *', 'text', true], ['year', 'Год *', 'number', true], ['price', 'Цена (₽) *', 'number', true], ['mileage', 'Пробег (км)', 'number', false], ['color', 'Цвет', 'text', false], ['engine_volume', 'Объём двигателя (л)', 'number', false], ['engine_power', 'Мощность (л.с.)', 'number', false], ['vin', 'VIN', 'text', false]].map(([key, label, type, required]) => (
                 <div key={key as string}>
@@ -416,11 +472,48 @@ function CarsTab() {
                   <option value="">Не указано</option>{[['sedan', 'Седан'], ['hatchback', 'Хэтчбек'], ['suv', 'Внедорожник'], ['coupe', 'Купе'], ['wagon', 'Универсал'], ['minivan', 'Минивэн'], ['pickup', 'Пикап']].map(([v, l]) => (<option key={v} value={v}>{l}</option>))}
                 </select></div>
             </div>
+
+            {/* 🔽 Загрузка фотографий */}
+            <div>
+              <label className="block text-xs font-semibold mb-1 text-muted-foreground">Фотографии</label>
+              <div 
+                className="border-2 border-dashed border-border rounded-lg p-4 text-center hover:bg-secondary/30 transition-colors cursor-pointer"
+                onClick={() => document.getElementById('car-images')?.click()}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+              >
+                <input id="car-images" type="file" multiple accept="image/*" className="hidden" onChange={handleFilesChange} />
+                <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">Перетащите фото или нажмите для выбора</p>
+                <p className="text-xs text-muted-foreground/60 mt-1">JPG, PNG, WebP • До 50 МБ</p>
+              </div>
+              {previews.length > 0 && (
+                <>
+                  <div className="grid grid-cols-3 gap-2 mt-3">
+                    {previews.map((src, i) => (
+                      <div key={i} className="relative aspect-square rounded-lg overflow-hidden bg-secondary group">
+                        <img src={src} alt={`preview-${i}`} className="w-full h-full object-cover" />
+                        <button type="button" onClick={() => removeFile(i)} 
+                          className="absolute top-1 right-1 p-1 bg-destructive text-white rounded-full hover:bg-destructive/80 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <button type="button" onClick={clearFiles} className="text-xs text-destructive hover:underline mt-2">
+                    Очистить все ({previews.length})
+                  </button>
+                </>
+              )}
+            </div>
+
             <div><label className="block text-xs font-semibold mb-1 text-muted-foreground">Описание</label>
               <textarea value={form.description} rows={3} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary resize-none" /></div>
-            <div className="flex gap-3 pt-2">
+            <div className="flex gap-3 pt-2 sticky bottom-0 bg-white/90 backdrop-blur py-2 border-t border-border">
               <button type="button" onClick={() => setShowForm(false)} className="flex-1 px-4 py-2 bg-secondary rounded-lg text-sm hover:bg-secondary/80 transition-colors">Отмена</button>
-              <button type="submit" disabled={saving} className="flex-1 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm hover:opacity-90 disabled:opacity-50 transition-opacity">{saving ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : editCar ? 'Сохранить' : 'Добавить'}</button>
+              <button type="submit" disabled={saving} className="flex-1 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm hover:opacity-90 disabled:opacity-50 transition-opacity">
+                {saving ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : editCar ? 'Сохранить' : 'Добавить'}
+              </button>
             </div>
           </form>
         </Modal>
