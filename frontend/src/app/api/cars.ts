@@ -41,6 +41,7 @@ export interface CarsPublic {
 export interface CarFilters {
   brand?: string;
   model?: string;
+  color?: string; // ✅ Добавлено
   year_from?: number;
   year_to?: number;
   price_from?: number;
