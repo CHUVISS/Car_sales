@@ -5,6 +5,7 @@ import { CarDetailPage } from './pages/CarDetailPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { AdminPage } from './pages/AdminPage';
 import { AboutPage } from './pages/AboutPage';
+import { AiPage } from './pages/AiPage';
 import { Layout } from './components/Layout';
 import { NotFoundPage } from './pages/NotFoundPage';
 
@@ -13,34 +14,14 @@ export const router = createBrowserRouter([
     path: '/',
     element: <Layout />,
     children: [
-      {
-        index: true,
-        element: <HomePage />,
-      },
-      {
-        path: 'catalog',
-        element: <CatalogPage />,
-      },
-      {
-        path: 'car/:id',
-        element: <CarDetailPage />,
-      },
-      {
-        path: 'profile',
-        element: <ProfilePage />,
-      },
-      {
-        path: 'admin',
-        element: <AdminPage />,
-      },
-      {
-        path: 'about',
-        element: <AboutPage />,
-      },
-      {
-        path: '*',
-        element: <NotFoundPage />,
-      },
+      { index: true, element: <HomePage /> },
+      { path: 'catalog', element: <CatalogPage /> },
+      { path: 'car/:id', element: <CarDetailPage /> },
+      { path: 'profile', element: <ProfilePage /> },
+      { path: 'admin', element: <AdminPage /> },
+      { path: 'about', element: <AboutPage /> },
+      { path: 'ai', element: <AiPage /> },
+      { path: '*', element: <NotFoundPage /> },
     ],
   },
 ]);

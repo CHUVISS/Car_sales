@@ -65,7 +65,7 @@ export function AboutPage() {
             </div>
             <div className="rounded-lg overflow-hidden">
               <ImageWithFallback
-                src="https://images.unsplash.com/photo-1562519819-016a2e3d6f2f?w=800&q=80"
+                src="https://myauctionsheet.com/blog/wp-content/uploads/2020/06/Car-Auctions.jpg"
                 alt="Наш автосалон"
                 className="w-full h-[400px] object-cover"
               />
@@ -79,7 +79,7 @@ export function AboutPage() {
         <h2 className="text-3xl font-semibold text-center mb-12">Наша команда</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {[
-            { name: 'Чувилов Александр', role: 'Тимлид ака босс', image: 'photo-1472099645785-5658abf4ff4e' },
+            { name: 'Чувилов Александр', role: 'Тимлид', image: '../images/Alex.png' },
             { name: 'Барышев Данила', role: 'Архитектор', image: 'photo-1438761681033-6461ffad8d80' },
             { name: 'Дворников Матвей', role: 'Backend-разработчик', image: 'photo-1500648767791-00dcc994a43e' },
             { name: 'Жуков Тимофей', role: 'Frontend-разработчик', image: 'photo-1472099645785-5658abf4ff4e' },
