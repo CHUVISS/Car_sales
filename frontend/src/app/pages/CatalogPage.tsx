@@ -1,9 +1,9 @@
-import { useSearchParams } from 'react-router';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useMemo, useRef, type KeyboardEvent, type ChangeEvent } from 'react';
 import { CarCard } from '../components/CarCard';
-import { SlidersHorizontal, X, ChevronDown, Check } from 'lucide-react';
+import { SlidersHorizontal, X, ChevronDown, Check, Search } from 'lucide-react';
 import { useCars } from '../hooks/useCars';
-import type { CarFilters, FuelType, Transmission } from '../api/cars';
+import type { CarFilters, FuelType, Transmission, Car as CarType } from '../api/cars';
 
 // Константы
 const ALL_BRANDS = ['Audi', 'BMW', 'Hyundai', 'Kia', 'Lexus', 'Mazda', 'Mercedes', 'Nissan', 'Skoda', 'Tesla', 'Toyota', 'Volkswagen'];
@@ -46,7 +46,6 @@ function SearchableMultiSelect<T extends string>({
 
   const filtered = options.filter(opt => opt.label.toLowerCase().includes(search.toLowerCase()));
   
-  //Показываем выбранные названия через запятую
   const selectedLabels = selected.map(val => options.find(opt => opt.value === val)?.label ?? val);
   const displayText = selected.length > 0 ? selectedLabels.join(', ') : placeholder;
 
@@ -162,9 +161,155 @@ function NumberFilterInput({
   );
 }
 
+// 🔍 Компонент поиска с выпадающими результатами и скроллом
+function CatalogSearch({
+  cars,
+  onSelect,
+  placeholder = 'Поиск по марке или модели...',
+}: {
+  cars: CarType[];
+  onSelect: (car: CarType | null) => void;
+  placeholder?: string;
+}) {
+  const [query, setQuery] = useState('');
+  const [isOpen, setIsOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Закрытие при клике вне
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+        setHighlightedIndex(-1);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  // Фильтрация + дебаунс (простой вариант)
+  const filtered = useMemo(() => {
+    if (!query.trim()) return [];
+    const q = query.toLowerCase().trim();
+    return cars.filter(car => 
+      car.brand.toLowerCase().includes(q) || 
+      car.model.toLowerCase().includes(q) ||
+      `${car.brand} ${car.model}`.toLowerCase().includes(q)
+    ).slice(0, 10); // Ограничиваем 10 результатами для производительности
+  }, [cars, query]);
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (!isOpen && ['ArrowDown', 'ArrowUp'].includes(e.key)) {
+      setIsOpen(true);
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightedIndex(i => Math.min(i + 1, filtered.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightedIndex(i => Math.max(i - 1, 0));
+    } else if (e.key === 'Enter' && highlightedIndex >= 0 && filtered[highlightedIndex]) {
+      e.preventDefault();
+      handleSelect(filtered[highlightedIndex]);
+    } else if (e.key === 'Escape') {
+      setIsOpen(false);
+      setHighlightedIndex(-1);
+    }
+  };
+
+  const handleSelect = (car: CarType) => {
+    onSelect(car);
+    setQuery('');
+    setIsOpen(false);
+    setHighlightedIndex(-1);
+    inputRef.current?.blur();
+  };
+
+  const handleClear = () => {
+    setQuery('');
+    onSelect(null);
+    inputRef.current?.focus();
+  };
+
+  return (
+    <div className="relative w-full max-w-2xl" ref={containerRef}>
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          onChange={e => { setQuery(e.target.value); setIsOpen(true); }}
+          onFocus={() => query && setIsOpen(true)}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          className="w-full pl-10 pr-10 py-3 bg-secondary rounded-lg outline-none focus:ring-2 focus:ring-primary text-sm"
+        />
+        {query && (
+          <button
+            type="button"
+            onClick={handleClear}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
+      {/* Выпадающие результаты со скроллом */}
+      {isOpen && (query.trim() || filtered.length > 0) && (
+        <div className="absolute z-30 w-full mt-2 bg-white border border-border rounded-lg shadow-lg overflow-hidden">
+          <div className="max-h-80 overflow-y-auto">
+            {filtered.length > 0 ? (
+              filtered.map((car, idx) => (
+                <button
+                  key={car.id}
+                  type="button"
+                  onMouseEnter={() => setHighlightedIndex(idx)}
+                  onClick={() => handleSelect(car)}
+                  className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-secondary/50 transition-colors ${
+                    highlightedIndex === idx ? 'bg-secondary/50' : ''
+                  }`}
+                >
+                  <div className="w-12 h-12 bg-secondary rounded-md flex-shrink-0 overflow-hidden">
+                    {car.images?.[0]?.url ? (
+                      <img src={car.images[0].url} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">🚗</div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate">{car.brand} {car.model}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {car.year} • {car.mileage.toLocaleString('ru-RU')} км • {Number(car.price).toLocaleString('ru-RU')} ₽
+                    </p>
+                  </div>
+                </button>
+              ))
+            ) : query.trim() ? (
+              <div className="px-4 py-6 text-center text-sm text-muted-foreground">
+                Ничего не найдено по запросу «{query}»
+              </div>
+            ) : null}
+          </div>
+          {filtered.length > 0 && (
+            <div className="px-4 py-2 bg-muted/30 text-xs text-muted-foreground border-t border-border">
+              Показано {filtered.length} из {cars.length} • Нажмите Enter для выбора
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Основная страница
 export function CatalogPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
   const [displayPriceMin, setDisplayPriceMin] = useState('');
@@ -188,6 +333,9 @@ export function CatalogPage() {
   const [selectedColors, setSelectedColors] = useState<string[]>([]);
   const [isNew, setIsNew] = useState<boolean | undefined>(undefined);
   const [sortBy, setSortBy] = useState<CarFilters['sort_by']>('date_desc');
+  
+  // 🔍 Состояние для поиска по каталогу
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Инициализация из URL
   useEffect(() => {
@@ -209,6 +357,9 @@ export function CatalogPage() {
     
     const s = searchParams.get('sort_by');
     if (s) setSortBy(s as CarFilters['sort_by']);
+    
+    const q = searchParams.get('q');
+    if (q) setSearchQuery(q);
   }, []);
 
   // Синхронизация в URL
@@ -227,11 +378,12 @@ export function CatalogPage() {
     if (isNew === true) params.set('isNew', 'true');
     else if (isNew === false) params.set('isNew', 'false');
     if (sortBy && sortBy !== 'date_desc') params.set('sort_by', sortBy);
+    if (searchQuery) params.set('q', searchQuery);
 
     if (params.toString() !== searchParams.toString()) {
       setSearchParams(params);
     }
-  }, [selectedBrands, selectedTransmissions, selectedFuels, selectedColors, priceMin, priceMax, mileageMin, mileageMax, yearMin, yearMax, isNew, sortBy]);
+  }, [selectedBrands, selectedTransmissions, selectedFuels, selectedColors, priceMin, priceMax, mileageMin, mileageMax, yearMin, yearMax, isNew, sortBy, searchQuery]);
 
   // Фильтры для API
   const apiFilters: CarFilters = useMemo(() => {
@@ -256,15 +408,27 @@ export function CatalogPage() {
 
   const resetFilters = () => {
     setSelectedBrands([]); setSelectedTransmissions([]); setSelectedFuels([]); setSelectedColors([]);
-    setIsNew(undefined); setSortBy('date_desc');
+    setIsNew(undefined); setSortBy('date_desc'); setSearchQuery('');
     setPriceMin(''); setPriceMax(''); setMileageMin(''); setMileageMax(''); setYearMin(''); setYearMax('');
     setDisplayPriceMin(''); setDisplayPriceMax(''); setDisplayMileageMin(''); setDisplayMileageMax(''); setDisplayYearMin(''); setDisplayYearMax('');
     setSearchParams({});
   };
 
-  // Клиентская фильтрация
+  // 🔍 Фильтрация по поисковому запросу
+  const searchFilteredCars = useMemo(() => {
+    if (!searchQuery.trim()) return cars;
+    const q = searchQuery.toLowerCase().trim();
+    return cars.filter(car => 
+      car.brand.toLowerCase().includes(q) || 
+      car.model.toLowerCase().includes(q) ||
+      `${car.brand} ${car.model}`.toLowerCase().includes(q) ||
+      car.description?.toLowerCase().includes(q)
+    );
+  }, [cars, searchQuery]);
+
+  // Клиентская фильтрация (остальные фильтры)
   const filteredCars = useMemo(() => {
-    let result = [...cars];
+    let result = [...searchFilteredCars];
     
     if (selectedBrands.length > 1) result = result.filter(car => selectedBrands.includes(car.brand));
     if (selectedTransmissions.length > 1) result = result.filter(car => selectedTransmissions.includes(car.transmission as Transmission));
@@ -298,9 +462,9 @@ export function CatalogPage() {
     }
 
     return result;
-  }, [cars, selectedBrands, selectedTransmissions, selectedFuels, selectedColors, priceMin, priceMax, mileageMin, mileageMax]);
+  }, [searchFilteredCars, selectedBrands, selectedTransmissions, selectedFuels, selectedColors, priceMin, priceMax, mileageMin, mileageMax]);
 
-  const adaptedCars = filteredCars.map(car => ({
+  const adaptedCars = useMemo(() => filteredCars.map(car => ({
     id: car.id,
     brand: car.brand,
     model: car.model,
@@ -319,32 +483,65 @@ export function CatalogPage() {
     isNew: car.status === 'available' && car.mileage === 0,
     createdAt: car.created_at,
     vin: car.vin ?? undefined,
-  }));
+  })), [filteredCars]);
 
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-          <div>
-            <h1 className="text-3xl font-semibold mb-2">Каталог автомобилей</h1>
-            <p className="text-muted-foreground">
-              {loading ? 'Загрузка...' : `Найдено: ${adaptedCars.length} автомобилей`}
-            </p>
+        {/* Заголовок + Поиск */}
+        <div className="flex flex-col gap-4 mb-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-semibold mb-1">Каталог автомобилей</h1>
+              <p className="text-muted-foreground">
+                {loading ? 'Загрузка...' : `Найдено: ${adaptedCars.length} автомобилей`}
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setMobileFiltersOpen(!mobileFiltersOpen)}
+                className="md:hidden flex items-center gap-2 px-4 py-2 bg-secondary rounded-lg"
+              >
+                <SlidersHorizontal className="w-5 h-5" />
+                <span>Фильтры</span>
+              </button>
+              <select
+                value={sortBy}
+                onChange={e => setSortBy(e.target.value as CarFilters['sort_by'])}
+                className="px-4 py-2 bg-secondary rounded-lg outline-none focus:ring-2 focus:ring-primary text-sm"
+              >
+                <option value="date_desc">По дате добавления</option>
+                <option value="price_asc">По возрастанию цены</option>
+                <option value="price_desc">По убыванию цены</option>
+                <option value="year_desc">По году выпуска</option>
+              </select>
+            </div>
           </div>
-          <div className="flex items-center gap-3">
-            <button onClick={() => setMobileFiltersOpen(!mobileFiltersOpen)}
-              className="md:hidden flex items-center gap-2 px-4 py-2 bg-secondary rounded-lg">
-              <SlidersHorizontal className="w-5 h-5" />
-              <span>Фильтры</span>
-            </button>
-            <select value={sortBy} onChange={e => setSortBy(e.target.value as CarFilters['sort_by'])}
-              className="px-4 py-2 bg-secondary rounded-lg outline-none focus:ring-2 focus:ring-primary">
-              <option value="date_desc">По дате добавления</option>
-              <option value="price_asc">По возрастанию цены</option>
-              <option value="price_desc">По убыванию цены</option>
-              <option value="year_desc">По году выпуска</option>
-            </select>
-          </div>
+
+          {/* 🔍 Поиск по каталогу с выпадающими результатами */}
+          <CatalogSearch
+            cars={cars}
+            placeholder="Поиск по марке или модели..."
+            onSelect={car => {
+              if (car) {
+                // При выборе из подсказок — переходим к машине
+                navigate(`/car/${car.id}`);
+              }
+            }}
+          />
+          
+          {/* Отображение активного поискового запроса */}
+          {searchQuery && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span>Поиск: «{searchQuery}»</span>
+              <button 
+                onClick={() => { setSearchQuery(''); setSearchParams(prev => { prev.delete('q'); return prev; }); }}
+                className="text-destructive hover:underline"
+              >
+                очистить
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="flex gap-6">
@@ -389,6 +586,7 @@ export function CatalogPage() {
                   <h2 className="text-xl font-semibold">Фильтры</h2>
                   <button onClick={() => setMobileFiltersOpen(false)}><X className="w-6 h-6" /></button>
                 </div>
+                {/* ... (те же поля фильтров, что и в десктопе) ... */}
                 <div>
                   <h3 className="font-semibold mb-2">Цена, ₽</h3>
                   <div className="flex gap-2">
@@ -451,7 +649,9 @@ export function CatalogPage() {
 
             {!loading && !error && adaptedCars.length === 0 && (
               <div className="text-center py-16">
-                <p className="text-muted-foreground text-lg mb-4">По вашему запросу ничего не найдено</p>
+                <p className="text-muted-foreground text-lg mb-4">
+                  {searchQuery ? `По запросу «${searchQuery}» ничего не найдено` : 'По вашему запросу ничего не найдено'}
+                </p>
                 <button onClick={resetFilters} className="px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90">Сбросить фильтры</button>
               </div>
             )}

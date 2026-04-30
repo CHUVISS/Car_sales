@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Car, Users, FileText, BarChart3, Plus, Edit, Trash2,
   Check, X, RefreshCw, Loader2, ChevronLeft, ChevronRight,
-  MessageSquare, DollarSign, AlertCircle, Eye,
+  MessageSquare, DollarSign, AlertCircle, Eye, Search,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../hooks/useAuth';
@@ -69,6 +69,16 @@ const USER_STATUS_COLORS: Record<string, string> = {
   banned: 'bg-destructive/10 text-destructive',
 };
 
+// 🔽 Утилита для дебаунса
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(handler);
+  }, [value, delay]);
+  return debouncedValue;
+}
+
 // Pagination
 function Pagination({ skip, limit, count, onChange }: {
   skip: number; limit: number; count: number; onChange: (skip: number) => void;
@@ -133,6 +143,48 @@ function StatsTab({ stats, loading }: { stats: DashboardStats | null; loading: b
   );
 }
 
+// 🔽 Компонент строки таблицы автомобиля (вынесен для переиспользования)
+function CarTableRow({ car, onEdit, onDelete, onStatusChange }: {
+  car: AdminCar;
+  onEdit: (car: AdminCar) => void;
+  onDelete: (id: string, name: string) => void;
+  onStatusChange: (id: string, status: string) => void;
+}) {
+  return (
+    <tr key={car.id} className="hover:bg-secondary/30 transition-colors">
+      <td className="px-4 py-3">
+        <div>
+          <p className="font-semibold">{car.brand} {car.model}</p>
+          {car.color && <p className="text-xs text-muted-foreground">{car.color}</p>}
+        </div>
+      </td>
+      <td className="px-4 py-3 text-muted-foreground">{car.year}</td>
+      <td className="px-4 py-3 font-medium">{formatPrice(car.price)}</td>
+      <td className="px-4 py-3 text-muted-foreground">{formatMileage(car.mileage)}</td>
+      <td className="px-4 py-3">
+        <select value={car.status} onChange={e => onStatusChange(car.id, e.target.value)}
+          className={`text-xs px-2 py-1 rounded-full border-0 font-medium cursor-pointer ${CAR_STATUS_COLORS[car.status]}`}>
+          {Object.entries(CAR_STATUS_LABELS).map(([v, l]) => (
+            <option key={v} value={v}>{l}</option>
+          ))}
+        </select>
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex gap-1">
+          <button onClick={() => onEdit(car)}
+            className="p-1.5 hover:bg-primary/10 rounded-lg transition-colors">
+            <Edit className="w-4 h-4 text-primary" />
+          </button>
+          <button onClick={() => onDelete(car.id, `${car.brand} ${car.model}`)}
+            className="p-1.5 hover:bg-destructive/10 rounded-lg transition-colors">
+            <Trash2 className="w-4 h-4 text-destructive" />
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 // Cars Tab
 
 function CarsTab() {
@@ -149,16 +201,67 @@ function CarsTab() {
   }>({ brand: '', model: '', year: '', price: '', mileage: '0', color: '', fuel_type: '', transmission: '', body_type: '', engine_volume: '', engine_power: '', description: '', vin: '' });
   const [saving, setSaving] = useState(false);
 
+  // 🔽 Поиск с выводом результатов сразу
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<AdminCar[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const debouncedSearch = useDebounce(searchQuery, 300);
+  const searchAbortRef = useRef<AbortController | null>(null);
+
   const load = useCallback(async () => {
+    // Не загружаем основной список, если активен поиск
+    if (searchQuery.trim()) return;
+    
     setLoading(true);
     try {
       const data = await adminApi.getCars(skip);
       setCars(data.data); setCount(data.count);
     } catch { toast.error('Ошибка загрузки авто'); }
     finally { setLoading(false); }
-  }, [skip]);
+  }, [skip, searchQuery]);
 
+  // 🔽 Поиск автомобилей по запросу
+  const performSearch = useCallback(async (query: string) => {
+    if (!query.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    
+    setSearchLoading(true);
+    // Отменяем предыдущий запрос
+    if (searchAbortRef.current) {
+      searchAbortRef.current.abort();
+    }
+    searchAbortRef.current = new AbortController();
+    
+    try {
+      // Предполагаем, что API поддерживает поиск по параметру q
+      // Если нет — можно фильтровать локально: cars.filter(c => ...)
+      const data = await adminApi.getCars(0);
+      setSearchResults(data.data.filter(c => 
+        c.brand.toLowerCase().includes(query.toLowerCase()) ||
+        c.model.toLowerCase().includes(query.toLowerCase()) ||
+        (c.vin && c.vin.toLowerCase().includes(query.toLowerCase()))
+      ));
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') {
+        toast.error('Ошибка поиска');
+        setSearchResults([]);
+      }
+    } finally {
+      setSearchLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { performSearch(debouncedSearch); }, [debouncedSearch, performSearch]);
   useEffect(() => { load(); }, [load]);
+
+  // 🔽 Очистка поиска
+  const clearSearch = () => {
+    setSearchQuery('');
+    setSearchResults([]);
+    setSkip(0);
+  };
 
   const openCreate = () => {
     setEditCar(null);
@@ -204,7 +307,9 @@ function CarsTab() {
         toast.success('Автомобиль добавлен');
       }
       setShowForm(false);
-      load();
+      // Обновляем и поиск, и основной список
+      if (searchQuery.trim()) performSearch(searchQuery);
+      else load();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Ошибка');
     } finally { setSaving(false); }
@@ -215,7 +320,8 @@ function CarsTab() {
     try {
       await adminApi.deleteCar(id);
       toast.success('Автомобиль удалён');
-      load();
+      if (searchQuery.trim()) performSearch(searchQuery);
+      else load();
     } catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Ошибка'); }
   };
 
@@ -223,28 +329,74 @@ function CarsTab() {
     try {
       await adminApi.updateCar(id, { status: status as AdminCar['status'] });
       toast.success('Статус обновлён');
-      load();
+      if (searchQuery.trim()) performSearch(searchQuery);
+      else load();
     } catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Ошибка'); }
   };
 
-  if (loading && cars.length === 0) return <LoadingSpinner />;
+  // 🔽 Определяем, что отображать: результаты поиска или основной список
+  const isSearching = searchQuery.trim().length > 0;
+  const displayedCars = isSearching ? searchResults : cars;
+  const displayedCount = isSearching ? searchResults.length : count;
+  const isLoading = isSearching ? searchLoading : (loading && cars.length === 0);
+
+  if (isLoading) return <LoadingSpinner />;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-semibold">Автомобили <span className="text-muted-foreground text-lg font-normal">({count})</span></h2>
-        <div className="flex gap-2">
-          <button onClick={load} className="p-2 border border-border rounded-lg hover:bg-secondary transition-colors">
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
-          <button onClick={openCreate}
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity text-sm">
-            <Plus className="w-4 h-4" />
-            Добавить
-          </button>
+      {/* 🔽 Поиск с выводом результатов сразу */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-2xl font-semibold">
+            Автомобили{' '}
+            <span className="text-muted-foreground text-lg font-normal">
+              ({displayedCount}){isSearching && ` • поиск: "${searchQuery}"`}
+            </span>
+          </h2>
+          <div className="flex gap-2">
+            <button onClick={isSearching ? clearSearch : load} 
+              className="p-2 border border-border rounded-lg hover:bg-secondary transition-colors"
+              title={isSearching ? 'Очистить поиск' : 'Обновить'}>
+              {isSearching ? <X className="w-4 h-4" /> : <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />}
+            </button>
+            <button onClick={openCreate}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity text-sm">
+              <Plus className="w-4 h-4" />
+              Добавить
+            </button>
+          </div>
         </div>
+
+        {/* 🔽 Поле поиска */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Поиск по марке, модели, VIN..."
+            className="w-full pl-10 pr-10 py-2.5 bg-white border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary transition-all"
+          />
+          {searchQuery && (
+            <button
+              onClick={clearSearch}
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-secondary rounded transition-colors"
+            >
+              <X className="w-4 h-4 text-muted-foreground" />
+            </button>
+          )}
+        </div>
+
+        {/* 🔽 Индикатор поиска */}
+        {searchLoading && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Поиск...
+          </div>
+        )}
       </div>
 
+      {/* 🔽 Таблица результатов */}
       <div className="bg-white rounded-xl border border-border overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -256,45 +408,36 @@ function CarsTab() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {cars.map(car => (
-                <tr key={car.id} className="hover:bg-secondary/30 transition-colors">
-                  <td className="px-4 py-3">
-                    <div>
-                      <p className="font-semibold">{car.brand} {car.model}</p>
-                      {car.color && <p className="text-xs text-muted-foreground">{car.color}</p>}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">{car.year}</td>
-                  <td className="px-4 py-3 font-medium">{formatPrice(car.price)}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{formatMileage(car.mileage)}</td>
-                  <td className="px-4 py-3">
-                    <select value={car.status} onChange={e => handleStatusChange(car.id, e.target.value)}
-                      className={`text-xs px-2 py-1 rounded-full border-0 font-medium cursor-pointer ${CAR_STATUS_COLORS[car.status]}`}>
-                      {Object.entries(CAR_STATUS_LABELS).map(([v, l]) => (
-                        <option key={v} value={v}>{l}</option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-1">
-                      <button onClick={() => openEdit(car)}
-                        className="p-1.5 hover:bg-primary/10 rounded-lg transition-colors">
-                        <Edit className="w-4 h-4 text-primary" />
-                      </button>
-                      <button onClick={() => handleDelete(car.id, `${car.brand} ${car.model}`)}
-                        className="p-1.5 hover:bg-destructive/10 rounded-lg transition-colors">
-                        <Trash2 className="w-4 h-4 text-destructive" />
-                      </button>
-                    </div>
+              {displayedCars.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
+                    {isSearching 
+                      ? searchLoading 
+                        ? 'Поиск...' 
+                        : 'По вашему запросу ничего не найдено'
+                      : 'Список автомобилей пуст'}
                   </td>
                 </tr>
-              ))}
+              ) : (
+                displayedCars.map(car => (
+                  <CarTableRow
+                    key={car.id}
+                    car={car}
+                    onEdit={openEdit}
+                    onDelete={handleDelete}
+                    onStatusChange={handleStatusChange}
+                  />
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      <Pagination skip={skip} limit={20} count={count} onChange={setSkip} />
+      {/* 🔽 Пагинация только для основного списка (не для поиска) */}
+      {!isSearching && (
+        <Pagination skip={skip} limit={20} count={count} onChange={setSkip} />
+      )}
 
       {/* Modal */}
       {showForm && (
