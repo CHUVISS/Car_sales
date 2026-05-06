@@ -1,7 +1,22 @@
 import { Shield, Award, Users, Clock } from 'lucide-react';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 
+// 🔹 Импорт локальных изображений команды
+import alexImage from '../../assets/Alex_1.png';
+import matveyImage from '../../assets/Matt.png';
+import alekseyImage from '../../assets/Alex2_1.png';
+import danilaImage from '../../assets/Danila2.png';
+import timofeyImage from '../../assets/Tima.png';
+
 export function AboutPage() {
+  const teamMembers = [
+    { name: 'Чувилов Александр', role: 'Тимлид', image: alexImage },
+    { name: 'Дворников Матвей', role: 'Backend-разработчик', image: matveyImage },
+    { name: 'Иващенко Алексей', role: 'Тестировщик', image: alekseyImage },
+    { name: 'Барышев Данила', role: 'Архитектор (Возможно умер)', image: danilaImage },
+    { name: 'Жуков Тимофей', role: 'Frontend-разработчик', image: timofeyImage }
+  ];
+
   return (
     <div className="min-h-screen bg-background">
       {/* Заголовок */}
@@ -78,17 +93,11 @@ export function AboutPage() {
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <h2 className="text-3xl font-semibold text-center mb-12">Наша команда</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {[
-            { name: 'Чувилов Александр', role: 'Тимлид', image: '../images/Alex.png' },
-            { name: 'Барышев Данила', role: 'Архитектор', image: 'photo-1438761681033-6461ffad8d80' },
-            { name: 'Дворников Матвей', role: 'Backend-разработчик', image: 'photo-1500648767791-00dcc994a43e' },
-            { name: 'Жуков Тимофей', role: 'Frontend-разработчик', image: 'photo-1472099645785-5658abf4ff4e' },
-            { name: 'Иващенко Алексей', role: 'Тестировщик', image: 'photo-1472099645785-5658abf4ff4e' },
-          ].map((member, index) => (
+          {teamMembers.map((member, index) => (
             <div key={index} className="text-center">
               <div className="w-32 h-32 rounded-full bg-secondary mx-auto mb-4 overflow-hidden">
                 <ImageWithFallback
-                  src={`https://images.unsplash.com/${member.image}?w=200&q=80`}
+                  src={member.image}
                   alt={member.name}
                   className="w-full h-full object-cover"
                 />
