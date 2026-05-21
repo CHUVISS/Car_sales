@@ -3,6 +3,7 @@ import {
   Car, Users, FileText, BarChart3, Plus, Edit, Trash2,
   Check, X, RefreshCw, Loader2, ChevronLeft, ChevronRight,
   MessageSquare, DollarSign, AlertCircle, Eye, Search, Upload,
+  SlidersHorizontal, ChevronDown,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../hooks/useAuth';
@@ -17,7 +18,6 @@ import {
 
 type TabType = 'stats' | 'cars' | 'offers' | 'messages' | 'users';
 
-// 🔽 Helpers
 function formatPrice(p: string | number): string {
   return new Intl.NumberFormat('ru-RU', {
     style: 'currency', currency: 'RUB',
@@ -71,7 +71,17 @@ const USER_STATUS_COLORS: Record<string, string> = {
   banned: 'bg-destructive/10 text-destructive',
 };
 
-// 🔽 Утилита для дебаунса
+const FUEL_LABELS: Record<string, string> = {
+  petrol: 'Бензин', diesel: 'Дизель', electric: 'Электро', hybrid: 'Гибрид', gas: 'Газ',
+};
+const TRANSMISSION_LABELS: Record<string, string> = {
+  manual: 'Механика', automatic: 'Автомат', robot: 'Робот', variator: 'Вариатор',
+};
+const BODY_LABELS: Record<string, string> = {
+  sedan: 'Седан', hatchback: 'Хэтчбек', suv: 'Внедорожник', coupe: 'Купе',
+  wagon: 'Универсал', minivan: 'Минивэн', pickup: 'Пикап',
+};
+
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
   useEffect(() => {
@@ -81,7 +91,6 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
-// Pagination
 function Pagination({ skip, limit, count, onChange }: {
   skip: number; limit: number; count: number; onChange: (skip: number) => void;
 }) {
@@ -108,7 +117,265 @@ function Pagination({ skip, limit, count, onChange }: {
   );
 }
 
-// Stats Tab
+// ─── Компонент фильтров для таба Автомобили ────────────────────────────────
+
+interface CarFiltersState {
+  status: string;
+  priceMin: string;
+  priceMax: string;
+  mileageMin: string;
+  mileageMax: string;
+  yearMin: string;
+  yearMax: string;
+  brands: string[];
+  transmissions: string[];
+  fuelTypes: string[];
+  bodyTypes: string[];
+}
+
+const EMPTY_FILTERS: CarFiltersState = {
+  status: '',
+  priceMin: '', priceMax: '',
+  mileageMin: '', mileageMax: '',
+  yearMin: '', yearMax: '',
+  brands: [],
+  transmissions: [],
+  fuelTypes: [],
+  bodyTypes: [],
+};
+
+function hasActiveFilters(f: CarFiltersState): boolean {
+  return !!(f.status || f.priceMin || f.priceMax || f.mileageMin || f.mileageMax ||
+    f.yearMin || f.yearMax || f.brands.length || f.transmissions.length ||
+    f.fuelTypes.length || f.bodyTypes.length);
+}
+
+function applyFilters(cars: AdminCar[], f: CarFiltersState): AdminCar[] {
+  return cars.filter(car => {
+    if (f.status && car.status !== f.status) return false;
+    const price = Number(car.price);
+    if (f.priceMin && price < Number(f.priceMin)) return false;
+    if (f.priceMax && price > Number(f.priceMax)) return false;
+    if (f.mileageMin && car.mileage < Number(f.mileageMin)) return false;
+    if (f.mileageMax && car.mileage > Number(f.mileageMax)) return false;
+    if (f.yearMin && car.year < Number(f.yearMin)) return false;
+    if (f.yearMax && car.year > Number(f.yearMax)) return false;
+    if (f.brands.length && !f.brands.includes(car.brand)) return false;
+    if (f.transmissions.length && car.transmission && !f.transmissions.includes(car.transmission)) return false;
+    if (f.fuelTypes.length && car.fuel_type && !f.fuelTypes.includes(car.fuel_type)) return false;
+    if (f.bodyTypes.length && car.body_type && !f.bodyTypes.includes(car.body_type)) return false;
+    return true;
+  });
+}
+
+function MultiSelectDropdown({ label, options, selected, onToggle, onClear }: {
+  label: string;
+  options: { value: string; label: string }[];
+  selected: string[];
+  onToggle: (v: string) => void;
+  onClear: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const displayText = selected.length > 0
+    ? selected.map(v => options.find(o => o.value === v)?.label ?? v).join(', ')
+    : 'Все';
+
+  return (
+    <div className="relative" ref={ref}>
+      <p className="text-xs font-semibold text-muted-foreground mb-1">{label}</p>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className={`w-full flex items-center justify-between px-3 py-2 bg-secondary rounded-lg text-sm text-left hover:bg-secondary/80 transition-colors ${selected.length > 0 ? 'text-primary font-medium' : 'text-muted-foreground'}`}
+      >
+        <span className="truncate mr-2">{displayText}</span>
+        <ChevronDown className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute z-20 w-full mt-1 bg-white border border-border rounded-lg shadow-lg overflow-hidden">
+          <div className="max-h-44 overflow-y-auto py-1">
+            {options.map(opt => (
+              <label key={opt.value} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-secondary/50 text-sm">
+                <div className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${selected.includes(opt.value) ? 'bg-primary border-primary' : 'border-border'}`}>
+                  {selected.includes(opt.value) && <Check className="w-3 h-3 text-white" />}
+                </div>
+                <input type="checkbox" className="sr-only" checked={selected.includes(opt.value)} onChange={() => onToggle(opt.value)} />
+                {opt.label}
+              </label>
+            ))}
+          </div>
+          {selected.length > 0 && (
+            <div className="border-t border-border px-3 py-2">
+              <button type="button" onClick={onClear} className="text-xs text-destructive hover:underline">Очистить</button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CarFilterPanel({
+  filters,
+  onChange,
+  onReset,
+  availableBrands,
+}: {
+  filters: CarFiltersState;
+  onChange: (f: CarFiltersState) => void;
+  onReset: () => void;
+  availableBrands: string[];
+}) {
+  const set = (patch: Partial<CarFiltersState>) => onChange({ ...filters, ...patch });
+  const toggleArr = (key: keyof CarFiltersState, val: string) => {
+    const arr = filters[key] as string[];
+    set({ [key]: arr.includes(val) ? arr.filter(x => x !== val) : [...arr, val] });
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-border p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold flex items-center gap-1.5">
+          <SlidersHorizontal className="w-4 h-4" /> Фильтры
+        </p>
+        {hasActiveFilters(filters) && (
+          <button onClick={onReset} className="text-xs text-destructive hover:underline flex items-center gap-1">
+            <X className="w-3 h-3" /> Сбросить
+          </button>
+        )}
+      </div>
+
+      {/* Статус */}
+      <div>
+        <p className="text-xs font-semibold text-muted-foreground mb-1.5">Статус</p>
+        <div className="flex flex-wrap gap-1.5">
+          {[['', 'Все'], ...Object.entries(CAR_STATUS_LABELS)].map(([v, l]) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => set({ status: v })}
+              className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${
+                filters.status === v
+                  ? v ? CAR_STATUS_COLORS[v] + ' ring-2 ring-offset-1 ring-primary/20' : 'bg-primary text-primary-foreground'
+                  : 'bg-secondary text-muted-foreground hover:bg-secondary/80'
+              }`}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Цена */}
+      <div>
+        <p className="text-xs font-semibold text-muted-foreground mb-1.5">Цена, ₽</p>
+        <div className="flex gap-2">
+          <input
+            type="text" inputMode="numeric" placeholder="От"
+            value={filters.priceMin}
+            onChange={e => set({ priceMin: e.target.value.replace(/\D/g, '') })}
+            className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary"
+          />
+          <input
+            type="text" inputMode="numeric" placeholder="До"
+            value={filters.priceMax}
+            onChange={e => set({ priceMax: e.target.value.replace(/\D/g, '') })}
+            className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary"
+          />
+        </div>
+      </div>
+
+      {/* Пробег */}
+      <div>
+        <p className="text-xs font-semibold text-muted-foreground mb-1.5">Пробег, км</p>
+        <div className="flex gap-2">
+          <input
+            type="text" inputMode="numeric" placeholder="От"
+            value={filters.mileageMin}
+            onChange={e => set({ mileageMin: e.target.value.replace(/\D/g, '') })}
+            className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary"
+          />
+          <input
+            type="text" inputMode="numeric" placeholder="До"
+            value={filters.mileageMax}
+            onChange={e => set({ mileageMax: e.target.value.replace(/\D/g, '') })}
+            className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary"
+          />
+        </div>
+      </div>
+
+      {/* Год */}
+      <div>
+        <p className="text-xs font-semibold text-muted-foreground mb-1.5">Год выпуска</p>
+        <div className="flex gap-2">
+          <input
+            type="text" inputMode="numeric" placeholder="От"
+            value={filters.yearMin}
+            onChange={e => set({ yearMin: e.target.value.replace(/\D/g, '') })}
+            className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary"
+          />
+          <input
+            type="text" inputMode="numeric" placeholder="До"
+            value={filters.yearMax}
+            onChange={e => set({ yearMax: e.target.value.replace(/\D/g, '') })}
+            className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary"
+          />
+        </div>
+      </div>
+
+      {/* Марка */}
+      {availableBrands.length > 0 && (
+        <MultiSelectDropdown
+          label="Марка"
+          options={availableBrands.map(b => ({ value: b, label: b }))}
+          selected={filters.brands}
+          onToggle={v => toggleArr('brands', v)}
+          onClear={() => set({ brands: [] })}
+        />
+      )}
+
+      {/* КПП */}
+      <MultiSelectDropdown
+        label="Коробка передач"
+        options={Object.entries(TRANSMISSION_LABELS).map(([v, l]) => ({ value: v, label: l }))}
+        selected={filters.transmissions}
+        onToggle={v => toggleArr('transmissions', v)}
+        onClear={() => set({ transmissions: [] })}
+      />
+
+      {/* Топливо */}
+      <MultiSelectDropdown
+        label="Тип топлива"
+        options={Object.entries(FUEL_LABELS).map(([v, l]) => ({ value: v, label: l }))}
+        selected={filters.fuelTypes}
+        onToggle={v => toggleArr('fuelTypes', v)}
+        onClear={() => set({ fuelTypes: [] })}
+      />
+
+      {/* Кузов */}
+      <MultiSelectDropdown
+        label="Тип кузова"
+        options={Object.entries(BODY_LABELS).map(([v, l]) => ({ value: v, label: l }))}
+        selected={filters.bodyTypes}
+        onToggle={v => toggleArr('bodyTypes', v)}
+        onClear={() => set({ bodyTypes: [] })}
+      />
+    </div>
+  );
+}
+
+// ─── Stats Tab ─────────────────────────────────────────────────────────────
+
 function StatsTab({ stats, loading }: { stats: DashboardStats | null; loading: boolean }) {
   if (loading) return <LoadingSpinner />;
   if (!stats) return <ErrorState message="Не удалось загрузить статистику" />;
@@ -145,7 +412,8 @@ function StatsTab({ stats, loading }: { stats: DashboardStats | null; loading: b
   );
 }
 
-// 🔽 Компонент строки таблицы автомобиля
+// ─── Car Table Row ──────────────────────────────────────────────────────────
+
 function CarTableRow({ car, onEdit, onDelete, onStatusChange }: {
   car: AdminCar;
   onEdit: (car: AdminCar) => void;
@@ -153,7 +421,7 @@ function CarTableRow({ car, onEdit, onDelete, onStatusChange }: {
   onStatusChange: (id: string, status: string) => void;
 }) {
   return (
-    <tr key={car.id} className="hover:bg-secondary/30 transition-colors">
+    <tr className="hover:bg-secondary/30 transition-colors">
       <td className="px-4 py-3">
         <div>
           <p className="font-semibold">{car.brand} {car.model}</p>
@@ -185,9 +453,10 @@ function CarTableRow({ car, onEdit, onDelete, onStatusChange }: {
   );
 }
 
-// Cars Tab
+// ─── Cars Tab ───────────────────────────────────────────────────────────────
+
 function CarsTab() {
-  const [cars, setCars] = useState<AdminCar[]>([]);
+  const [allCars, setAllCars] = useState<AdminCar[]>([]);
   const [count, setCount] = useState(0);
   const [skip, setSkip] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -200,67 +469,62 @@ function CarsTab() {
   }>({ brand: '', model: '', year: '', price: '', mileage: '0', color: '', fuel_type: '', transmission: '', body_type: '', engine_volume: '', engine_power: '', description: '', vin: '' });
   const [saving, setSaving] = useState(false);
 
-  // 🔽 Поиск
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<AdminCar[]>([]);
-  const [searchLoading, setSearchLoading] = useState(false);
   const debouncedSearch = useDebounce(searchQuery, 300);
-  const searchAbortRef = useRef<AbortController | null>(null);
 
-  // 🔽 Фильтр по статусу
-  const [filterStatus, setFilterStatus] = useState<string>('');
+  const [filters, setFilters] = useState<CarFiltersState>(EMPTY_FILTERS);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
-  // 🔽 Загрузка фотографий
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
 
   const load = useCallback(async () => {
-    if (searchQuery.trim()) return;
     setLoading(true);
     try {
-      const data = await adminApi.getCars(skip);
-      if (filterStatus) {
-        const filtered = data.data.filter(c => c.status === filterStatus);
-        setCars(filtered); setCount(filtered.length);
-      } else {
-        setCars(data.data); setCount(data.count);
-      }
-    } catch { toast.error('Ошибка загрузки авто'); }
-    finally { setLoading(false); }
-  }, [skip, searchQuery, filterStatus]);
-
-  const performSearch = useCallback(async (query: string) => {
-    if (!query.trim()) { setSearchResults([]); return; }
-    setSearchLoading(true);
-    if (searchAbortRef.current) searchAbortRef.current.abort();
-    searchAbortRef.current = new AbortController();
-    try {
       const data = await adminApi.getCars(0);
-      const q = query.toLowerCase();
-      let results = data.data.filter(c => 
+      console.log('Loaded cars:', data);
+      setAllCars(data.data);
+      setCount(data.count);
+    } catch (err) {
+      console.error('Failed to load cars:', err);
+      toast.error('Ошибка загрузки авто');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    return () => { previews.forEach(url => URL.revokeObjectURL(url)); };
+  }, [previews]);
+
+  const availableBrands = [...new Set(allCars.map(c => c.brand))].sort();
+
+  // Применяем поиск + фильтры
+  const displayedCars = (() => {
+    let result = [...allCars];
+    if (debouncedSearch.trim()) {
+      const q = debouncedSearch.toLowerCase();
+      result = result.filter(c =>
         c.brand.toLowerCase().includes(q) ||
         c.model.toLowerCase().includes(q) ||
         (c.vin && c.vin.toLowerCase().includes(q))
       );
-      if (filterStatus) results = results.filter(c => c.status === filterStatus);
-      setSearchResults(results);
-    } catch (err) {
-      if ((err as Error).name !== 'AbortError') {
-        toast.error('Ошибка поиска');
-        setSearchResults([]);
-      }
-    } finally { setSearchLoading(false); }
-  }, [filterStatus]);
+    }
+    result = applyFilters(result, filters);
+    return result;
+  })();
 
-  useEffect(() => { performSearch(debouncedSearch); }, [debouncedSearch, performSearch]);
-  useEffect(() => { load(); }, [load]);
+  // Пагинация по клиентской стороне
+  const paginated = displayedCars;
+  const totalFiltered = displayedCars.length;
 
-  // 🔽 Очистка URL превью при размонтировании
-  useEffect(() => {
-    return () => {
-      previews.forEach(url => URL.revokeObjectURL(url));
-    };
-  }, [previews]);
+  const activeFiltersCount = [
+    filters.status, filters.priceMin, filters.priceMax,
+    filters.mileageMin, filters.mileageMax, filters.yearMin, filters.yearMax,
+    ...filters.brands, ...filters.transmissions, ...filters.fuelTypes, ...filters.bodyTypes,
+  ].filter(Boolean).length;
 
   const handleFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
@@ -292,10 +556,6 @@ function CarsTab() {
     setPreviews([]);
   };
 
-  const clearSearch = () => { setSearchQuery(''); setSearchResults([]); setSkip(0); };
-  const handleFilterChange = (status: string) => { setFilterStatus(prev => prev === status ? '' : status); setSkip(0); };
-  const clearFilters = () => { setFilterStatus(''); setSkip(0); };
-
   const openCreate = () => {
     setEditCar(null);
     setForm({ brand: '', model: '', year: '', price: '', mileage: '0', color: '', fuel_type: '', transmission: '', body_type: '', engine_volume: '', engine_power: '', description: '', vin: '' });
@@ -313,7 +573,7 @@ function CarsTab() {
       engine_volume: car.engine_volume ?? '', engine_power: String(car.engine_power ?? ''),
       description: car.description ?? '', vin: car.vin ?? '',
     });
-    clearFiles(); // При редактировании не подгружаем старые фото в форму загрузки (можно доработать)
+    clearFiles();
     setShowForm(true);
   };
 
@@ -333,27 +593,23 @@ function CarsTab() {
       let carId = editCar?.id;
       if (!editCar) {
         const created = await adminApi.createCar(body);
-        carId = created.id; // ⚠️ Адаптируйте под ответ вашего API
+        carId = created.id;
         toast.success('Автомобиль добавлен');
       } else {
         await adminApi.updateCar(editCar.id, body);
         toast.success('Автомобиль обновлён');
       }
 
-      // 🔽 Загрузка фото в MinIO через бэкенд
       if (selectedFiles.length > 0 && carId) {
         const formData = new FormData();
         selectedFiles.forEach(file => formData.append('images', file));
-        
-        // ⚠️ Замените на реальный метод вашего adminApi, например:
-        // await adminApi.uploadCarImages(carId, formData);
-        await adminApi.uploadCarImages?.(carId, formData); 
+        await adminApi.uploadCarImages?.(carId, formData);
         toast.success(`${selectedFiles.length} фото загружено`);
       }
 
       setShowForm(false);
       clearFiles();
-      if (searchQuery.trim()) performSearch(searchQuery); else load();
+      load();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Ошибка при сохранении');
     } finally { setSaving(false); }
@@ -364,7 +620,7 @@ function CarsTab() {
     try {
       await adminApi.deleteCar(id);
       toast.success('Автомобиль удалён');
-      if (searchQuery.trim()) performSearch(searchQuery); else load();
+      load();
     } catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Ошибка'); }
   };
 
@@ -372,83 +628,186 @@ function CarsTab() {
     try {
       await adminApi.updateCar(id, { status: status as AdminCar['status'] });
       toast.success('Статус обновлён');
-      if (searchQuery.trim()) performSearch(searchQuery); else load();
+      setAllCars(prev => prev.map(c => c.id === id ? { ...c, status: status as AdminCar['status'] } : c));
     } catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Ошибка'); }
   };
 
-  const isSearching = searchQuery.trim().length > 0;
-  const hasActiveFilters = !!filterStatus;
-  const displayedCars = isSearching ? searchResults : cars;
-  const displayedCount = isSearching ? searchResults.length : count;
-  const isLoading = isSearching ? searchLoading : (loading && cars.length === 0);
-
-  if (isLoading) return <LoadingSpinner />;
+  if (loading && allCars.length === 0) return <LoadingSpinner />;
 
   return (
-    <div className="space-y-4">
-      <div className="space-y-3">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <h2 className="text-2xl font-semibold">
-            Автомобили <span className="text-muted-foreground text-lg font-normal">
-              ({displayedCount}){isSearching && ` • поиск: "${searchQuery}"`}{hasActiveFilters && !isSearching && ' • фильтры активны'}
-            </span>
-          </h2>
-          <div className="flex gap-2 flex-wrap">
-            {hasActiveFilters && (
-              <button onClick={clearFilters} className="flex items-center gap-1.5 px-3 py-2 bg-destructive/10 text-destructive rounded-lg text-sm hover:bg-destructive/20 transition-colors">
-                <X className="w-4 h-4" /> Сбросить фильтры
+    <div className="flex gap-4">
+      {/* Левая панель фильтров — десктоп */}
+      <aside className="hidden lg:block w-60 flex-shrink-0">
+        <CarFilterPanel
+          filters={filters}
+          onChange={f => { setFilters(f); setSkip(0); }}
+          onReset={() => { setFilters(EMPTY_FILTERS); setSkip(0); }}
+          availableBrands={availableBrands}
+        />
+      </aside>
+
+      {/* Основной контент */}
+      <div className="flex-1 min-w-0 space-y-4">
+        {/* Заголовок + поиск */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <h2 className="text-2xl font-semibold">
+              Автомобили{' '}
+              <span className="text-muted-foreground text-lg font-normal">
+                ({totalFiltered}{debouncedSearch ? ` из ${allCars.length}` : ''})
+              </span>
+            </h2>
+            <div className="flex gap-2 flex-wrap">
+              {/* Кнопка фильтров на мобиле */}
+              <button
+                onClick={() => setFiltersOpen(!filtersOpen)}
+                className={`lg:hidden flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm transition-colors ${activeFiltersCount > 0 ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-secondary'}`}
+              >
+                <SlidersHorizontal className="w-4 h-4" />
+                Фильтры
+                {activeFiltersCount > 0 && <span className="bg-white/20 text-xs px-1.5 rounded-full">{activeFiltersCount}</span>}
+              </button>
+              {activeFiltersCount > 0 && (
+                <button
+                  onClick={() => { setFilters(EMPTY_FILTERS); setSkip(0); }}
+                  className="hidden lg:flex items-center gap-1.5 px-3 py-2 bg-destructive/10 text-destructive rounded-lg text-sm hover:bg-destructive/20 transition-colors"
+                >
+                  <X className="w-4 h-4" /> Сбросить ({activeFiltersCount})
+                </button>
+              )}
+              <button
+                onClick={load}
+                className="p-2 border border-border rounded-lg hover:bg-secondary transition-colors"
+                title="Обновить"
+              >
+                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              </button>
+              <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity text-sm">
+                <Plus className="w-4 h-4" /> Добавить
+              </button>
+            </div>
+          </div>
+
+          {/* Поиск */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => { setSearchQuery(e.target.value); setSkip(0); }}
+              placeholder="Поиск по марке, модели, VIN..."
+              className="w-full pl-10 pr-10 py-2.5 bg-white border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary transition-all"
+            />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-secondary rounded transition-colors">
+                <X className="w-4 h-4 text-muted-foreground" />
               </button>
             )}
-            <button onClick={isSearching ? clearSearch : load} className="p-2 border border-border rounded-lg hover:bg-secondary transition-colors" title={isSearching ? 'Очистить поиск' : 'Обновить'}>
-              {isSearching ? <X className="w-4 h-4" /> : <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />}
-            </button>
-            <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity text-sm">
-              <Plus className="w-4 h-4" /> Добавить
-            </button>
           </div>
-        </div>
 
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Поиск по марке, модели, VIN..." className="w-full pl-10 pr-10 py-2.5 bg-white border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary transition-all" />
-          {searchQuery && <button onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-secondary rounded transition-colors"><X className="w-4 h-4 text-muted-foreground" /></button>}
-        </div>
-
-        <div className="flex flex-wrap gap-3">
-          <div className="flex items-center gap-1.5 bg-secondary/50 rounded-lg px-2 py-1.5">
-            <span className="text-xs font-medium text-muted-foreground">Статус:</span>
-            <button onClick={() => handleFilterChange('')} className={`text-xs px-2 py-0.5 rounded-full transition-colors ${!filterStatus ? 'bg-primary text-primary-foreground' : 'hover:bg-secondary'}`}>Все</button>
-            {Object.entries(CAR_STATUS_LABELS).map(([v, l]) => (
-              <button key={v} onClick={() => handleFilterChange(v)}
-                className={`text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${filterStatus === v ? `${CAR_STATUS_COLORS[v]} ring-2 ring-offset-1 ring-primary/20` : 'bg-secondary hover:bg-secondary/80 text-muted-foreground'}`}>
-                {l}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {searchLoading && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /> Поиск...</div>}
-      </div>
-
-      <div className="bg-white rounded-xl border border-border overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-secondary border-b border-border">
-              <tr>{['Автомобиль', 'Год', 'Цена', 'Пробег', 'Статус', 'Действия'].map(h => (<th key={h} className="px-4 py-3 text-left font-semibold text-muted-foreground">{h}</th>))}</tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {displayedCars.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">{isSearching ? searchLoading ? 'Поиск...' : 'По вашему запросу ничего не найдено' : hasActiveFilters ? 'Нет автомобилей с выбранным статусом' : 'Список автомобилей пуст'}</td></tr>
-              ) : displayedCars.map(car => (
-                <CarTableRow key={car.id} car={car} onEdit={openEdit} onDelete={handleDelete} onStatusChange={handleStatusChange} />
+          {/* Активные фильтры — теги */}
+          {(hasActiveFilters(filters) || searchQuery) && (
+            <div className="flex flex-wrap gap-1.5">
+              {searchQuery && (
+                <span className="flex items-center gap-1 text-xs bg-secondary px-2.5 py-1 rounded-full">
+                  Поиск: «{searchQuery}»
+                  <button onClick={() => setSearchQuery('')}><X className="w-3 h-3" /></button>
+                </span>
+              )}
+              {filters.status && (
+                <span className={`flex items-center gap-1 text-xs px-2.5 py-1 rounded-full ${CAR_STATUS_COLORS[filters.status]}`}>
+                  {CAR_STATUS_LABELS[filters.status]}
+                  <button onClick={() => setFilters(f => ({ ...f, status: '' }))}><X className="w-3 h-3" /></button>
+                </span>
+              )}
+              {(filters.priceMin || filters.priceMax) && (
+                <span className="flex items-center gap-1 text-xs bg-primary/10 text-primary px-2.5 py-1 rounded-full">
+                  Цена: {filters.priceMin || '0'} – {filters.priceMax || '∞'} ₽
+                  <button onClick={() => setFilters(f => ({ ...f, priceMin: '', priceMax: '' }))}><X className="w-3 h-3" /></button>
+                </span>
+              )}
+              {(filters.mileageMin || filters.mileageMax) && (
+                <span className="flex items-center gap-1 text-xs bg-primary/10 text-primary px-2.5 py-1 rounded-full">
+                  Пробег: {filters.mileageMin || '0'} – {filters.mileageMax || '∞'} км
+                  <button onClick={() => setFilters(f => ({ ...f, mileageMin: '', mileageMax: '' }))}><X className="w-3 h-3" /></button>
+                </span>
+              )}
+              {(filters.yearMin || filters.yearMax) && (
+                <span className="flex items-center gap-1 text-xs bg-primary/10 text-primary px-2.5 py-1 rounded-full">
+                  Год: {filters.yearMin || '–'} – {filters.yearMax || '–'}
+                  <button onClick={() => setFilters(f => ({ ...f, yearMin: '', yearMax: '' }))}><X className="w-3 h-3" /></button>
+                </span>
+              )}
+              {filters.brands.map(b => (
+                <span key={b} className="flex items-center gap-1 text-xs bg-secondary text-foreground px-2.5 py-1 rounded-full">
+                  {b}
+                  <button onClick={() => setFilters(f => ({ ...f, brands: f.brands.filter(x => x !== b) }))}><X className="w-3 h-3" /></button>
+                </span>
               ))}
-            </tbody>
-          </table>
+              {filters.transmissions.map(t => (
+                <span key={t} className="flex items-center gap-1 text-xs bg-secondary text-foreground px-2.5 py-1 rounded-full">
+                  {TRANSMISSION_LABELS[t]}
+                  <button onClick={() => setFilters(f => ({ ...f, transmissions: f.transmissions.filter(x => x !== t) }))}><X className="w-3 h-3" /></button>
+                </span>
+              ))}
+              {filters.fuelTypes.map(ft => (
+                <span key={ft} className="flex items-center gap-1 text-xs bg-secondary text-foreground px-2.5 py-1 rounded-full">
+                  {FUEL_LABELS[ft]}
+                  <button onClick={() => setFilters(f => ({ ...f, fuelTypes: f.fuelTypes.filter(x => x !== ft) }))}><X className="w-3 h-3" /></button>
+                </span>
+              ))}
+              {filters.bodyTypes.map(bt => (
+                <span key={bt} className="flex items-center gap-1 text-xs bg-secondary text-foreground px-2.5 py-1 rounded-full">
+                  {BODY_LABELS[bt]}
+                  <button onClick={() => setFilters(f => ({ ...f, bodyTypes: f.bodyTypes.filter(x => x !== bt) }))}><X className="w-3 h-3" /></button>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
-      </div>
-      
-      {!isSearching && !hasActiveFilters && <Pagination skip={skip} limit={20} count={count} onChange={setSkip} />}
 
+        {/* Мобильные фильтры */}
+        {filtersOpen && (
+          <div className="lg:hidden">
+            <CarFilterPanel
+              filters={filters}
+              onChange={f => { setFilters(f); setSkip(0); }}
+              onReset={() => { setFilters(EMPTY_FILTERS); setSkip(0); }}
+              availableBrands={availableBrands}
+            />
+          </div>
+        )}
+
+        {/* Таблица */}
+        <div className="bg-white rounded-xl border border-border overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-secondary border-b border-border">
+                <tr>
+                  {['Автомобиль', 'Год', 'Цена', 'Пробег', 'Статус', 'Действия'].map(h => (
+                    <th key={h} className="px-4 py-3 text-left font-semibold text-muted-foreground">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {paginated.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
+                      {hasActiveFilters(filters) || searchQuery ? 'По вашему запросу ничего не найдено' : 'Список автомобилей пуст'}
+                    </td>
+                  </tr>
+                ) : paginated.map(car => (
+                  <CarTableRow key={car.id} car={car} onEdit={openEdit} onDelete={handleDelete} onStatusChange={handleStatusChange} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <Pagination skip={skip} limit={20} count={totalFiltered} onChange={setSkip} />
+      </div>
+
+      {/* Форма */}
       {showForm && (
         <Modal title={editCar ? 'Редактировать авто' : 'Добавить авто'} onClose={() => setShowForm(false)}>
           <form onSubmit={handleSave} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
@@ -459,24 +818,32 @@ function CarsTab() {
                   <input type={type as string} required={required as boolean} value={form[key as keyof typeof form]} onChange={e => setForm(p => ({ ...p, [key as string]: e.target.value }))} className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary" />
                 </div>
               ))}
-              <div><label className="block text-xs font-semibold mb-1 text-muted-foreground">Тип топлива</label>
+              <div>
+                <label className="block text-xs font-semibold mb-1 text-muted-foreground">Тип топлива</label>
                 <select value={form.fuel_type} onChange={e => setForm(p => ({ ...p, fuel_type: e.target.value }))} className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary">
-                  <option value="">Не указано</option>{[['petrol', 'Бензин'], ['diesel', 'Дизель'], ['electric', 'Электро'], ['hybrid', 'Гибрид'], ['gas', 'Газ']].map(([v, l]) => (<option key={v} value={v}>{l}</option>))}
-                </select></div>
-              <div><label className="block text-xs font-semibold mb-1 text-muted-foreground">КПП</label>
+                  <option value="">Не указано</option>
+                  {Object.entries(FUEL_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1 text-muted-foreground">КПП</label>
                 <select value={form.transmission} onChange={e => setForm(p => ({ ...p, transmission: e.target.value }))} className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary">
-                  <option value="">Не указано</option>{[['manual', 'Механика'], ['automatic', 'Автомат'], ['robot', 'Робот'], ['variator', 'Вариатор']].map(([v, l]) => (<option key={v} value={v}>{l}</option>))}
-                </select></div>
-              <div><label className="block text-xs font-semibold mb-1 text-muted-foreground">Кузов</label>
+                  <option value="">Не указано</option>
+                  {Object.entries(TRANSMISSION_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1 text-muted-foreground">Кузов</label>
                 <select value={form.body_type} onChange={e => setForm(p => ({ ...p, body_type: e.target.value }))} className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary">
-                  <option value="">Не указано</option>{[['sedan', 'Седан'], ['hatchback', 'Хэтчбек'], ['suv', 'Внедорожник'], ['coupe', 'Купе'], ['wagon', 'Универсал'], ['minivan', 'Минивэн'], ['pickup', 'Пикап']].map(([v, l]) => (<option key={v} value={v}>{l}</option>))}
-                </select></div>
+                  <option value="">Не указано</option>
+                  {Object.entries(BODY_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              </div>
             </div>
 
-            {/* 🔽 Загрузка фотографий */}
             <div>
               <label className="block text-xs font-semibold mb-1 text-muted-foreground">Фотографии</label>
-              <div 
+              <div
                 className="border-2 border-dashed border-border rounded-lg p-4 text-center hover:bg-secondary/30 transition-colors cursor-pointer"
                 onClick={() => document.getElementById('car-images')?.click()}
                 onDragOver={handleDragOver}
@@ -493,7 +860,7 @@ function CarsTab() {
                     {previews.map((src, i) => (
                       <div key={i} className="relative aspect-square rounded-lg overflow-hidden bg-secondary group">
                         <img src={src} alt={`preview-${i}`} className="w-full h-full object-cover" />
-                        <button type="button" onClick={() => removeFile(i)} 
+                        <button type="button" onClick={() => removeFile(i)}
                           className="absolute top-1 right-1 p-1 bg-destructive text-white rounded-full hover:bg-destructive/80 opacity-0 group-hover:opacity-100 transition-opacity">
                           <X className="w-3 h-3" />
                         </button>
@@ -507,8 +874,10 @@ function CarsTab() {
               )}
             </div>
 
-            <div><label className="block text-xs font-semibold mb-1 text-muted-foreground">Описание</label>
-              <textarea value={form.description} rows={3} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary resize-none" /></div>
+            <div>
+              <label className="block text-xs font-semibold mb-1 text-muted-foreground">Описание</label>
+              <textarea value={form.description} rows={3} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary resize-none" />
+            </div>
             <div className="flex gap-3 pt-2 sticky bottom-0 bg-white/90 backdrop-blur py-2 border-t border-border">
               <button type="button" onClick={() => setShowForm(false)} className="flex-1 px-4 py-2 bg-secondary rounded-lg text-sm hover:bg-secondary/80 transition-colors">Отмена</button>
               <button type="submit" disabled={saving} className="flex-1 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm hover:opacity-90 disabled:opacity-50 transition-opacity">
@@ -522,7 +891,8 @@ function CarsTab() {
   );
 }
 
-// Offers Tab
+// ─── Offers Tab ─────────────────────────────────────────────────────────────
+
 function OffersTab() {
   const [offers, setOffers] = useState<AdminCarOffer[]>([]);
   const [count, setCount] = useState(0);
@@ -554,10 +924,9 @@ function OffersTab() {
     try {
       const data = await adminApi.getOffers(filterStatus || undefined, 0);
       const q = query.toLowerCase();
-      setSearchResults(data.data.filter(o => 
+      setSearchResults(data.data.filter(o =>
         o.brand.toLowerCase().includes(q) || o.model.toLowerCase().includes(q) ||
-        String(o.year).includes(q) || String(o.price).includes(q) ||
-        (o.user_name && o.user_name.toLowerCase().includes(q)) || (o.user_phone && o.user_phone.toLowerCase().includes(q))
+        String(o.year).includes(q) || String(o.price).includes(q)
       ));
     } catch (err) {
       if ((err as Error).name !== 'AbortError') { toast.error('Ошибка поиска'); setSearchResults([]); }
@@ -602,10 +971,9 @@ function OffersTab() {
         </div>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Поиск по марке, модели, году, цене, имени..." className="w-full pl-10 pr-10 py-2.5 bg-white border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary transition-all" />
+          <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Поиск по марке, модели, году, цене..." className="w-full pl-10 pr-10 py-2.5 bg-white border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary transition-all" />
           {searchQuery && <button onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-secondary rounded transition-colors"><X className="w-4 h-4 text-muted-foreground" /></button>}
         </div>
-        {searchLoading && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /> Поиск...</div>}
       </div>
 
       <div className="space-y-3">
@@ -621,7 +989,7 @@ function OffersTab() {
                     <div>
                       <h3 className="font-semibold">{offer.brand} {offer.model} {offer.year}</h3>
                       <p className="text-sm text-muted-foreground">{formatPrice(offer.price)} • {formatMileage(offer.mileage)} • {offer.images.length} фото</p>
-                      <p className="text-xs text-muted-foreground">{formatDate(offer.created_at)} • {offer.user_name}</p>
+                      <p className="text-xs text-muted-foreground">{formatDate(offer.created_at)}</p>
                     </div>
                     <span className={`text-xs px-2.5 py-1 rounded-full font-medium flex-shrink-0 ${OFFER_STATUS_COLORS[offer.status]}`}>{OFFER_STATUS_LABELS[offer.status]}</span>
                   </div>
@@ -656,7 +1024,8 @@ function OffersTab() {
   );
 }
 
-// Messages Tab
+// ─── Messages Tab ───────────────────────────────────────────────────────────
+
 function MessagesTab() {
   const [messages, setMessages] = useState<AdminMessage[]>([]);
   const [count, setCount] = useState(0);
@@ -687,10 +1056,10 @@ function MessagesTab() {
     try {
       const data = await adminApi.getMessages(filterStatus || undefined, 0);
       const q = query.toLowerCase();
-      setSearchResults(data.data.filter(m => 
-        (m.subject && m.subject.toLowerCase().includes(q)) || m.message_type.toLowerCase().includes(q) ||
-        m.body.toLowerCase().includes(q) || m.name.toLowerCase().includes(q) ||
-        m.email.toLowerCase().includes(q) || (m.phone && m.phone.toLowerCase().includes(q))
+      setSearchResults(data.data.filter(m =>
+        (m.subject && m.subject.toLowerCase().includes(q)) || m.body.toLowerCase().includes(q) ||
+        m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q) ||
+        (m.phone && m.phone.toLowerCase().includes(q))
       ));
     } catch (err) {
       if ((err as Error).name !== 'AbortError') { toast.error('Ошибка поиска'); setSearchResults([]); }
@@ -722,17 +1091,16 @@ function MessagesTab() {
             <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value as MessageStatus | ''); setSkip(0); }} className="px-3 py-2 bg-white border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary">
               <option value="">Все</option><option value="new">Новые</option><option value="in_progress">В работе</option><option value="resolved">Решено</option><option value="closed">Закрыто</option>
             </select>
-            <button onClick={isSearching ? clearSearch : load} className="p-2 border border-border rounded-lg hover:bg-secondary transition-colors" title={isSearching ? 'Очистить поиск' : 'Обновить'}>
+            <button onClick={isSearching ? clearSearch : load} className="p-2 border border-border rounded-lg hover:bg-secondary transition-colors">
               {isSearching ? <X className="w-4 h-4" /> : <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />}
             </button>
           </div>
         </div>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Поиск по теме, тексту, имени, email, телефону..." className="w-full pl-10 pr-10 py-2.5 bg-white border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary transition-all" />
+          <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Поиск по теме, тексту, имени, email..." className="w-full pl-10 pr-10 py-2.5 bg-white border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary transition-all" />
           {searchQuery && <button onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-secondary rounded transition-colors"><X className="w-4 h-4 text-muted-foreground" /></button>}
         </div>
-        {searchLoading && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /> Поиск...</div>}
       </div>
 
       <div className="space-y-2">
@@ -752,7 +1120,8 @@ function MessagesTab() {
                 {msg.phone && <p className="text-sm mt-2"><span className="font-medium">Телефон:</span> {msg.phone}</p>}
                 <div className="flex gap-2 mt-4 flex-wrap">
                   {(['new', 'in_progress', 'resolved', 'closed'] as MessageStatus[]).map(s => (
-                    <button key={s} onClick={() => handleStatusChange(msg.id, s)} disabled={msg.status === s || processing === msg.id} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-40 ${msg.status === s ? `${MSG_STATUS_COLORS[s]} cursor-default` : 'bg-secondary hover:bg-secondary/80'}`}>
+                    <button key={s} onClick={() => handleStatusChange(msg.id, s)} disabled={msg.status === s || processing === msg.id}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-40 ${msg.status === s ? `${MSG_STATUS_COLORS[s]} cursor-default` : 'bg-secondary hover:bg-secondary/80'}`}>
                       {processing === msg.id ? <Loader2 className="w-3 h-3 animate-spin" /> : MSG_STATUS_LABELS[s]}
                     </button>
                   ))}
@@ -767,7 +1136,8 @@ function MessagesTab() {
   );
 }
 
-// Users Tab
+// ─── Users Tab ──────────────────────────────────────────────────────────────
+
 function UsersTab() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [count, setCount] = useState(0);
@@ -809,9 +1179,9 @@ function UsersTab() {
     try {
       const data = await adminApi.getUsers(0);
       const q = query.toLowerCase();
-      let results = data.data.filter(u => 
+      let results = data.data.filter(u =>
         u.full_name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) ||
-        (u.phone && u.phone.toLowerCase().includes(q)) || USER_ROLE_LABELS[u.role].toLowerCase().includes(q) || u.status.toLowerCase().includes(q)
+        (u.phone && u.phone.toLowerCase().includes(q))
       );
       if (filterStatus) results = results.filter(u => u.status === filterStatus);
       if (filterRole) results = results.filter(u => u.role === filterRole);
@@ -862,9 +1232,7 @@ function UsersTab() {
       <div className="space-y-3">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <h2 className="text-2xl font-semibold">
-            Сотрудники <span className="text-muted-foreground text-lg font-normal">
-              ({displayedCount}){isSearching && ` • поиск: "${searchQuery}"`}{hasActiveFilters && !isSearching && ' • фильтры активны'}
-            </span>
+            Сотрудники <span className="text-muted-foreground text-lg font-normal">({displayedCount})</span>
           </h2>
           <div className="flex gap-2 flex-wrap">
             {hasActiveFilters && (
@@ -872,7 +1240,7 @@ function UsersTab() {
                 <X className="w-4 h-4" /> Сбросить фильтры
               </button>
             )}
-            <button onClick={isSearching ? clearSearch : load} className="p-2 border border-border rounded-lg hover:bg-secondary transition-colors" title={isSearching ? 'Очистить поиск' : 'Обновить'}>
+            <button onClick={isSearching ? clearSearch : load} className="p-2 border border-border rounded-lg hover:bg-secondary transition-colors">
               {isSearching ? <X className="w-4 h-4" /> : <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />}
             </button>
             <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity text-sm">
@@ -883,7 +1251,7 @@ function UsersTab() {
 
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Поиск по имени, email, телефону, роли..." className="w-full pl-10 pr-10 py-2.5 bg-white border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary transition-all" />
+          <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Поиск по имени, email, телефону..." className="w-full pl-10 pr-10 py-2.5 bg-white border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary transition-all" />
           {searchQuery && <button onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-secondary rounded transition-colors"><X className="w-4 h-4 text-muted-foreground" /></button>}
         </div>
 
@@ -898,7 +1266,6 @@ function UsersTab() {
               </button>
             ))}
           </div>
-
           <div className="flex items-center gap-1.5 bg-secondary/50 rounded-lg px-2 py-1.5">
             <span className="text-xs font-medium text-muted-foreground">Роль:</span>
             <button onClick={() => setFilterRole('')} className={`text-xs px-2 py-0.5 rounded-full transition-colors ${!filterRole ? 'bg-primary text-primary-foreground' : 'hover:bg-secondary'}`}>Все</button>
@@ -910,8 +1277,6 @@ function UsersTab() {
             ))}
           </div>
         </div>
-
-        {searchLoading && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /> Поиск...</div>}
       </div>
 
       <div className="bg-white rounded-xl border border-border overflow-hidden">
@@ -922,7 +1287,7 @@ function UsersTab() {
             </thead>
             <tbody className="divide-y divide-border">
               {displayedUsers.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">{isSearching ? searchLoading ? 'Поиск...' : 'По вашему запросу ничего не найдено' : hasActiveFilters ? 'Нет пользователей с выбранными фильтрами' : 'Список сотрудников пуст'}</td></tr>
+                <tr><td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">Пусто</td></tr>
               ) : displayedUsers.map(u => (
                 <tr key={u.id} className="hover:bg-secondary/30 transition-colors">
                   <td className="px-4 py-3"><p className="font-semibold">{u.full_name}</p>{u.phone && <p className="text-xs text-muted-foreground">{u.phone}</p>}</td>
@@ -971,7 +1336,8 @@ function UsersTab() {
   );
 }
 
-// Shared UI
+// ─── Shared UI ──────────────────────────────────────────────────────────────
+
 function LoadingSpinner() { return <div className="flex items-center justify-center py-16"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>; }
 function ErrorState({ message }: { message: string }) { return <div className="flex flex-col items-center justify-center py-16 text-center"><AlertCircle className="w-10 h-10 text-destructive mb-3" /><p className="text-muted-foreground">{message}</p></div>; }
 function EmptyTableState({ text }: { text: string }) { return <div className="bg-white rounded-xl border border-border py-12 text-center"><p className="text-muted-foreground">{text}</p></div>; }
@@ -991,7 +1357,8 @@ function Modal({ title, children, onClose }: { title: string; children: React.Re
   );
 }
 
-// Main Page
+// ─── Main Page ──────────────────────────────────────────────────────────────
+
 export function AdminPage() {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();

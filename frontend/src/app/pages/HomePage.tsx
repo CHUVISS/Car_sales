@@ -7,6 +7,9 @@ import { toast } from 'sonner';
 import { useCars } from '../hooks/useCars';
 import { messagesApi } from '../api/messages';
 
+import Mercedes from '../../assets/mercedes.jpg';
+import Ford from '../../assets/ford.jpg';
+
 const ALL_BRANDS = ['Audi', 'BMW', 'Hyundai', 'Kia', 'Lexus', 'Mazda', 'Mercedes-Benz', 'Nissan', 'Skoda', 'Tesla', 'Toyota', 'Volkswagen'];
 
 export function HomePage() {
@@ -110,7 +113,7 @@ export function HomePage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Link to="/catalog" className="group relative overflow-hidden rounded-lg bg-secondary hover:shadow-lg transition-shadow">
             <div className="absolute inset-0">
-              <ImageWithFallback src="https://images.unsplash.com/photo-1603386329225-868f9b1ee6b1?w=800&q=80"
+              <ImageWithFallback src={Mercedes}
                 alt="Новые автомобили"
                 className="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-300" />
             </div>
@@ -122,7 +125,7 @@ export function HomePage() {
           </Link>
           <Link to="/catalog" className="group relative overflow-hidden rounded-lg bg-secondary hover:shadow-lg transition-shadow">
             <div className="absolute inset-0">
-              <ImageWithFallback src="https://images.unsplash.com/photo-1583121274602-3e2820c69888?w=800&q=80"
+              <ImageWithFallback src={Ford}
                 alt="С пробегом"
                 className="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-300" />
             </div>
