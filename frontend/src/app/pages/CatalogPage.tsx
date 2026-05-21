@@ -334,7 +334,7 @@ export function CatalogPage() {
   const [isNew, setIsNew] = useState<boolean | undefined>(undefined);
   const [sortBy, setSortBy] = useState<CarFilters['sort_by']>('date_desc');
   
-  // 🔍 Состояние для поиска по каталогу
+  // Состояние для поиска по каталогу
   const [searchQuery, setSearchQuery] = useState('');
 
   // Инициализация из URL
@@ -414,7 +414,7 @@ export function CatalogPage() {
     setSearchParams({});
   };
 
-  // 🔍 Фильтрация по поисковому запросу
+  // Фильтрация по поисковому запросу
   const searchFilteredCars = useMemo(() => {
     if (!searchQuery.trim()) return cars;
     const q = searchQuery.toLowerCase().trim();

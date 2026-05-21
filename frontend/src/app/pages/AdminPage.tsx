@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Car, Users, FileText, BarChart3, Plus, Edit, Trash2,
   Check, X, RefreshCw, Loader2, ChevronLeft, ChevronRight,
@@ -24,11 +24,9 @@ function formatPrice(p: string | number): string {
     minimumFractionDigits: 0, maximumFractionDigits: 0,
   }).format(Number(p));
 }
-
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('ru-RU');
 }
-
 function formatMileage(m: number): string {
   return `${new Intl.NumberFormat('ru-RU').format(m)} км`;
 }
@@ -70,7 +68,6 @@ const USER_STATUS_COLORS: Record<string, string> = {
   inactive: 'bg-muted text-muted-foreground',
   banned: 'bg-destructive/10 text-destructive',
 };
-
 const FUEL_LABELS: Record<string, string> = {
   petrol: 'Бензин', diesel: 'Дизель', electric: 'Электро', hybrid: 'Гибрид', gas: 'Газ',
 };
@@ -117,7 +114,7 @@ function Pagination({ skip, limit, count, onChange }: {
   );
 }
 
-// ─── Компонент фильтров для таба Автомобили ────────────────────────────────
+// ─── Car Filters ───────────────────────────────────────────
 
 interface CarFiltersState {
   status: string;
@@ -150,8 +147,16 @@ function hasActiveFilters(f: CarFiltersState): boolean {
     f.fuelTypes.length || f.bodyTypes.length);
 }
 
-function applyFilters(cars: AdminCar[], f: CarFiltersState): AdminCar[] {
+function applyFilters(cars: AdminCar[], f: CarFiltersState, search: string): AdminCar[] {
   return cars.filter(car => {
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      const matches =
+        car.brand.toLowerCase().includes(q) ||
+        car.model.toLowerCase().includes(q) ||
+        (car.vin && car.vin.toLowerCase().includes(q));
+      if (!matches) return false;
+    }
     if (f.status && car.status !== f.status) return false;
     const price = Number(car.price);
     if (f.priceMin && price < Number(f.priceMin)) return false;
@@ -161,9 +166,9 @@ function applyFilters(cars: AdminCar[], f: CarFiltersState): AdminCar[] {
     if (f.yearMin && car.year < Number(f.yearMin)) return false;
     if (f.yearMax && car.year > Number(f.yearMax)) return false;
     if (f.brands.length && !f.brands.includes(car.brand)) return false;
-    if (f.transmissions.length && car.transmission && !f.transmissions.includes(car.transmission)) return false;
-    if (f.fuelTypes.length && car.fuel_type && !f.fuelTypes.includes(car.fuel_type)) return false;
-    if (f.bodyTypes.length && car.body_type && !f.bodyTypes.includes(car.body_type)) return false;
+    if (f.transmissions.length && (!car.transmission || !f.transmissions.includes(car.transmission))) return false;
+    if (f.fuelTypes.length && (!car.fuel_type || !f.fuelTypes.includes(car.fuel_type))) return false;
+    if (f.bodyTypes.length && (!car.body_type || !f.bodyTypes.includes(car.body_type))) return false;
     return true;
   });
 }
@@ -204,6 +209,9 @@ function MultiSelectDropdown({ label, options, selected, onToggle, onClear }: {
       {open && (
         <div className="absolute z-20 w-full mt-1 bg-white border border-border rounded-lg shadow-lg overflow-hidden">
           <div className="max-h-44 overflow-y-auto py-1">
+            {options.length === 0 && (
+              <p className="px-3 py-4 text-sm text-muted-foreground text-center">Нет вариантов</p>
+            )}
             {options.map(opt => (
               <label key={opt.value} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-secondary/50 text-sm">
                 <div className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${selected.includes(opt.value) ? 'bg-primary border-primary' : 'border-border'}`}>
@@ -230,11 +238,13 @@ function CarFilterPanel({
   onChange,
   onReset,
   availableBrands,
+  brandsLoading,
 }: {
   filters: CarFiltersState;
   onChange: (f: CarFiltersState) => void;
   onReset: () => void;
   availableBrands: string[];
+  brandsLoading: boolean;
 }) {
   const set = (patch: Partial<CarFiltersState>) => onChange({ ...filters, ...patch });
   const toggleArr = (key: keyof CarFiltersState, val: string) => {
@@ -280,18 +290,12 @@ function CarFilterPanel({
       <div>
         <p className="text-xs font-semibold text-muted-foreground mb-1.5">Цена, ₽</p>
         <div className="flex gap-2">
-          <input
-            type="text" inputMode="numeric" placeholder="От"
-            value={filters.priceMin}
+          <input type="text" inputMode="numeric" placeholder="От" value={filters.priceMin}
             onChange={e => set({ priceMin: e.target.value.replace(/\D/g, '') })}
-            className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary"
-          />
-          <input
-            type="text" inputMode="numeric" placeholder="До"
-            value={filters.priceMax}
+            className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary" />
+          <input type="text" inputMode="numeric" placeholder="До" value={filters.priceMax}
             onChange={e => set({ priceMax: e.target.value.replace(/\D/g, '') })}
-            className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary"
-          />
+            className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary" />
         </div>
       </div>
 
@@ -299,18 +303,12 @@ function CarFilterPanel({
       <div>
         <p className="text-xs font-semibold text-muted-foreground mb-1.5">Пробег, км</p>
         <div className="flex gap-2">
-          <input
-            type="text" inputMode="numeric" placeholder="От"
-            value={filters.mileageMin}
+          <input type="text" inputMode="numeric" placeholder="От" value={filters.mileageMin}
             onChange={e => set({ mileageMin: e.target.value.replace(/\D/g, '') })}
-            className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary"
-          />
-          <input
-            type="text" inputMode="numeric" placeholder="До"
-            value={filters.mileageMax}
+            className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary" />
+          <input type="text" inputMode="numeric" placeholder="До" value={filters.mileageMax}
             onChange={e => set({ mileageMax: e.target.value.replace(/\D/g, '') })}
-            className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary"
-          />
+            className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary" />
         </div>
       </div>
 
@@ -318,33 +316,33 @@ function CarFilterPanel({
       <div>
         <p className="text-xs font-semibold text-muted-foreground mb-1.5">Год выпуска</p>
         <div className="flex gap-2">
-          <input
-            type="text" inputMode="numeric" placeholder="От"
-            value={filters.yearMin}
+          <input type="text" inputMode="numeric" placeholder="От" value={filters.yearMin}
             onChange={e => set({ yearMin: e.target.value.replace(/\D/g, '') })}
-            className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary"
-          />
-          <input
-            type="text" inputMode="numeric" placeholder="До"
-            value={filters.yearMax}
+            className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary" />
+          <input type="text" inputMode="numeric" placeholder="До" value={filters.yearMax}
             onChange={e => set({ yearMax: e.target.value.replace(/\D/g, '') })}
-            className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary"
-          />
+            className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary" />
         </div>
       </div>
 
       {/* Марка */}
-      {availableBrands.length > 0 && (
-        <MultiSelectDropdown
-          label="Марка"
-          options={availableBrands.map(b => ({ value: b, label: b }))}
-          selected={filters.brands}
-          onToggle={v => toggleArr('brands', v)}
-          onClear={() => set({ brands: [] })}
-        />
-      )}
+      <div>
+        <p className="text-xs font-semibold text-muted-foreground mb-1">Марка</p>
+        {brandsLoading ? (
+          <div className="flex items-center gap-2 px-3 py-2 bg-secondary rounded-lg text-sm text-muted-foreground">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Загрузка...
+          </div>
+        ) : (
+          <MultiSelectDropdown
+            label=""
+            options={availableBrands.map(b => ({ value: b, label: b }))}
+            selected={filters.brands}
+            onToggle={v => toggleArr('brands', v)}
+            onClear={() => set({ brands: [] })}
+          />
+        )}
+      </div>
 
-      {/* КПП */}
       <MultiSelectDropdown
         label="Коробка передач"
         options={Object.entries(TRANSMISSION_LABELS).map(([v, l]) => ({ value: v, label: l }))}
@@ -352,8 +350,6 @@ function CarFilterPanel({
         onToggle={v => toggleArr('transmissions', v)}
         onClear={() => set({ transmissions: [] })}
       />
-
-      {/* Топливо */}
       <MultiSelectDropdown
         label="Тип топлива"
         options={Object.entries(FUEL_LABELS).map(([v, l]) => ({ value: v, label: l }))}
@@ -361,8 +357,6 @@ function CarFilterPanel({
         onToggle={v => toggleArr('fuelTypes', v)}
         onClear={() => set({ fuelTypes: [] })}
       />
-
-      {/* Кузов */}
       <MultiSelectDropdown
         label="Тип кузова"
         options={Object.entries(BODY_LABELS).map(([v, l]) => ({ value: v, label: l }))}
@@ -374,12 +368,11 @@ function CarFilterPanel({
   );
 }
 
-// ─── Stats Tab ─────────────────────────────────────────────────────────────
+// ─── StatsTab ──────────────────────────────────────────────
 
 function StatsTab({ stats, loading }: { stats: DashboardStats | null; loading: boolean }) {
   if (loading) return <LoadingSpinner />;
   if (!stats) return <ErrorState message="Не удалось загрузить статистику" />;
-
   const cards = [
     { label: 'Всего авто', value: stats.total_cars, sub: `${stats.available_cars} доступно`, icon: Car, color: 'bg-primary/10 text-primary' },
     { label: 'Продано', value: stats.sold_cars, sub: `${stats.reserved_cars} зарезервировано`, icon: DollarSign, color: 'bg-accent/10 text-accent' },
@@ -390,7 +383,6 @@ function StatsTab({ stats, loading }: { stats: DashboardStats | null; loading: b
     { label: 'Заявок на продажу', value: stats.pending_offers, sub: `Всего: ${stats.total_offers}`, icon: FileText, color: 'bg-yellow-100 text-yellow-700' },
     { label: 'Просмотров', value: stats.total_viewings, sub: 'Всего записей', icon: Eye, color: 'bg-cyan-100 text-cyan-700' },
   ];
-
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-semibold">Статистика</h2>
@@ -399,9 +391,7 @@ function StatsTab({ stats, loading }: { stats: DashboardStats | null; loading: b
           <div key={label} className="bg-white rounded-xl border border-border p-5">
             <div className="flex items-start justify-between mb-3">
               <p className="text-sm text-muted-foreground">{label}</p>
-              <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${color}`}>
-                <Icon className="w-5 h-5" />
-              </div>
+              <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${color}`}><Icon className="w-5 h-5" /></div>
             </div>
             <p className="text-2xl font-semibold">{value}</p>
             <p className="text-xs text-muted-foreground mt-1">{sub}</p>
@@ -412,35 +402,42 @@ function StatsTab({ stats, loading }: { stats: DashboardStats | null; loading: b
   );
 }
 
-// ─── Car Table Row ──────────────────────────────────────────────────────────
+// ─── CarTableRow ───────────────────────────────────────────
 
-function CarTableRow({ car, onEdit, onDelete, onStatusChange }: {
+function CarTableRow({ car, onEdit, onDelete, onStatusChange, onRowClick }: {
   car: AdminCar;
   onEdit: (car: AdminCar) => void;
   onDelete: (id: string, name: string) => void;
   onStatusChange: (id: string, status: string) => void;
+  onRowClick: (id: string) => void;
 }) {
   return (
-    <tr className="hover:bg-secondary/30 transition-colors">
+    <tr
+      className="hover:bg-secondary/30 transition-colors cursor-pointer"
+      onClick={e => {
+        if ((e.target as HTMLElement).closest('button, select')) return;
+        onRowClick(car.id);
+      }}
+    >
       <td className="px-4 py-3">
-        <div>
-          <p className="font-semibold">{car.brand} {car.model}</p>
-          {car.color && <p className="text-xs text-muted-foreground">{car.color}</p>}
-        </div>
+        <p className="font-semibold">{car.brand} {car.model}</p>
+        {car.color && <p className="text-xs text-muted-foreground">{car.color}</p>}
       </td>
       <td className="px-4 py-3 text-muted-foreground">{car.year}</td>
       <td className="px-4 py-3 font-medium">{formatPrice(car.price)}</td>
       <td className="px-4 py-3 text-muted-foreground">{formatMileage(car.mileage)}</td>
       <td className="px-4 py-3">
-        <select value={car.status} onChange={e => onStatusChange(car.id, e.target.value)}
-          className={`text-xs px-2 py-1 rounded-full border-0 font-medium cursor-pointer ${CAR_STATUS_COLORS[car.status]}`}>
-          {Object.entries(CAR_STATUS_LABELS).map(([v, l]) => (
-            <option key={v} value={v}>{l}</option>
-          ))}
+        <select
+          value={car.status}
+          onChange={e => { e.stopPropagation(); onStatusChange(car.id, e.target.value); }}
+          onClick={e => e.stopPropagation()}
+          className={`text-xs px-2 py-1 rounded-full border-0 font-medium cursor-pointer ${CAR_STATUS_COLORS[car.status]}`}
+        >
+          {Object.entries(CAR_STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
       </td>
       <td className="px-4 py-3">
-        <div className="flex gap-1">
+        <div className="flex gap-1" onClick={e => e.stopPropagation()}>
           <button onClick={() => onEdit(car)} className="p-1.5 hover:bg-primary/10 rounded-lg transition-colors">
             <Edit className="w-4 h-4 text-primary" />
           </button>
@@ -453,72 +450,123 @@ function CarTableRow({ car, onEdit, onDelete, onStatusChange }: {
   );
 }
 
-// ─── Cars Tab ───────────────────────────────────────────────────────────────
+// ─── CarsTab ───────────────────────────────────────────────
+
+const PAGE_SIZE = 20;
+
+// Загружает все страницы последовательно пока не получим все данные
+async function fetchAllCars(signal?: AbortSignal): Promise<AdminCar[]> {
+  const result: AdminCar[] = [];
+  let skip = 0;
+  // Первый запрос — узнаём total count
+  const first = await adminApi.getCars(0, PAGE_SIZE);
+  result.push(...first.data);
+  const total: number = first.count;
+  skip = PAGE_SIZE;
+  while (result.length < total) {
+    if (signal?.aborted) break;
+    const page = await adminApi.getCars(skip, PAGE_SIZE);
+    result.push(...page.data);
+    skip += PAGE_SIZE;
+    if (page.data.length === 0) break;
+  }
+  return result;
+}
 
 function CarsTab() {
-  const [allCars, setAllCars] = useState<AdminCar[]>([]);
-  const [count, setCount] = useState(0);
-  const [skip, setSkip] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [editCar, setEditCar] = useState<AdminCar | null>(null);
-  const [form, setForm] = useState<{
-    brand: string; model: string; year: string; price: string; mileage: string;
-    color: string; fuel_type: string; transmission: string; body_type: string;
-    engine_volume: string; engine_power: string; description: string; vin: string;
-  }>({ brand: '', model: '', year: '', price: '', mileage: '0', color: '', fuel_type: '', transmission: '', body_type: '', engine_volume: '', engine_power: '', description: '', vin: '' });
-  const [saving, setSaving] = useState(false);
+  const navigate = useNavigate();
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const debouncedSearch = useDebounce(searchQuery, 300);
+  // Страница без фильтров (серверная пагинация)
+  const [serverPage, setServerPage] = useState<AdminCar[]>([]);
+  const [serverCount, setServerCount] = useState(0);
+  const [serverSkip, setServerSkip] = useState(0);
+  const [pageLoading, setPageLoading] = useState(true);
+
+  // Все авто для фильтрации (грузятся в фоне)
+  const [allCars, setAllCars] = useState<AdminCar[]>([]);
+  const [allCarsReady, setAllCarsReady] = useState(false);
+  const allCarsAbort = useRef<AbortController | null>(null);
 
   const [filters, setFilters] = useState<CarFiltersState>(EMPTY_FILTERS);
+  const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 300);
   const [filtersOpen, setFiltersOpen] = useState(false);
+
+  const [showForm, setShowForm] = useState(false);
+  const [editCar, setEditCar] = useState<AdminCar | null>(null);
+  const emptyForm = { brand: '', model: '', year: '', price: '', mileage: '0', color: '', fuel_type: '', transmission: '', body_type: '', engine_volume: '', engine_power: '', description: '', vin: '' };
+  const [form, setForm] = useState(emptyForm);
+  const [saving, setSaving] = useState(false);
 
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const isFilteringActive = debouncedSearch.trim().length > 0 || hasActiveFilters(filters);
+
+  // Загрузка одной страницы (быстро, без фильтров)
+  const loadPage = useCallback(async (skip: number) => {
+    setPageLoading(true);
     try {
-      const data = await adminApi.getCars(0);
-      console.log('Loaded cars:', data);
-      setAllCars(data.data);
-      setCount(data.count);
-    } catch (err) {
-      console.error('Failed to load cars:', err);
-      toast.error('Ошибка загрузки авто');
+      const data = await adminApi.getCars(skip, PAGE_SIZE);
+      setServerPage(data.data);
+      setServerCount(data.count);
+      setServerSkip(skip);
+    } catch {
+      toast.error('Ошибка загрузки автомобилей');
     } finally {
-      setLoading(false);
+      setPageLoading(false);
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  // Загрузка всех авто в фоне (для фильтров и поиска)
+  const loadAllInBackground = useCallback(async () => {
+    if (allCarsAbort.current) allCarsAbort.current.abort();
+    const ctrl = new AbortController();
+    allCarsAbort.current = ctrl;
+    setAllCarsReady(false);
+    try {
+      const all = await fetchAllCars(ctrl.signal);
+      if (!ctrl.signal.aborted) {
+        setAllCars(all);
+        setAllCarsReady(true);
+      }
+    } catch {
+      // Тихо — не показываем ошибку для фоновой загрузки
+      // Фильтры будут работать с тем что загружено в serverPage
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPage(0);
+    loadAllInBackground();
+    return () => { allCarsAbort.current?.abort(); };
+  }, []);
 
   useEffect(() => {
     return () => { previews.forEach(url => URL.revokeObjectURL(url)); };
   }, [previews]);
 
-  const availableBrands = [...new Set(allCars.map(c => c.brand))].sort();
+  // Источник для фильтрации: если все авто загружены — используем их,
+  // иначе используем то что есть в serverPage (частичный результат)
+  const filterSource = allCarsReady ? allCars : serverPage;
 
-  // Применяем поиск + фильтры
-  const displayedCars = (() => {
-    let result = [...allCars];
-    if (debouncedSearch.trim()) {
-      const q = debouncedSearch.toLowerCase();
-      result = result.filter(c =>
-        c.brand.toLowerCase().includes(q) ||
-        c.model.toLowerCase().includes(q) ||
-        (c.vin && c.vin.toLowerCase().includes(q))
-      );
-    }
-    result = applyFilters(result, filters);
-    return result;
-  })();
+  const filteredCars = useMemo(() => {
+    if (!isFilteringActive) return [];
+    return applyFilters(filterSource, filters, debouncedSearch);
+  }, [filterSource, filters, debouncedSearch, isFilteringActive]);
 
-  // Пагинация по клиентской стороне
-  const paginated = displayedCars;
-  const totalFiltered = displayedCars.length;
+  // Марки из всех авто (или из страницы если все ещё не загружены)
+  const availableBrands = useMemo(() =>
+    [...new Set(filterSource.map(c => c.brand))].sort(),
+  [filterSource]);
+
+  const displayedCars = isFilteringActive ? filteredCars : serverPage;
+  const isLoading = pageLoading && serverPage.length === 0;
+
+  const handleReload = () => {
+    loadPage(serverSkip);
+    loadAllInBackground();
+  };
 
   const activeFiltersCount = [
     filters.status, filters.priceMin, filters.priceMax,
@@ -526,43 +574,31 @@ function CarsTab() {
     ...filters.brands, ...filters.transmissions, ...filters.fuelTypes, ...filters.bodyTypes,
   ].filter(Boolean).length;
 
+  // File handling
   const handleFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
     const newFiles = Array.from(e.target.files);
-    const newPreviews = newFiles.map(file => URL.createObjectURL(file));
-    setSelectedFiles(prev => [...prev, ...newFiles]);
-    setPreviews(prev => [...prev, ...newPreviews]);
+    setSelectedFiles(p => [...p, ...newFiles]);
+    setPreviews(p => [...p, ...newFiles.map(f => URL.createObjectURL(f))]);
   };
-
-  const handleDragOver = (e: React.DragEvent) => e.preventDefault();
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
-    if (!e.dataTransfer.files) return;
     const newFiles = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
-    const newPreviews = newFiles.map(file => URL.createObjectURL(file));
-    setSelectedFiles(prev => [...prev, ...newFiles]);
-    setPreviews(prev => [...prev, ...newPreviews]);
+    setSelectedFiles(p => [...p, ...newFiles]);
+    setPreviews(p => [...p, ...newFiles.map(f => URL.createObjectURL(f))]);
   };
-
-  const removeFile = (index: number) => {
-    URL.revokeObjectURL(previews[index]);
-    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
-    setPreviews(prev => prev.filter((_, i) => i !== index));
+  const removeFile = (i: number) => {
+    URL.revokeObjectURL(previews[i]);
+    setSelectedFiles(p => p.filter((_, idx) => idx !== i));
+    setPreviews(p => p.filter((_, idx) => idx !== i));
   };
-
   const clearFiles = () => {
     previews.forEach(url => URL.revokeObjectURL(url));
     setSelectedFiles([]);
     setPreviews([]);
   };
 
-  const openCreate = () => {
-    setEditCar(null);
-    setForm({ brand: '', model: '', year: '', price: '', mileage: '0', color: '', fuel_type: '', transmission: '', body_type: '', engine_volume: '', engine_power: '', description: '', vin: '' });
-    clearFiles();
-    setShowForm(true);
-  };
-
+  const openCreate = () => { setEditCar(null); setForm(emptyForm); clearFiles(); setShowForm(true); };
   const openEdit = (car: AdminCar) => {
     setEditCar(car);
     setForm({
@@ -584,12 +620,15 @@ function CarsTab() {
       const body = {
         brand: form.brand, model: form.model, year: Number(form.year), price: Number(form.price),
         mileage: Number(form.mileage),
-        ...(form.color && { color: form.color }), ...(form.fuel_type && { fuel_type: form.fuel_type }),
-        ...(form.transmission && { transmission: form.transmission }), ...(form.body_type && { body_type: form.body_type }),
-        ...(form.engine_volume && { engine_volume: Number(form.engine_volume) }), ...(form.engine_power && { engine_power: Number(form.engine_power) }),
-        ...(form.description && { description: form.description }), ...(form.vin && { vin: form.vin }),
+        ...(form.color && { color: form.color }),
+        ...(form.fuel_type && { fuel_type: form.fuel_type }),
+        ...(form.transmission && { transmission: form.transmission }),
+        ...(form.body_type && { body_type: form.body_type }),
+        ...(form.engine_volume && { engine_volume: Number(form.engine_volume) }),
+        ...(form.engine_power && { engine_power: Number(form.engine_power) }),
+        ...(form.description && { description: form.description }),
+        ...(form.vin && { vin: form.vin }),
       };
-
       let carId = editCar?.id;
       if (!editCar) {
         const created = await adminApi.createCar(body);
@@ -599,17 +638,15 @@ function CarsTab() {
         await adminApi.updateCar(editCar.id, body);
         toast.success('Автомобиль обновлён');
       }
-
       if (selectedFiles.length > 0 && carId) {
-        const formData = new FormData();
-        selectedFiles.forEach(file => formData.append('images', file));
-        await adminApi.uploadCarImages?.(carId, formData);
+        const fd = new FormData();
+        selectedFiles.forEach(f => fd.append('images', f));
+        await adminApi.uploadCarImages?.(carId, fd);
         toast.success(`${selectedFiles.length} фото загружено`);
       }
-
       setShowForm(false);
       clearFiles();
-      load();
+      handleReload();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Ошибка при сохранении');
     } finally { setSaving(false); }
@@ -620,7 +657,7 @@ function CarsTab() {
     try {
       await adminApi.deleteCar(id);
       toast.success('Автомобиль удалён');
-      load();
+      handleReload();
     } catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Ошибка'); }
   };
 
@@ -628,37 +665,41 @@ function CarsTab() {
     try {
       await adminApi.updateCar(id, { status: status as AdminCar['status'] });
       toast.success('Статус обновлён');
-      setAllCars(prev => prev.map(c => c.id === id ? { ...c, status: status as AdminCar['status'] } : c));
+      const upd = (c: AdminCar) => c.id === id ? { ...c, status: status as AdminCar['status'] } : c;
+      setServerPage(p => p.map(upd));
+      setAllCars(p => p.map(upd));
     } catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Ошибка'); }
   };
 
-  if (loading && allCars.length === 0) return <LoadingSpinner />;
+  if (isLoading) return <LoadingSpinner />;
 
   return (
     <div className="flex gap-4">
-      {/* Левая панель фильтров — десктоп */}
+      {/* Боковая панель — десктоп */}
       <aside className="hidden lg:block w-60 flex-shrink-0">
         <CarFilterPanel
           filters={filters}
-          onChange={f => { setFilters(f); setSkip(0); }}
-          onReset={() => { setFilters(EMPTY_FILTERS); setSkip(0); }}
+          onChange={setFilters}
+          onReset={() => setFilters(EMPTY_FILTERS)}
           availableBrands={availableBrands}
+          brandsLoading={!allCarsReady && availableBrands.length === 0}
         />
       </aside>
 
-      {/* Основной контент */}
       <div className="flex-1 min-w-0 space-y-4">
-        {/* Заголовок + поиск */}
+        {/* Заголовок */}
         <div className="space-y-3">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <h2 className="text-2xl font-semibold">
               Автомобили{' '}
               <span className="text-muted-foreground text-lg font-normal">
-                ({totalFiltered}{debouncedSearch ? ` из ${allCars.length}` : ''})
+                {isFilteringActive
+                  ? `(${filteredCars.length}${!allCarsReady ? ', загрузка...' : ` из ${allCars.length}`})`
+                  : `(${serverCount})`
+                }
               </span>
             </h2>
             <div className="flex gap-2 flex-wrap">
-              {/* Кнопка фильтров на мобиле */}
               <button
                 onClick={() => setFiltersOpen(!filtersOpen)}
                 className={`lg:hidden flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm transition-colors ${activeFiltersCount > 0 ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-secondary'}`}
@@ -667,20 +708,21 @@ function CarsTab() {
                 Фильтры
                 {activeFiltersCount > 0 && <span className="bg-white/20 text-xs px-1.5 rounded-full">{activeFiltersCount}</span>}
               </button>
-              {activeFiltersCount > 0 && (
+              {hasActiveFilters(filters) && (
                 <button
-                  onClick={() => { setFilters(EMPTY_FILTERS); setSkip(0); }}
+                  onClick={() => setFilters(EMPTY_FILTERS)}
                   className="hidden lg:flex items-center gap-1.5 px-3 py-2 bg-destructive/10 text-destructive rounded-lg text-sm hover:bg-destructive/20 transition-colors"
                 >
-                  <X className="w-4 h-4" /> Сбросить ({activeFiltersCount})
+                  <X className="w-4 h-4" /> Сбросить
                 </button>
               )}
               <button
-                onClick={load}
-                className="p-2 border border-border rounded-lg hover:bg-secondary transition-colors"
+                onClick={handleReload}
+                disabled={pageLoading}
+                className="p-2 border border-border rounded-lg hover:bg-secondary transition-colors disabled:opacity-50"
                 title="Обновить"
               >
-                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-4 h-4 ${pageLoading ? 'animate-spin' : ''}`} />
               </button>
               <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity text-sm">
                 <Plus className="w-4 h-4" /> Добавить
@@ -694,7 +736,7 @@ function CarsTab() {
             <input
               type="text"
               value={searchQuery}
-              onChange={e => { setSearchQuery(e.target.value); setSkip(0); }}
+              onChange={e => setSearchQuery(e.target.value)}
               placeholder="Поиск по марке, модели, VIN..."
               className="w-full pl-10 pr-10 py-2.5 bg-white border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary transition-all"
             />
@@ -705,7 +747,7 @@ function CarsTab() {
             )}
           </div>
 
-          {/* Активные фильтры — теги */}
+          {/* Теги активных фильтров */}
           {(hasActiveFilters(filters) || searchQuery) && (
             <div className="flex flex-wrap gap-1.5">
               {searchQuery && (
@@ -740,28 +782,30 @@ function CarsTab() {
               )}
               {filters.brands.map(b => (
                 <span key={b} className="flex items-center gap-1 text-xs bg-secondary text-foreground px-2.5 py-1 rounded-full">
-                  {b}
-                  <button onClick={() => setFilters(f => ({ ...f, brands: f.brands.filter(x => x !== b) }))}><X className="w-3 h-3" /></button>
+                  {b}<button onClick={() => setFilters(f => ({ ...f, brands: f.brands.filter(x => x !== b) }))}><X className="w-3 h-3" /></button>
                 </span>
               ))}
               {filters.transmissions.map(t => (
                 <span key={t} className="flex items-center gap-1 text-xs bg-secondary text-foreground px-2.5 py-1 rounded-full">
-                  {TRANSMISSION_LABELS[t]}
-                  <button onClick={() => setFilters(f => ({ ...f, transmissions: f.transmissions.filter(x => x !== t) }))}><X className="w-3 h-3" /></button>
+                  {TRANSMISSION_LABELS[t]}<button onClick={() => setFilters(f => ({ ...f, transmissions: f.transmissions.filter(x => x !== t) }))}><X className="w-3 h-3" /></button>
                 </span>
               ))}
               {filters.fuelTypes.map(ft => (
                 <span key={ft} className="flex items-center gap-1 text-xs bg-secondary text-foreground px-2.5 py-1 rounded-full">
-                  {FUEL_LABELS[ft]}
-                  <button onClick={() => setFilters(f => ({ ...f, fuelTypes: f.fuelTypes.filter(x => x !== ft) }))}><X className="w-3 h-3" /></button>
+                  {FUEL_LABELS[ft]}<button onClick={() => setFilters(f => ({ ...f, fuelTypes: f.fuelTypes.filter(x => x !== ft) }))}><X className="w-3 h-3" /></button>
                 </span>
               ))}
               {filters.bodyTypes.map(bt => (
                 <span key={bt} className="flex items-center gap-1 text-xs bg-secondary text-foreground px-2.5 py-1 rounded-full">
-                  {BODY_LABELS[bt]}
-                  <button onClick={() => setFilters(f => ({ ...f, bodyTypes: f.bodyTypes.filter(x => x !== bt) }))}><X className="w-3 h-3" /></button>
+                  {BODY_LABELS[bt]}<button onClick={() => setFilters(f => ({ ...f, bodyTypes: f.bodyTypes.filter(x => x !== bt) }))}><X className="w-3 h-3" /></button>
                 </span>
               ))}
+              {/* Индикатор фоновой загрузки */}
+              {isFilteringActive && !allCarsReady && (
+                <span className="flex items-center gap-1 text-xs text-muted-foreground px-2 py-1">
+                  <Loader2 className="w-3 h-3 animate-spin" /> Загрузка всех авто...
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -771,9 +815,10 @@ function CarsTab() {
           <div className="lg:hidden">
             <CarFilterPanel
               filters={filters}
-              onChange={f => { setFilters(f); setSkip(0); }}
-              onReset={() => { setFilters(EMPTY_FILTERS); setSkip(0); }}
+              onChange={setFilters}
+              onReset={() => setFilters(EMPTY_FILTERS)}
               availableBrands={availableBrands}
+              brandsLoading={!allCarsReady && availableBrands.length === 0}
             />
           </div>
         )}
@@ -790,21 +835,42 @@ function CarsTab() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {paginated.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
-                      {hasActiveFilters(filters) || searchQuery ? 'По вашему запросу ничего не найдено' : 'Список автомобилей пуст'}
-                    </td>
-                  </tr>
-                ) : paginated.map(car => (
-                  <CarTableRow key={car.id} car={car} onEdit={openEdit} onDelete={handleDelete} onStatusChange={handleStatusChange} />
+                {pageLoading && !isFilteringActive ? (
+                  <tr><td colSpan={6} className="px-4 py-12 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-muted-foreground" /></td></tr>
+                ) : displayedCars.length === 0 ? (
+                  <tr><td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
+                    {isFilteringActive ? 'По вашему запросу ничего не найдено' : 'Список автомобилей пуст'}
+                  </td></tr>
+                ) : displayedCars.map(car => (
+                  <CarTableRow
+                    key={car.id}
+                    car={car}
+                    onEdit={openEdit}
+                    onDelete={handleDelete}
+                    onStatusChange={handleStatusChange}
+                    onRowClick={id => navigate(`/car/${id}`)}
+                  />
                 ))}
               </tbody>
             </table>
           </div>
         </div>
 
-        <Pagination skip={skip} limit={20} count={totalFiltered} onChange={setSkip} />
+        {/* Пагинация — только без активных фильтров */}
+        {!isFilteringActive && (
+          <Pagination
+            skip={serverSkip}
+            limit={PAGE_SIZE}
+            count={serverCount}
+            onChange={skip => loadPage(skip)}
+          />
+        )}
+
+        {isFilteringActive && allCarsReady && filteredCars.length > 0 && (
+          <p className="text-center text-xs text-muted-foreground mt-2">
+            Найдено {filteredCars.length} из {allCars.length} автомобилей
+          </p>
+        )}
       </div>
 
       {/* Форма */}
@@ -812,10 +878,26 @@ function CarsTab() {
         <Modal title={editCar ? 'Редактировать авто' : 'Добавить авто'} onClose={() => setShowForm(false)}>
           <form onSubmit={handleSave} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
             <div className="grid grid-cols-2 gap-3">
-              {[['brand', 'Марка *', 'text', true], ['model', 'Модель *', 'text', true], ['year', 'Год *', 'number', true], ['price', 'Цена (₽) *', 'number', true], ['mileage', 'Пробег (км)', 'number', false], ['color', 'Цвет', 'text', false], ['engine_volume', 'Объём двигателя (л)', 'number', false], ['engine_power', 'Мощность (л.с.)', 'number', false], ['vin', 'VIN', 'text', false]].map(([key, label, type, required]) => (
-                <div key={key as string}>
-                  <label className="block text-xs font-semibold mb-1 text-muted-foreground">{label as string}</label>
-                  <input type={type as string} required={required as boolean} value={form[key as keyof typeof form]} onChange={e => setForm(p => ({ ...p, [key as string]: e.target.value }))} className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary" />
+              {([
+                ['brand', 'Марка *', 'text', true],
+                ['model', 'Модель *', 'text', true],
+                ['year', 'Год *', 'number', true],
+                ['price', 'Цена (₽) *', 'number', true],
+                ['mileage', 'Пробег (км)', 'number', false],
+                ['color', 'Цвет', 'text', false],
+                ['engine_volume', 'Объём двигателя (л)', 'number', false],
+                ['engine_power', 'Мощность (л.с.)', 'number', false],
+                ['vin', 'VIN', 'text', false],
+              ] as const).map(([key, label, type, required]) => (
+                <div key={key}>
+                  <label className="block text-xs font-semibold mb-1 text-muted-foreground">{label}</label>
+                  <input
+                    type={type}
+                    required={required}
+                    value={form[key]}
+                    onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))}
+                    className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary"
+                  />
                 </div>
               ))}
               <div>
@@ -845,11 +927,11 @@ function CarsTab() {
               <label className="block text-xs font-semibold mb-1 text-muted-foreground">Фотографии</label>
               <div
                 className="border-2 border-dashed border-border rounded-lg p-4 text-center hover:bg-secondary/30 transition-colors cursor-pointer"
-                onClick={() => document.getElementById('car-images')?.click()}
-                onDragOver={handleDragOver}
+                onClick={() => document.getElementById('car-images-input')?.click()}
+                onDragOver={e => e.preventDefault()}
                 onDrop={handleDrop}
               >
-                <input id="car-images" type="file" multiple accept="image/*" className="hidden" onChange={handleFilesChange} />
+                <input id="car-images-input" type="file" multiple accept="image/*" className="hidden" onChange={handleFilesChange} />
                 <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
                 <p className="text-sm text-muted-foreground">Перетащите фото или нажмите для выбора</p>
                 <p className="text-xs text-muted-foreground/60 mt-1">JPG, PNG, WebP • До 50 МБ</p>
@@ -861,7 +943,7 @@ function CarsTab() {
                       <div key={i} className="relative aspect-square rounded-lg overflow-hidden bg-secondary group">
                         <img src={src} alt={`preview-${i}`} className="w-full h-full object-cover" />
                         <button type="button" onClick={() => removeFile(i)}
-                          className="absolute top-1 right-1 p-1 bg-destructive text-white rounded-full hover:bg-destructive/80 opacity-0 group-hover:opacity-100 transition-opacity">
+                          className="absolute top-1 right-1 p-1 bg-destructive text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
                           <X className="w-3 h-3" />
                         </button>
                       </div>
@@ -891,7 +973,7 @@ function CarsTab() {
   );
 }
 
-// ─── Offers Tab ─────────────────────────────────────────────────────────────
+// ─── OffersTab ─────────────────────────────────────────────
 
 function OffersTab() {
   const [offers, setOffers] = useState<AdminCarOffer[]>([]);
@@ -902,7 +984,6 @@ function OffersTab() {
   const [rejectModal, setRejectModal] = useState<{ id: string; brand: string; model: string } | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [processing, setProcessing] = useState<string | null>(null);
-
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<AdminCarOffer[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -924,7 +1005,7 @@ function OffersTab() {
     try {
       const data = await adminApi.getOffers(filterStatus || undefined, 0);
       const q = query.toLowerCase();
-      setSearchResults(data.data.filter(o =>
+      setSearchResults(data.data.filter((o: AdminCarOffer) =>
         o.brand.toLowerCase().includes(q) || o.model.toLowerCase().includes(q) ||
         String(o.year).includes(q) || String(o.price).includes(q)
       ));
@@ -945,26 +1026,28 @@ function OffersTab() {
   const handleReject = async () => {
     if (!rejectModal) return;
     setProcessing(rejectModal.id);
-    try { await adminApi.reviewOffer(rejectModal.id, 'rejected', rejectReason || undefined); toast.success('Заявка отклонена'); setRejectModal(null); setRejectReason(''); if (searchQuery.trim()) performSearch(searchQuery); else load(); }
-    catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Ошибка'); } finally { setProcessing(null); }
+    try {
+      await adminApi.reviewOffer(rejectModal.id, 'rejected', rejectReason || undefined);
+      toast.success('Заявка отклонена'); setRejectModal(null); setRejectReason('');
+      if (searchQuery.trim()) performSearch(searchQuery); else load();
+    } catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Ошибка'); } finally { setProcessing(null); }
   };
 
   const isSearching = searchQuery.trim().length > 0;
   const displayedOffers = isSearching ? searchResults : offers;
   const displayedCount = isSearching ? searchResults.length : count;
-  const isLoading = isSearching ? searchLoading : (loading && offers.length === 0);
-  if (isLoading) return <LoadingSpinner />;
+  if (loading && offers.length === 0 && !isSearching) return <LoadingSpinner />;
 
   return (
     <div className="space-y-4">
       <div className="space-y-3">
         <div className="flex items-center justify-between flex-wrap gap-3">
-          <h2 className="text-2xl font-semibold">Заявки на продажу <span className="text-muted-foreground text-lg font-normal">({displayedCount}){isSearching && ` • поиск: "${searchQuery}"`}</span></h2>
+          <h2 className="text-2xl font-semibold">Заявки на продажу <span className="text-muted-foreground text-lg font-normal">({displayedCount})</span></h2>
           <div className="flex gap-2">
             <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value as CarOfferStatus | ''); setSkip(0); }} className="px-3 py-2 bg-white border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary">
               <option value="">Все статусы</option><option value="pending">На рассмотрении</option><option value="approved">Одобренные</option><option value="rejected">Отклонённые</option>
             </select>
-            <button onClick={isSearching ? clearSearch : load} className="p-2 border border-border rounded-lg hover:bg-secondary transition-colors" title={isSearching ? 'Очистить поиск' : 'Обновить'}>
+            <button onClick={isSearching ? clearSearch : load} className="p-2 border border-border rounded-lg hover:bg-secondary transition-colors">
               {isSearching ? <X className="w-4 h-4" /> : <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />}
             </button>
           </div>
@@ -975,15 +1058,14 @@ function OffersTab() {
           {searchQuery && <button onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-secondary rounded transition-colors"><X className="w-4 h-4 text-muted-foreground" /></button>}
         </div>
       </div>
-
       <div className="space-y-3">
         {displayedOffers.length === 0 && !searchLoading && <EmptyTableState text={isSearching ? 'По вашему запросу ничего не найдено' : 'Заявок нет'} />}
         {displayedOffers.map(offer => {
-          const primaryImg = offer.images.find(i => i.is_primary) ?? offer.images[0];
+          const primaryImg = offer.images.find((i: { is_primary: boolean }) => i.is_primary) ?? offer.images[0];
           return (
             <div key={offer.id} className="bg-white rounded-xl border border-border p-4">
               <div className="flex gap-4">
-                {primaryImg && <div className="w-24 h-18 rounded-lg overflow-hidden flex-shrink-0 bg-secondary"><img src={primaryImg.thumb_url} alt={`${offer.brand} ${offer.model}`} className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} /></div>}
+                {primaryImg && <div className="w-24 rounded-lg overflow-hidden flex-shrink-0 bg-secondary"><img src={primaryImg.thumb_url} alt="" className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} /></div>}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2 flex-wrap">
                     <div>
@@ -996,8 +1078,8 @@ function OffersTab() {
                   {offer.rejection_reason && <p className="text-xs text-destructive mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{offer.rejection_reason}</p>}
                   {offer.status === 'pending' && (
                     <div className="flex gap-2 mt-3">
-                      <button onClick={() => handleApprove(offer.id)} disabled={processing === offer.id} className="flex items-center gap-1.5 px-3 py-1.5 bg-accent text-accent-foreground rounded-lg text-sm hover:opacity-90 transition-opacity disabled:opacity-50">{processing === offer.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Одобрить</button>
-                      <button onClick={() => setRejectModal({ id: offer.id, brand: offer.brand, model: offer.model })} disabled={processing === offer.id} className="flex items-center gap-1.5 px-3 py-1.5 bg-destructive/10 text-destructive rounded-lg text-sm hover:bg-destructive/20 transition-colors disabled:opacity-50"><X className="w-3.5 h-3.5" /> Отклонить</button>
+                      <button onClick={() => handleApprove(offer.id)} disabled={processing === offer.id} className="flex items-center gap-1.5 px-3 py-1.5 bg-accent text-accent-foreground rounded-lg text-sm hover:opacity-90 disabled:opacity-50">{processing === offer.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Одобрить</button>
+                      <button onClick={() => setRejectModal({ id: offer.id, brand: offer.brand, model: offer.model })} disabled={processing === offer.id} className="flex items-center gap-1.5 px-3 py-1.5 bg-destructive/10 text-destructive rounded-lg text-sm hover:bg-destructive/20 disabled:opacity-50"><X className="w-3.5 h-3.5" /> Отклонить</button>
                     </div>
                   )}
                 </div>
@@ -1007,15 +1089,14 @@ function OffersTab() {
         })}
       </div>
       {!isSearching && <Pagination skip={skip} limit={20} count={count} onChange={setSkip} />}
-
       {rejectModal && (
-        <Modal title={`Отклонить заявку: ${rejectModal.brand} ${rejectModal.model}`} onClose={() => setRejectModal(null)}>
+        <Modal title={`Отклонить: ${rejectModal.brand} ${rejectModal.model}`} onClose={() => setRejectModal(null)}>
           <div className="space-y-4">
-            <div><label className="block text-sm font-semibold mb-2">Причина отклонения (необязательно)</label>
-              <textarea value={rejectReason} onChange={e => setRejectReason(e.target.value)} rows={4} placeholder="Укажите причину для пользователя..." className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary resize-none" /></div>
+            <div><label className="block text-sm font-semibold mb-2">Причина (необязательно)</label>
+              <textarea value={rejectReason} onChange={e => setRejectReason(e.target.value)} rows={4} className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary resize-none" /></div>
             <div className="flex gap-3">
-              <button onClick={() => setRejectModal(null)} className="flex-1 px-4 py-2 bg-secondary rounded-lg text-sm hover:bg-secondary/80 transition-colors">Отмена</button>
-              <button onClick={handleReject} disabled={!!processing} className="flex-1 px-4 py-2 bg-destructive text-white rounded-lg text-sm hover:opacity-90 disabled:opacity-50 transition-opacity">{processing ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Отклонить'}</button>
+              <button onClick={() => setRejectModal(null)} className="flex-1 px-4 py-2 bg-secondary rounded-lg text-sm hover:bg-secondary/80">Отмена</button>
+              <button onClick={handleReject} disabled={!!processing} className="flex-1 px-4 py-2 bg-destructive text-white rounded-lg text-sm hover:opacity-90 disabled:opacity-50">{processing ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Отклонить'}</button>
             </div>
           </div>
         </Modal>
@@ -1024,7 +1105,7 @@ function OffersTab() {
   );
 }
 
-// ─── Messages Tab ───────────────────────────────────────────────────────────
+// ─── MessagesTab ───────────────────────────────────────────
 
 function MessagesTab() {
   const [messages, setMessages] = useState<AdminMessage[]>([]);
@@ -1034,7 +1115,6 @@ function MessagesTab() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [processing, setProcessing] = useState<string | null>(null);
-
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<AdminMessage[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -1056,7 +1136,7 @@ function MessagesTab() {
     try {
       const data = await adminApi.getMessages(filterStatus || undefined, 0);
       const q = query.toLowerCase();
-      setSearchResults(data.data.filter(m =>
+      setSearchResults(data.data.filter((m: AdminMessage) =>
         (m.subject && m.subject.toLowerCase().includes(q)) || m.body.toLowerCase().includes(q) ||
         m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q) ||
         (m.phone && m.phone.toLowerCase().includes(q))
@@ -1079,14 +1159,13 @@ function MessagesTab() {
   const isSearching = searchQuery.trim().length > 0;
   const displayedMessages = isSearching ? searchResults : messages;
   const displayedCount = isSearching ? searchResults.length : count;
-  const isLoading = isSearching ? searchLoading : (loading && messages.length === 0);
-  if (isLoading) return <LoadingSpinner />;
+  if (loading && messages.length === 0 && !isSearching) return <LoadingSpinner />;
 
   return (
     <div className="space-y-4">
       <div className="space-y-3">
         <div className="flex items-center justify-between flex-wrap gap-3">
-          <h2 className="text-2xl font-semibold">Сообщения <span className="text-muted-foreground text-lg font-normal">({displayedCount}){isSearching && ` • поиск: "${searchQuery}"`}</span></h2>
+          <h2 className="text-2xl font-semibold">Сообщения <span className="text-muted-foreground text-lg font-normal">({displayedCount})</span></h2>
           <div className="flex gap-2">
             <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value as MessageStatus | ''); setSkip(0); }} className="px-3 py-2 bg-white border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary">
               <option value="">Все</option><option value="new">Новые</option><option value="in_progress">В работе</option><option value="resolved">Решено</option><option value="closed">Закрыто</option>
@@ -1102,7 +1181,6 @@ function MessagesTab() {
           {searchQuery && <button onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-secondary rounded transition-colors"><X className="w-4 h-4 text-muted-foreground" /></button>}
         </div>
       </div>
-
       <div className="space-y-2">
         {displayedMessages.length === 0 && !searchLoading && <EmptyTableState text={isSearching ? 'По вашему запросу ничего не найдено' : 'Сообщений нет'} />}
         {displayedMessages.map(msg => (
@@ -1136,7 +1214,7 @@ function MessagesTab() {
   );
 }
 
-// ─── Users Tab ──────────────────────────────────────────────────────────────
+// ─── UsersTab ──────────────────────────────────────────────
 
 function UsersTab() {
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -1148,13 +1226,11 @@ function UsersTab() {
   const [form, setForm] = useState<UserCreate & { status?: UserStatus }>({ full_name: '', email: '', password: '', role: 'manager' });
   const [saving, setSaving] = useState(false);
   const { user: currentUser } = useAuth();
-
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<AdminUser[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const debouncedSearch = useDebounce(searchQuery, 300);
   const searchAbortRef = useRef<AbortController | null>(null);
-
   const [filterStatus, setFilterStatus] = useState<UserStatus | ''>('');
   const [filterRole, setFilterRole] = useState<UserRole | ''>('');
 
@@ -1164,8 +1240,8 @@ function UsersTab() {
     try {
       const data = await adminApi.getUsers(skip);
       let filtered = data.data;
-      if (filterStatus) filtered = filtered.filter(u => u.status === filterStatus);
-      if (filterRole) filtered = filtered.filter(u => u.role === filterRole);
+      if (filterStatus) filtered = filtered.filter((u: AdminUser) => u.status === filterStatus);
+      if (filterRole) filtered = filtered.filter((u: AdminUser) => u.role === filterRole);
       setUsers(filtered); setCount(filtered.length);
     } catch { toast.error('Ошибка загрузки пользователей'); }
     finally { setLoading(false); }
@@ -1179,12 +1255,12 @@ function UsersTab() {
     try {
       const data = await adminApi.getUsers(0);
       const q = query.toLowerCase();
-      let results = data.data.filter(u =>
+      let results = data.data.filter((u: AdminUser) =>
         u.full_name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) ||
         (u.phone && u.phone.toLowerCase().includes(q))
       );
-      if (filterStatus) results = results.filter(u => u.status === filterStatus);
-      if (filterRole) results = results.filter(u => u.role === filterRole);
+      if (filterStatus) results = results.filter((u: AdminUser) => u.status === filterStatus);
+      if (filterRole) results = results.filter((u: AdminUser) => u.role === filterRole);
       setSearchResults(results);
     } catch (err) {
       if ((err as Error).name !== 'AbortError') { toast.error('Ошибка поиска'); setSearchResults([]); }
@@ -1194,7 +1270,6 @@ function UsersTab() {
   useEffect(() => { performSearch(debouncedSearch); }, [debouncedSearch, performSearch]);
   useEffect(() => { load(); }, [load]);
   const clearSearch = () => { setSearchQuery(''); setSearchResults([]); setSkip(0); };
-  const clearFilters = () => { setFilterStatus(''); setFilterRole(''); setSkip(0); };
 
   const openCreate = () => { setEditUser(null); setForm({ full_name: '', email: '', password: '', role: 'manager' }); setShowForm(true); };
   const openEdit = (u: AdminUser) => { setEditUser(u); setForm({ full_name: u.full_name, email: u.email, password: '', role: u.role, status: u.status }); setShowForm(true); };
@@ -1206,7 +1281,10 @@ function UsersTab() {
         const body: Record<string, unknown> = { full_name: form.full_name, email: form.email, role: form.role, status: form.status };
         if (form.password) body.password = form.password;
         await adminApi.updateUser(editUser.id, body); toast.success('Пользователь обновлён');
-      } else { await adminApi.createUser({ full_name: form.full_name, email: form.email, password: form.password, role: form.role }); toast.success('Пользователь создан'); }
+      } else {
+        await adminApi.createUser({ full_name: form.full_name, email: form.email, password: form.password, role: form.role });
+        toast.success('Пользователь создан');
+      }
       setShowForm(false);
       if (searchQuery.trim()) performSearch(searchQuery); else load();
     } catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Ошибка'); }
@@ -1224,20 +1302,17 @@ function UsersTab() {
   const hasActiveFilters = filterStatus || filterRole;
   const displayedUsers = isSearching ? searchResults : users;
   const displayedCount = isSearching ? searchResults.length : count;
-  const isLoading = isSearching ? searchLoading : (loading && users.length === 0);
-  if (isLoading) return <LoadingSpinner />;
+  if (loading && users.length === 0 && !isSearching) return <LoadingSpinner />;
 
   return (
     <div className="space-y-4">
       <div className="space-y-3">
         <div className="flex items-center justify-between flex-wrap gap-3">
-          <h2 className="text-2xl font-semibold">
-            Сотрудники <span className="text-muted-foreground text-lg font-normal">({displayedCount})</span>
-          </h2>
+          <h2 className="text-2xl font-semibold">Сотрудники <span className="text-muted-foreground text-lg font-normal">({displayedCount})</span></h2>
           <div className="flex gap-2 flex-wrap">
             {hasActiveFilters && (
-              <button onClick={clearFilters} className="flex items-center gap-1.5 px-3 py-2 bg-destructive/10 text-destructive rounded-lg text-sm hover:bg-destructive/20 transition-colors">
-                <X className="w-4 h-4" /> Сбросить фильтры
+              <button onClick={() => { setFilterStatus(''); setFilterRole(''); setSkip(0); }} className="flex items-center gap-1.5 px-3 py-2 bg-destructive/10 text-destructive rounded-lg text-sm hover:bg-destructive/20 transition-colors">
+                <X className="w-4 h-4" /> Сбросить
               </button>
             )}
             <button onClick={isSearching ? clearSearch : load} className="p-2 border border-border rounded-lg hover:bg-secondary transition-colors">
@@ -1248,37 +1323,34 @@ function UsersTab() {
             </button>
           </div>
         </div>
-
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Поиск по имени, email, телефону..." className="w-full pl-10 pr-10 py-2.5 bg-white border border-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary transition-all" />
           {searchQuery && <button onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-secondary rounded transition-colors"><X className="w-4 h-4 text-muted-foreground" /></button>}
         </div>
-
         <div className="flex flex-wrap gap-3">
           <div className="flex items-center gap-1.5 bg-secondary/50 rounded-lg px-2 py-1.5">
             <span className="text-xs font-medium text-muted-foreground">Статус:</span>
             <button onClick={() => setFilterStatus('')} className={`text-xs px-2 py-0.5 rounded-full transition-colors ${!filterStatus ? 'bg-primary text-primary-foreground' : 'hover:bg-secondary'}`}>Все</button>
-            {(['active', 'inactive', 'banned'] as UserStatus[]).map(status => (
-              <button key={status} onClick={() => setFilterStatus(filterStatus === status ? '' : status)}
-                className={`text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${filterStatus === status ? `${USER_STATUS_COLORS[status]} ring-2 ring-offset-1 ring-primary/20` : 'bg-secondary hover:bg-secondary/80 text-muted-foreground'}`}>
-                {USER_STATUS_LABELS[status]}
+            {(['active', 'inactive', 'banned'] as UserStatus[]).map(s => (
+              <button key={s} onClick={() => setFilterStatus(filterStatus === s ? '' : s)}
+                className={`text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${filterStatus === s ? `${USER_STATUS_COLORS[s]} ring-2 ring-offset-1 ring-primary/20` : 'bg-secondary hover:bg-secondary/80 text-muted-foreground'}`}>
+                {USER_STATUS_LABELS[s]}
               </button>
             ))}
           </div>
           <div className="flex items-center gap-1.5 bg-secondary/50 rounded-lg px-2 py-1.5">
             <span className="text-xs font-medium text-muted-foreground">Роль:</span>
             <button onClick={() => setFilterRole('')} className={`text-xs px-2 py-0.5 rounded-full transition-colors ${!filterRole ? 'bg-primary text-primary-foreground' : 'hover:bg-secondary'}`}>Все</button>
-            {(['admin', 'manager', 'support', 'user'] as UserRole[]).map(role => (
-              <button key={role} onClick={() => setFilterRole(filterRole === role ? '' : role)}
-                className={`text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${filterRole === role ? 'bg-primary text-primary-foreground ring-2 ring-offset-1 ring-primary/20' : 'bg-secondary hover:bg-secondary/80 text-muted-foreground'}`}>
-                {USER_ROLE_LABELS[role]}
+            {(['admin', 'manager', 'support', 'user'] as UserRole[]).map(r => (
+              <button key={r} onClick={() => setFilterRole(filterRole === r ? '' : r)}
+                className={`text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${filterRole === r ? 'bg-primary text-primary-foreground ring-2 ring-offset-1 ring-primary/20' : 'bg-secondary hover:bg-secondary/80 text-muted-foreground'}`}>
+                {USER_ROLE_LABELS[r]}
               </button>
             ))}
           </div>
         </div>
       </div>
-
       <div className="bg-white rounded-xl border border-border overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -1308,26 +1380,25 @@ function UsersTab() {
         </div>
       </div>
       {!isSearching && <Pagination skip={skip} limit={20} count={count} onChange={setSkip} />}
-
       {showForm && (
         <Modal title={editUser ? 'Редактировать сотрудника' : 'Добавить сотрудника'} onClose={() => setShowForm(false)}>
           <form onSubmit={handleSave} className="space-y-3">
-            {[['full_name', 'Полное имя *', 'text', true], ['email', 'Email *', 'email', true], ['password', editUser ? 'Новый пароль (оставьте пустым)' : 'Пароль *', 'password', !editUser]].map(([key, label, type, required]) => (
-              <div key={key as string}><label className="block text-xs font-semibold mb-1 text-muted-foreground">{label as string}</label>
-                <input type={type as string} required={required as boolean} value={form[key as keyof typeof form] as string ?? ''} onChange={e => setForm(p => ({ ...p, [key as string]: e.target.value }))} className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary" />
+            {([['full_name', 'Полное имя *', 'text', true], ['email', 'Email *', 'email', true], ['password', editUser ? 'Новый пароль (оставьте пустым)' : 'Пароль *', 'password', !editUser]] as const).map(([key, label, type, required]) => (
+              <div key={key}><label className="block text-xs font-semibold mb-1 text-muted-foreground">{label}</label>
+                <input type={type} required={required as boolean} value={form[key as keyof typeof form] as string ?? ''} onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))} className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary" />
               </div>
             ))}
             <div><label className="block text-xs font-semibold mb-1 text-muted-foreground">Роль</label>
               <select value={form.role} onChange={e => setForm(p => ({ ...p, role: e.target.value as UserRole }))} className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary">
-                {Object.entries(USER_ROLE_LABELS).map(([v, l]) => (<option key={v} value={v}>{l}</option>))}
+                {Object.entries(USER_ROLE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select></div>
             {editUser && <div><label className="block text-xs font-semibold mb-1 text-muted-foreground">Статус</label>
               <select value={form.status ?? 'active'} onChange={e => setForm(p => ({ ...p, status: e.target.value as UserStatus }))} className="w-full px-3 py-2 bg-secondary rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary">
                 <option value="active">Активен</option><option value="inactive">Неактивен</option><option value="banned">Заблокирован</option>
               </select></div>}
             <div className="flex gap-3 pt-2">
-              <button type="button" onClick={() => setShowForm(false)} className="flex-1 px-4 py-2 bg-secondary rounded-lg text-sm hover:bg-secondary/80 transition-colors">Отмена</button>
-              <button type="submit" disabled={saving} className="flex-1 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm hover:opacity-90 disabled:opacity-50 transition-opacity">{saving ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : editUser ? 'Сохранить' : 'Создать'}</button>
+              <button type="button" onClick={() => setShowForm(false)} className="flex-1 px-4 py-2 bg-secondary rounded-lg text-sm hover:bg-secondary/80">Отмена</button>
+              <button type="submit" disabled={saving} className="flex-1 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm hover:opacity-90 disabled:opacity-50">{saving ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : editUser ? 'Сохранить' : 'Создать'}</button>
             </div>
           </form>
         </Modal>
@@ -1336,7 +1407,7 @@ function UsersTab() {
   );
 }
 
-// ─── Shared UI ──────────────────────────────────────────────────────────────
+// ─── Shared UI ─────────────────────────────────────────────
 
 function LoadingSpinner() { return <div className="flex items-center justify-center py-16"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>; }
 function ErrorState({ message }: { message: string }) { return <div className="flex flex-col items-center justify-center py-16 text-center"><AlertCircle className="w-10 h-10 text-destructive mb-3" /><p className="text-muted-foreground">{message}</p></div>; }
@@ -1357,7 +1428,7 @@ function Modal({ title, children, onClose }: { title: string; children: React.Re
   );
 }
 
-// ─── Main Page ──────────────────────────────────────────────────────────────
+// ─── Main Page ─────────────────────────────────────────────
 
 export function AdminPage() {
   const { user, loading: authLoading } = useAuth();
@@ -1393,7 +1464,6 @@ export function AdminPage() {
           <h1 className="text-3xl font-semibold">Панель управления</h1>
           <p className="text-muted-foreground mt-1">{user?.full_name} • {user?.role === 'admin' ? 'Администратор' : 'Менеджер'}</p>
         </div>
-
         <div className="flex gap-1 mb-6 bg-white border border-border rounded-xl p-1 overflow-x-auto">
           {tabs.map(tab => {
             const Icon = tab.icon;
@@ -1409,7 +1479,6 @@ export function AdminPage() {
             );
           })}
         </div>
-
         {activeTab === 'stats' && <StatsTab stats={stats} loading={statsLoading} />}
         {activeTab === 'cars' && <CarsTab />}
         {activeTab === 'offers' && <OffersTab />}
