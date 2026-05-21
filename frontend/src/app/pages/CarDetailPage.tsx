@@ -6,6 +6,8 @@ import { toast } from 'sonner';
 import { useCar } from '../hooks/useCars';
 import { messagesApi } from '../api/messages';
 import { viewingsApi } from '../api/viewings';
+import { useFavorites } from '../hooks/useFavorites';
+
 
 function formatPrice(price: number): string {
   return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(price);
@@ -21,7 +23,8 @@ export function CarDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { car, loading, error } = useCar(id);
   const [showAppointmentForm, setShowAppointmentForm] = useState(false);
-  const [isFavorite, setIsFavorite] = useState(false);
+  const { isFavorite: checkFav, toggle: toggleFavorite } = useFavorites();
+  const isFavorite = checkFav(car?.id ?? '');
   const [activeSlide, setActiveSlide] = useState(0);
 
   const [formName, setFormName] = useState('');
@@ -168,7 +171,7 @@ export function CarDetailPage() {
                   <p className="text-muted-foreground">{car.year} год • {formatMileage(car.mileage)}</p>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => setIsFavorite(!isFavorite)} className="p-2 rounded-lg hover:bg-secondary transition-colors">
+                  <button onClick={() => car && toggleFavorite(car.id)} className="p-2 rounded-lg hover:bg-secondary transition-colors">
                     <Heart className={`w-6 h-6 ${isFavorite ? 'fill-destructive text-destructive' : 'text-muted-foreground'}`} />
                   </button>
                   <button className="p-2 rounded-lg hover:bg-secondary transition-colors">

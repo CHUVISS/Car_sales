@@ -1,16 +1,19 @@
 import { useState, useEffect } from 'react';
-import { User, Heart, Eye, FileText, LogOut } from 'lucide-react';
+import { User, Eye, FileText, LogOut, Heart } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../hooks/useAuth';
 import { useNavigate, Link } from 'react-router';
 import { api } from '../api/client';
+import { FavoritesPage } from './FavoritesPage';
+import { useFavorites } from '../hooks/useFavorites';
 
-type TabType = 'profile' | 'viewings';
+type TabType = 'profile' | 'viewings' | 'favorites';
 
 export function ProfilePage() {
   const { user, login, register, logout, loading } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabType>('profile');
+  const { ids: favoriteIds } = useFavorites();
 
   // Форма входа/регистрации
   const [isRegister, setIsRegister] = useState(false);
@@ -24,7 +27,6 @@ export function ProfilePage() {
   const [editPhone, setEditPhone] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // При любом монтировании/перезагрузке страница будет вверху
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
@@ -40,7 +42,6 @@ export function ProfilePage() {
         await login(email, password);
         toast.success('Добро пожаловать!');
       }
-      // Перезагрузка страницы
       window.location.reload();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Ошибка';
@@ -65,7 +66,6 @@ export function ProfilePage() {
         phone: editPhone || undefined,
       });
       toast.success('Изменения сохранены!');
-      // Перезагрузка страницы
       window.location.reload();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Ошибка';
@@ -93,7 +93,6 @@ export function ProfilePage() {
           <p className="text-muted-foreground text-center mb-6">
             {isRegister ? 'Создайте аккаунт для записи на просмотр' : 'Войдите чтобы управлять записями'}
           </p>
-
           <form onSubmit={handleAuth} className="space-y-4">
             {isRegister && (
               <input type="text" placeholder="Ваше имя" required value={fullName} onChange={e => setFullName(e.target.value)}
@@ -108,7 +107,6 @@ export function ProfilePage() {
               {authLoading ? 'Загрузка...' : isRegister ? 'Зарегистрироваться' : 'Войти'}
             </button>
           </form>
-
           <div className="mt-4 text-center">
             <button onClick={() => setIsRegister(!isRegister)} className="text-primary hover:underline text-sm">
               {isRegister ? 'Уже есть аккаунт? Войти' : 'Нет аккаунта? Зарегистрироваться'}
@@ -119,9 +117,10 @@ export function ProfilePage() {
     );
   }
 
-  const tabs = [
-    { id: 'profile' as TabType, label: 'Профиль', icon: User },
-    { id: 'viewings' as TabType, label: 'Мои записи', icon: FileText },
+  const tabs: { id: TabType; label: string; icon: React.ElementType; badge?: number }[] = [
+    { id: 'profile', label: 'Профиль', icon: User },
+    { id: 'viewings', label: 'Мои записи', icon: FileText },
+    { id: 'favorites', label: 'Избранное', icon: Heart, badge: favoriteIds.length },
   ];
 
   return (
@@ -130,72 +129,105 @@ export function ProfilePage() {
         <h1 className="text-3xl font-semibold mb-8">Личный кабинет</h1>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+          {/* Боковое меню */}
           <aside className="lg:col-span-1">
-            <div className="bg-white rounded-lg border border-border p-4 space-y-2">
+            <div className="bg-white rounded-lg border border-border p-4 space-y-1">
               {tabs.map(tab => {
                 const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
                 return (
-                  <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                      activeTab === tab.id ? 'bg-primary text-primary-foreground' : 'hover:bg-secondary text-foreground'
-                    }`}>
-                    <Icon className="w-5 h-5" />
-                    <span>{tab.label}</span>
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition-colors ${
+                      isActive ? 'bg-primary text-primary-foreground' : 'hover:bg-secondary text-foreground'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Icon className="w-5 h-5" />
+                      <span>{tab.label}</span>
+                    </div>
+                    {tab.badge !== undefined && tab.badge > 0 && (
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        isActive ? 'bg-white/20 text-white' : 'bg-primary/10 text-primary'
+                      }`}>
+                        {tab.badge}
+                      </span>
+                    )}
                   </button>
                 );
               })}
-              <button onClick={handleLogout}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-destructive/10 text-destructive transition-colors">
-                <LogOut className="w-5 h-5" />
-                <span>Выйти</span>
-              </button>
+
+              <div className="pt-1 border-t border-border mt-1">
+                <button
+                  onClick={handleLogout}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-destructive/10 text-destructive transition-colors"
+                >
+                  <LogOut className="w-5 h-5" />
+                  <span>Выйти</span>
+                </button>
+              </div>
             </div>
           </aside>
 
+          {/* Контент */}
           <div className="lg:col-span-3">
             {activeTab === 'profile' && (
               <div className="bg-white rounded-lg p-6">
                 <div className="flex items-center gap-4 mb-6">
-                  <div className="w-20 h-20 bg-primary rounded-full flex items-center justify-center text-primary-foreground text-2xl">
+                  <div className="w-20 h-20 bg-primary rounded-full flex items-center justify-center text-primary-foreground text-2xl font-semibold">
                     {user.full_name.slice(0, 2).toUpperCase()}
                   </div>
                   <div>
                     <h2 className="text-2xl font-semibold">{user.full_name}</h2>
                     <p className="text-muted-foreground">{user.email}</p>
-                    <p className="text-xs text-muted-foreground mt-1">Роль: {user.role}</p>
+                    <p className="text-xs text-muted-foreground mt-1 capitalize">Роль: {user.role}</p>
                   </div>
                 </div>
 
                 <form className="space-y-4" onSubmit={handleSaveProfile}>
                   <div>
                     <label className="block text-sm font-semibold mb-2">Имя</label>
-                    <input type="text" placeholder={user.full_name}
-                      value={editName} onChange={e => setEditName(e.target.value)}
-                      className="w-full px-4 py-3 bg-secondary rounded-lg outline-none focus:ring-2 focus:ring-primary" />
+                    <input
+                      type="text"
+                      placeholder={user.full_name}
+                      value={editName}
+                      onChange={e => setEditName(e.target.value)}
+                      className="w-full px-4 py-3 bg-secondary rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                    />
                   </div>
                   <div>
                     <label className="block text-sm font-semibold mb-2">Телефон</label>
-                    <input type="tel" placeholder={user.phone ?? '+7 (___) ___-__-__'}
-                      value={editPhone} onChange={e => setEditPhone(e.target.value)}
-                      className="w-full px-4 py-3 bg-secondary rounded-lg outline-none focus:ring-2 focus:ring-primary" />
+                    <input
+                      type="tel"
+                      placeholder={user.phone ?? '+7 (___) ___-__-__'}
+                      value={editPhone}
+                      onChange={e => setEditPhone(e.target.value)}
+                      className="w-full px-4 py-3 bg-secondary rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                    />
                   </div>
-                  <button type="submit" disabled={saving}
-                    className="px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50">
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+                  >
                     {saving ? 'Сохранение...' : 'Сохранить изменения'}
                   </button>
                 </form>
               </div>
             )}
 
-            {activeTab === 'viewings' && (
-              <ViewingsList />
-            )}
+            {activeTab === 'viewings' && <ViewingsList />}
+
+            {activeTab === 'favorites' && <FavoritesPage />}
           </div>
         </div>
       </div>
     </div>
   );
 }
+
+// ─── ViewingsList ───────────────────────────────────────────
 
 function ViewingsList() {
   const [viewings, setViewings] = useState<Array<{
@@ -225,6 +257,15 @@ function ViewingsList() {
     cancelled_user: 'Отменён', cancelled_manager: 'Отменён менеджером', no_show: 'Не явился',
   };
 
+  const RESULT_COLORS: Record<string, string> = {
+    scheduled: 'bg-primary/10 text-primary',
+    confirmed: 'bg-accent/10 text-accent',
+    completed: 'bg-muted text-muted-foreground',
+    cancelled_user: 'bg-destructive/10 text-destructive',
+    cancelled_manager: 'bg-destructive/10 text-destructive',
+    no_show: 'bg-secondary text-muted-foreground',
+  };
+
   const handleCancel = async (id: string) => {
     try {
       await api.patch(`/user/viewings/${id}/cancel`, {});
@@ -236,12 +277,16 @@ function ViewingsList() {
     }
   };
 
-  if (loading) return <div className="bg-white rounded-lg p-12 text-center"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" /></div>;
+  if (loading) return (
+    <div className="bg-white rounded-lg p-12 text-center">
+      <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+    </div>
+  );
 
   if (viewings.length === 0) {
     return (
       <div className="bg-white rounded-lg p-12 text-center">
-        <Eye className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+        <Eye className="w-16 h-16 text-muted-foreground mx-auto mb-4 opacity-30" />
         <h3 className="text-xl font-semibold mb-2">Нет записей на просмотр</h3>
         <p className="text-muted-foreground mb-4">Перейдите в каталог и запишитесь на просмотр понравившегося авто</p>
         <Link to="/catalog" className="inline-block px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90">
@@ -253,7 +298,7 @@ function ViewingsList() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-2xl font-semibold mb-6">Мои записи на просмотр</h2>
+      <h2 className="text-2xl font-semibold">Мои записи на просмотр</h2>
       {viewings.map(v => (
         <div key={v.id} className="bg-white rounded-lg p-6 border border-border">
           <div className="flex items-center justify-between mb-2">
@@ -265,16 +310,15 @@ function ViewingsList() {
               </p>
               {v.comment && <p className="text-sm text-muted-foreground mt-1">{v.comment}</p>}
             </div>
-            <span className={`px-3 py-1 rounded-full text-sm ${
-              v.result === 'scheduled' || v.result === 'confirmed' ? 'bg-accent text-accent-foreground' :
-              v.result === 'completed' ? 'bg-muted text-muted-foreground' : 'bg-secondary text-muted-foreground'
-            }`}>
+            <span className={`px-3 py-1 rounded-full text-sm font-medium ${RESULT_COLORS[v.result] ?? 'bg-secondary text-muted-foreground'}`}>
               {RESULT_LABELS[v.result] ?? v.result}
             </span>
           </div>
           {(v.result === 'scheduled' || v.result === 'confirmed') && (
-            <button onClick={() => handleCancel(v.id)}
-              className="mt-3 px-4 py-2 text-sm text-destructive border border-destructive rounded-lg hover:bg-destructive/10 transition-colors">
+            <button
+              onClick={() => handleCancel(v.id)}
+              className="mt-3 px-4 py-2 text-sm text-destructive border border-destructive rounded-lg hover:bg-destructive/10 transition-colors"
+            >
               Отменить запись
             </button>
           )}

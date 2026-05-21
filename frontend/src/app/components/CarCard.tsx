@@ -1,7 +1,7 @@
 import { Link } from 'react-router';
 import { Heart, Eye } from 'lucide-react';
-import { useState } from 'react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
+import { useFavorites } from '../hooks/useFavorites';
 
 interface Car {
   id: string;
@@ -50,7 +50,8 @@ function getImageSrc(img: string, carId: string): string {
 }
 
 export function CarCard({ car }: CarCardProps) {
-  const [isFavorite, setIsFavorite] = useState(false);
+  const { isFavorite, toggle } = useFavorites();
+  const favorite = isFavorite(car.id);
   const imageSrc = getImageSrc(car.images[0] ?? '', car.id);
 
   return (
@@ -64,9 +65,12 @@ export function CarCard({ car }: CarCardProps) {
             <span className="px-3 py-1 bg-accent text-accent-foreground rounded-full text-xs">Новый</span>
           )}
         </div>
-        <button onClick={e => { e.preventDefault(); setIsFavorite(!isFavorite); }}
-          className="absolute top-3 right-3 p-2 bg-white/90 rounded-full hover:bg-white transition-colors">
-          <Heart className={`w-5 h-5 ${isFavorite ? 'fill-destructive text-destructive' : 'text-foreground'}`} />
+        <button
+          onClick={e => { e.preventDefault(); toggle(car.id); }}
+          className="absolute top-3 right-3 p-2 bg-white/90 rounded-full hover:bg-white transition-colors"
+          title={favorite ? 'Убрать из избранного' : 'Добавить в избранное'}
+        >
+          <Heart className={`w-5 h-5 transition-colors ${favorite ? 'fill-destructive text-destructive' : 'text-foreground'}`} />
         </button>
       </div>
 
