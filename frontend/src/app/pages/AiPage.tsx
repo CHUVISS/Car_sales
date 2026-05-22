@@ -27,17 +27,13 @@ const SUGGESTIONS = [
   'Что посоветуешь для семьи с детьми?',
 ];
 
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-}
-
 function MessageBubble({ msg }: { msg: LocalMessage }) {
   const isUser = msg.role === 'user';
 
   if (msg.isToolCall) {
     return (
       <div className="flex justify-center my-1">
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-muted rounded-full text-xs text-muted-foreground">
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-secondary rounded-full text-xs text-muted-foreground">
           <Loader2 className="w-3 h-3 animate-spin" />
           <span>Поиск в каталоге{msg.toolName ? `: ${msg.toolName}` : ''}...</span>
         </div>
@@ -52,12 +48,11 @@ function MessageBubble({ msg }: { msg: LocalMessage }) {
       }`}>
         {isUser ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
       </div>
-
       <div className={`max-w-[75%] ${isUser ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
         <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
           isUser
             ? 'bg-primary text-primary-foreground rounded-tr-sm'
-            : 'bg-white border border-border text-foreground rounded-tl-sm'
+            : 'bg-card border border-border text-foreground rounded-tl-sm'
         }`}>
           {msg.content || (msg.isStreaming ? <span className="inline-block w-2 h-4 bg-current animate-pulse rounded-sm" /> : '...')}
           {msg.isStreaming && msg.content && (
@@ -75,14 +70,14 @@ function EmptyState({ onSuggestion }: { onSuggestion: (s: string) => void }) {
       <div className="w-16 h-16 bg-foreground rounded-2xl flex items-center justify-center mb-6 rotate-3">
         <Car className="w-8 h-8 text-background" />
       </div>
-      <h2 className="text-2xl font-semibold mb-2">AI-ассистент</h2>
+      <h2 className="text-2xl font-semibold text-foreground mb-2">AI-ассистент</h2>
       <p className="text-muted-foreground mb-8 max-w-sm">
         Задайте вопрос о наших автомобилях — найду подходящие варианты из каталога
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-lg">
         {SUGGESTIONS.map(s => (
           <button key={s} onClick={() => onSuggestion(s)}
-            className="text-left px-4 py-3 bg-white border border-border rounded-xl text-sm hover:border-foreground hover:shadow-sm transition-all duration-200 group">
+            className="text-left px-4 py-3 bg-card border border-border rounded-xl text-sm hover:border-foreground hover:shadow-sm transition-all duration-200 group">
             <div className="flex items-start gap-2">
               <Zap className="w-4 h-4 text-muted-foreground group-hover:text-foreground mt-0.5 flex-shrink-0 transition-colors" />
               <span className="text-muted-foreground group-hover:text-foreground transition-colors">{s}</span>
@@ -95,7 +90,7 @@ function EmptyState({ onSuggestion }: { onSuggestion: (s: string) => void }) {
 }
 
 function Sidebar({
-  conversations, activeId, onSelect, onNew, onDelete, collapsed, onToggle,
+  conversations, activeId, onSelect, onNew, onDelete, collapsed,
 }: {
   conversations: AiConversation[];
   activeId: string | null;
@@ -106,7 +101,7 @@ function Sidebar({
   onToggle: () => void;
 }) {
   return (
-    <aside className={`flex flex-col bg-white border-r border-border transition-all duration-300 ${
+    <aside className={`flex flex-col bg-card border-r border-border transition-all duration-300 ${
       collapsed ? 'w-0 overflow-hidden' : 'w-64'
     }`}>
       <div className="p-4 border-b border-border flex-shrink-0">
@@ -116,7 +111,6 @@ function Sidebar({
           Новый диалог
         </button>
       </div>
-
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
         {conversations.length === 0 && (
           <p className="text-xs text-muted-foreground text-center py-8 px-4">Диалогов пока нет</p>
@@ -124,16 +118,15 @@ function Sidebar({
         {conversations.map(conv => (
           <div key={conv.id}
             className={`group flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition-colors ${
-              activeId === conv.id ? 'bg-foreground text-background' : 'hover:bg-secondary'
+              activeId === conv.id ? 'bg-foreground text-background' : 'hover:bg-secondary text-foreground'
             }`}
             onClick={() => onSelect(conv.id)}>
             <MessageSquare className="w-4 h-4 flex-shrink-0 opacity-60" />
-            <span className="text-sm truncate flex-1">
-              {conv.title ?? 'Новый диалог'}
-            </span>
-            <button onClick={e => { e.stopPropagation(); onDelete(conv.id); }}
-              className={`opacity-0 group-hover:opacity-100 p-1 rounded hover:text-destructive transition-all ${
-                activeId === conv.id ? 'hover:bg-white/20' : 'hover:bg-destructive/10'
+            <span className="text-sm truncate flex-1">{conv.title ?? 'Новый диалог'}</span>
+            <button
+              onClick={e => { e.stopPropagation(); onDelete(conv.id); }}
+              className={`opacity-0 group-hover:opacity-100 p-1 rounded transition-all ${
+                activeId === conv.id ? 'hover:bg-white/20' : 'hover:bg-destructive/10 hover:text-destructive'
               }`}>
               <Trash2 className="w-3.5 h-3.5" />
             </button>
@@ -165,9 +158,7 @@ export function AiPage() {
 
   useEffect(() => {
     if (user) {
-      getConversations()
-        .then(data => setConversations(data.data))
-        .catch(() => {});
+      getConversations().then(data => setConversations(data.data)).catch(() => {});
     }
   }, [user]);
 
@@ -175,11 +166,7 @@ export function AiPage() {
     setLoadingConversation(true);
     try {
       const conv = await getConversation(id);
-      setMessages(conv.messages.map((m: AiMessage) => ({
-        id: m.id,
-        role: m.role,
-        content: m.content,
-      })));
+      setMessages(conv.messages.map((m: AiMessage) => ({ id: m.id, role: m.role, content: m.content })));
       setActiveConversationId(id);
     } catch {
       toast.error('Не удалось загрузить диалог');
@@ -189,9 +176,7 @@ export function AiPage() {
   }, []);
 
   const startNewConversation = useCallback(() => {
-    setMessages([]);
-    setActiveConversationId(null);
-    setInput('');
+    setMessages([]); setActiveConversationId(null); setInput('');
   }, []);
 
   const handleDeleteConversation = useCallback(async (id: string) => {
@@ -208,60 +193,37 @@ export function AiPage() {
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || isStreaming) return;
 
-    const userMsg: LocalMessage = {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      content: text.trim(),
-    };
+    const userMsg: LocalMessage = { id: `user-${Date.now()}`, role: 'user', content: text.trim() };
     const assistantId = `assistant-${Date.now()}`;
-    const assistantMsg: LocalMessage = {
-      id: assistantId,
-      role: 'assistant',
-      content: '',
-      isStreaming: true,
-    };
+    const assistantMsg: LocalMessage = { id: assistantId, role: 'assistant', content: '', isStreaming: true };
 
     setMessages(prev => [...prev, userMsg, assistantMsg]);
     setInput('');
     setIsStreaming(true);
     abortRef.current = false;
 
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-    }
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
 
     await streamChat(
-      text.trim(),
-      activeConversationId,
+      text.trim(), activeConversationId,
       (chunk) => {
         if (abortRef.current) return;
         if (chunk.type === 'tool_call') {
           setMessages(prev => {
             const withoutOldTool = prev.filter(m => !m.isToolCall);
-            return [...withoutOldTool, {
-              id: `tool-${Date.now()}`,
-              role: 'assistant',
-              content: '',
-              isToolCall: true,
-              toolName: chunk.name,
-            }];
+            return [...withoutOldTool, { id: `tool-${Date.now()}`, role: 'assistant', content: '', isToolCall: true, toolName: chunk.name }];
           });
         } else if (chunk.type === 'token' && chunk.content) {
-          setMessages(prev => prev
-            .filter(m => !m.isToolCall)
-            .map(m => m.id === assistantId
-              ? { ...m, content: m.content + chunk.content }
-              : m
-            )
-          );
+          setMessages(prev => prev.filter(m => !m.isToolCall).map(m =>
+            m.id === assistantId ? { ...m, content: m.content + chunk.content } : m
+          ));
         }
       },
       (convId) => {
         setIsStreaming(false);
-        setMessages(prev => prev
-          .filter(m => !m.isToolCall)
-          .map(m => m.id === assistantId ? { ...m, isStreaming: false } : m)
-        );
+        setMessages(prev => prev.filter(m => !m.isToolCall).map(m =>
+          m.id === assistantId ? { ...m, isStreaming: false } : m
+        ));
         if (convId && !activeConversationId) {
           setActiveConversationId(convId);
           getConversations().then(data => setConversations(data.data)).catch(() => {});
@@ -269,22 +231,15 @@ export function AiPage() {
       },
       (error) => {
         setIsStreaming(false);
-        setMessages(prev => prev
-          .filter(m => !m.isToolCall)
-          .map(m => m.id === assistantId
-            ? { ...m, content: error, isStreaming: false }
-            : m
-          )
-        );
+        setMessages(prev => prev.filter(m => !m.isToolCall).map(m =>
+          m.id === assistantId ? { ...m, content: error, isStreaming: false } : m
+        ));
       },
     );
   }, [isStreaming, activeConversationId]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage(input);
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(input); }
   };
 
   const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -308,19 +263,13 @@ export function AiPage() {
           <div className="w-16 h-16 bg-foreground rounded-2xl flex items-center justify-center mx-auto mb-6">
             <Bot className="w-8 h-8 text-background" />
           </div>
-          <h1 className="text-2xl font-semibold mb-3">AI-ассистент</h1>
+          <h1 className="text-2xl font-semibold text-foreground mb-3">AI-ассистент</h1>
           <p className="text-muted-foreground mb-6">
             Войдите в аккаунт, чтобы общаться с AI-ассистентом и получать персональные рекомендации по автомобилям
           </p>
           <div className="flex gap-3 justify-center">
-            <Link to="/profile"
-              className="px-6 py-3 bg-foreground text-background rounded-xl hover:opacity-90 transition-opacity font-medium">
-              Войти
-            </Link>
-            <Link to="/catalog"
-              className="px-6 py-3 bg-secondary text-foreground rounded-xl hover:bg-secondary/80 transition-colors">
-              Каталог
-            </Link>
+            <Link to="/profile" className="px-6 py-3 bg-foreground text-background rounded-xl hover:opacity-90 transition-opacity font-medium">Войти</Link>
+            <Link to="/catalog" className="px-6 py-3 bg-secondary text-foreground rounded-xl hover:bg-secondary/80 transition-colors border border-border">Каталог</Link>
           </div>
         </div>
       </div>
@@ -328,8 +277,7 @@ export function AiPage() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] bg-secondary/30">
-      {/* Sidebar */}
+    <div className="flex h-[calc(100vh-4rem)] bg-background">
       <Sidebar
         conversations={conversations}
         activeId={activeConversationId}
@@ -340,12 +288,11 @@ export function AiPage() {
         onToggle={() => setSidebarCollapsed(p => !p)}
       />
 
-      {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Topbar */}
-        <div className="flex items-center gap-3 px-4 py-3 bg-white border-b border-border flex-shrink-0">
+        <div className="flex items-center gap-3 px-4 py-3 bg-card border-b border-border flex-shrink-0">
           <button onClick={() => setSidebarCollapsed(p => !p)}
-            className="p-2 hover:bg-secondary rounded-lg transition-colors">
+            className="p-2 hover:bg-secondary rounded-lg transition-colors text-foreground">
             <ChevronLeft className={`w-5 h-5 transition-transform duration-300 ${sidebarCollapsed ? 'rotate-180' : ''}`} />
           </button>
           <div className="flex items-center gap-2">
@@ -353,7 +300,7 @@ export function AiPage() {
               <Bot className="w-4 h-4 text-background" />
             </div>
             <div>
-              <p className="text-sm font-semibold">AI-ассистент</p>
+              <p className="text-sm font-semibold text-foreground">AI-ассистент</p>
               <p className="text-xs text-muted-foreground">Подбор автомобилей</p>
             </div>
           </div>
@@ -373,9 +320,7 @@ export function AiPage() {
             <EmptyState onSuggestion={s => { setInput(s); sendMessage(s); }} />
           ) : (
             <div className="max-w-3xl mx-auto space-y-4">
-              {messages.map(msg => (
-                <MessageBubble key={msg.id} msg={msg} />
-              ))}
+              {messages.map(msg => <MessageBubble key={msg.id} msg={msg} />)}
               <div ref={messagesEndRef} />
             </div>
           )}
@@ -392,7 +337,7 @@ export function AiPage() {
         {/* Input */}
         <div className="px-4 pb-4 pt-2">
           <div className="max-w-3xl mx-auto">
-            <div className="flex items-end gap-3 bg-white border border-border rounded-2xl px-4 py-3 shadow-sm focus-within:border-foreground transition-colors">
+            <div className="flex items-end gap-3 bg-card border border-border rounded-2xl px-4 py-3 shadow-sm focus-within:border-foreground transition-colors">
               <textarea
                 ref={textareaRef}
                 value={input}
@@ -401,7 +346,7 @@ export function AiPage() {
                 placeholder="Спросите об автомобилях..."
                 rows={1}
                 disabled={isStreaming}
-                className="flex-1 resize-none bg-transparent outline-none text-sm placeholder:text-muted-foreground max-h-40 leading-relaxed"
+                className="flex-1 resize-none bg-transparent outline-none text-sm text-foreground placeholder:text-muted-foreground max-h-40 leading-relaxed"
                 style={{ height: 'auto' }}
               />
               <button
@@ -409,10 +354,7 @@ export function AiPage() {
                 disabled={!input.trim() || isStreaming}
                 className="flex-shrink-0 w-9 h-9 bg-foreground text-background rounded-xl flex items-center justify-center hover:opacity-90 transition-opacity disabled:opacity-30 disabled:cursor-not-allowed"
               >
-                {isStreaming
-                  ? <Loader2 className="w-4 h-4 animate-spin" />
-                  : <Send className="w-4 h-4" />
-                }
+                {isStreaming ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               </button>
             </div>
             <p className="text-xs text-muted-foreground text-center mt-2">

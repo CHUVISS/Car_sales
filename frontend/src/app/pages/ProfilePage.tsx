@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { User, Eye, FileText, LogOut, Heart } from 'lucide-react';
+import { User, Eye, FileText, LogOut, Heart, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../hooks/useAuth';
 import { useNavigate, Link } from 'react-router';
@@ -8,6 +8,8 @@ import { FavoritesPage } from './FavoritesPage';
 import { useFavorites } from '../hooks/useFavorites';
 
 type TabType = 'profile' | 'viewings' | 'favorites';
+
+const inputCls = "w-full px-4 py-3 bg-secondary text-foreground placeholder:text-muted-foreground rounded-lg outline-none focus:ring-2 focus:ring-primary border border-border focus:border-primary transition-colors";
 
 export function ProfilePage() {
   const { user, login, register, logout, loading } = useAuth();
@@ -20,6 +22,7 @@ export function ProfilePage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
 
   // Форма профиля
@@ -27,9 +30,7 @@ export function ProfilePage() {
   const [editPhone, setEditPhone] = useState('');
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, []);
+  useEffect(() => { window.scrollTo(0, 0); }, []);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,8 +69,7 @@ export function ProfilePage() {
       toast.success('Изменения сохранены!');
       window.location.reload();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Ошибка';
-      toast.error(message);
+      toast.error(err instanceof Error ? err.message : 'Ошибка');
     } finally {
       setSaving(false);
     }
@@ -83,39 +83,180 @@ export function ProfilePage() {
     );
   }
 
+  // ─── Страница входа / регистрации ────────────────────────
   if (!user) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center px-4">
-        <div className="bg-white rounded-lg shadow-lg p-8 w-full max-w-md">
-          <h1 className="text-2xl font-semibold mb-2 text-center">
-            {isRegister ? 'Регистрация' : 'Войти в аккаунт'}
-          </h1>
-          <p className="text-muted-foreground text-center mb-6">
-            {isRegister ? 'Создайте аккаунт для записи на просмотр' : 'Войдите чтобы управлять записями'}
-          </p>
-          <form onSubmit={handleAuth} className="space-y-4">
-            {isRegister && (
-              <input type="text" placeholder="Ваше имя" required value={fullName} onChange={e => setFullName(e.target.value)}
-                className="w-full px-4 py-3 bg-secondary rounded-lg outline-none focus:ring-2 focus:ring-primary" />
-            )}
-            <input type="email" placeholder="Email" required value={email} onChange={e => setEmail(e.target.value)}
-              className="w-full px-4 py-3 bg-secondary rounded-lg outline-none focus:ring-2 focus:ring-primary" />
-            <input type="password" placeholder="Пароль" required value={password} onChange={e => setPassword(e.target.value)}
-              className="w-full px-4 py-3 bg-secondary rounded-lg outline-none focus:ring-2 focus:ring-primary" />
-            <button type="submit" disabled={authLoading}
-              className="w-full px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50">
-              {authLoading ? 'Загрузка...' : isRegister ? 'Зарегистрироваться' : 'Войти'}
-            </button>
-          </form>
-          <div className="mt-4 text-center">
-            <button onClick={() => setIsRegister(!isRegister)} className="text-primary hover:underline text-sm">
-              {isRegister ? 'Уже есть аккаунт? Войти' : 'Нет аккаунта? Зарегистрироваться'}
-            </button>
+        <div className="w-full max-w-md">
+          {/* Логотип */}
+          <div className="text-center mb-8">
+            <Link to="/" className="inline-flex items-center gap-2 text-foreground hover:opacity-80 transition-opacity">
+              <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center">
+                <User className="w-6 h-6 text-primary-foreground" />
+              </div>
+              <span className="text-2xl font-semibold">АвтоСалон</span>
+            </Link>
           </div>
+
+          {/* Карточка */}
+          <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+            {/* Переключатель вход / регистрация */}
+            <div className="flex border-b border-border">
+              <button
+                onClick={() => setIsRegister(false)}
+                className={`flex-1 py-4 text-sm font-medium transition-colors ${
+                  !isRegister
+                    ? 'text-foreground border-b-2 border-primary'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Войти
+              </button>
+              <button
+                onClick={() => setIsRegister(true)}
+                className={`flex-1 py-4 text-sm font-medium transition-colors ${
+                  isRegister
+                    ? 'text-foreground border-b-2 border-primary'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Регистрация
+              </button>
+            </div>
+
+            <div className="p-8">
+              <div className="mb-6">
+                <h1 className="text-2xl font-semibold text-foreground mb-1">
+                  {isRegister ? 'Создать аккаунт' : 'Добро пожаловать'}
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  {isRegister
+                    ? 'Заполните данные для регистрации'
+                    : 'Введите данные для входа в аккаунт'}
+                </p>
+              </div>
+
+              <form onSubmit={handleAuth} className="space-y-4">
+                {isRegister && (
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1.5">
+                      Имя
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ваше имя"
+                      required
+                      value={fullName}
+                      onChange={e => setFullName(e.target.value)}
+                      className={inputCls}
+                      autoComplete="name"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1.5">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="example@mail.ru"
+                    required
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    className={inputCls}
+                    autoComplete="email"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-sm font-medium text-foreground">
+                      Пароль
+                    </label>
+                    {!isRegister && (
+                      <button
+                        type="button"
+                        className="text-xs text-primary hover:underline"
+                        onClick={() => toast.info('Функция восстановления пароля в разработке')}
+                      >
+                        Забыли пароль?
+                      </button>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder={isRegister ? 'Минимум 8 символов' : '••••••••'}
+                      required
+                      value={password}
+                      onChange={e => setPassword(e.target.value)}
+                      className={inputCls + ' pr-12'}
+                      autoComplete={isRegister ? 'new-password' : 'current-password'}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(p => !p)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground transition-colors"
+                      tabIndex={-1}
+                    >
+                      {showPassword
+                        ? <EyeOff className="w-4 h-4" />
+                        : <Eye className="w-4 h-4" />
+                      }
+                    </button>
+                  </div>
+                  {isRegister && password.length > 0 && (
+                    <PasswordStrength password={password} />
+                  )}
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={authLoading}
+                  className="w-full px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 font-medium mt-2"
+                >
+                  {authLoading
+                    ? <span className="flex items-center justify-center gap-2">
+                        <div className="w-4 h-4 border-2 border-primary-foreground/40 border-t-primary-foreground rounded-full animate-spin" />
+                        {isRegister ? 'Регистрация...' : 'Вход...'}
+                      </span>
+                    : isRegister ? 'Зарегистрироваться' : 'Войти'
+                  }
+                </button>
+              </form>
+
+              {/* Разделитель */}
+              <div className="relative my-6">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-border" />
+                </div>
+                <div className="relative flex justify-center text-xs">
+                  <span className="px-3 bg-card text-muted-foreground">
+                    {isRegister ? 'Уже есть аккаунт?' : 'Нет аккаунта?'}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                onClick={() => { setIsRegister(!isRegister); setPassword(''); setShowPassword(false); }}
+                className="w-full px-6 py-3 bg-secondary text-foreground rounded-lg hover:bg-secondary/80 transition-colors border border-border text-sm font-medium"
+              >
+                {isRegister ? 'Войти в существующий аккаунт' : 'Создать новый аккаунт'}
+              </button>
+            </div>
+          </div>
+
+          {/* Ссылка обратно */}
+          <p className="text-center mt-6 text-sm text-muted-foreground">
+            <Link to="/" className="text-primary hover:underline">← Вернуться на главную</Link>
+          </p>
         </div>
       </div>
     );
   }
+
+  // ─── Личный кабинет ──────────────────────────────────────
 
   const tabs: { id: TabType; label: string; icon: React.ElementType; badge?: number }[] = [
     { id: 'profile', label: 'Профиль', icon: User },
@@ -126,12 +267,12 @@ export function ProfilePage() {
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <h1 className="text-3xl font-semibold mb-8">Личный кабинет</h1>
+        <h1 className="text-3xl font-semibold text-foreground mb-8">Личный кабинет</h1>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           {/* Боковое меню */}
           <aside className="lg:col-span-1">
-            <div className="bg-white rounded-lg border border-border p-4 space-y-1">
+            <div className="bg-card rounded-lg border border-border p-4 space-y-1">
               {tabs.map(tab => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.id;
@@ -140,7 +281,9 @@ export function ProfilePage() {
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
                     className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition-colors ${
-                      isActive ? 'bg-primary text-primary-foreground' : 'hover:bg-secondary text-foreground'
+                      isActive
+                        ? 'bg-primary text-primary-foreground'
+                        : 'hover:bg-secondary text-foreground'
                     }`}
                   >
                     <div className="flex items-center gap-3">
@@ -157,7 +300,6 @@ export function ProfilePage() {
                   </button>
                 );
               })}
-
               <div className="pt-1 border-t border-border mt-1">
                 <button
                   onClick={handleLogout}
@@ -173,52 +315,36 @@ export function ProfilePage() {
           {/* Контент */}
           <div className="lg:col-span-3">
             {activeTab === 'profile' && (
-              <div className="bg-white rounded-lg p-6">
+              <div className="bg-card rounded-lg border border-border p-6">
                 <div className="flex items-center gap-4 mb-6">
                   <div className="w-20 h-20 bg-primary rounded-full flex items-center justify-center text-primary-foreground text-2xl font-semibold">
                     {user.full_name.slice(0, 2).toUpperCase()}
                   </div>
                   <div>
-                    <h2 className="text-2xl font-semibold">{user.full_name}</h2>
+                    <h2 className="text-2xl font-semibold text-foreground">{user.full_name}</h2>
                     <p className="text-muted-foreground">{user.email}</p>
                     <p className="text-xs text-muted-foreground mt-1 capitalize">Роль: {user.role}</p>
                   </div>
                 </div>
-
                 <form className="space-y-4" onSubmit={handleSaveProfile}>
                   <div>
-                    <label className="block text-sm font-semibold mb-2">Имя</label>
-                    <input
-                      type="text"
-                      placeholder={user.full_name}
-                      value={editName}
-                      onChange={e => setEditName(e.target.value)}
-                      className="w-full px-4 py-3 bg-secondary rounded-lg outline-none focus:ring-2 focus:ring-primary"
-                    />
+                    <label className="block text-sm font-semibold text-foreground mb-2">Имя</label>
+                    <input type="text" placeholder={user.full_name} value={editName}
+                      onChange={e => setEditName(e.target.value)} className={inputCls} />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold mb-2">Телефон</label>
-                    <input
-                      type="tel"
-                      placeholder={user.phone ?? '+7 (___) ___-__-__'}
-                      value={editPhone}
-                      onChange={e => setEditPhone(e.target.value)}
-                      className="w-full px-4 py-3 bg-secondary rounded-lg outline-none focus:ring-2 focus:ring-primary"
-                    />
+                    <label className="block text-sm font-semibold text-foreground mb-2">Телефон</label>
+                    <input type="tel" placeholder={user.phone ?? '+7 (___) ___-__-__'} value={editPhone}
+                      onChange={e => setEditPhone(e.target.value)} className={inputCls} />
                   </div>
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    className="px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
-                  >
+                  <button type="submit" disabled={saving}
+                    className="px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50">
                     {saving ? 'Сохранение...' : 'Сохранить изменения'}
                   </button>
                 </form>
               </div>
             )}
-
             {activeTab === 'viewings' && <ViewingsList />}
-
             {activeTab === 'favorites' && <FavoritesPage />}
           </div>
         </div>
@@ -227,7 +353,35 @@ export function ProfilePage() {
   );
 }
 
-// ─── ViewingsList ───────────────────────────────────────────
+// ─── PasswordStrength ──────────────────────────────────────
+
+function PasswordStrength({ password }: { password: string }) {
+  const checks = [
+    { label: 'Минимум 8 символов', ok: password.length >= 8 },
+    { label: 'Заглавная буква', ok: /[A-ZА-ЯЁ]/.test(password) },
+    { label: 'Цифра', ok: /\d/.test(password) },
+  ];
+  const score = checks.filter(c => c.ok).length;
+  const colors = ['bg-destructive', 'bg-yellow-500', 'bg-accent', 'bg-accent'];
+  const labels = ['', 'Слабый', 'Средний', 'Сильный'];
+
+  return (
+    <div className="mt-2 space-y-1.5">
+      <div className="flex gap-1">
+        {[0, 1, 2].map(i => (
+          <div key={i} className={`h-1 flex-1 rounded-full transition-colors ${i < score ? colors[score] : 'bg-border'}`} />
+        ))}
+      </div>
+      {score > 0 && (
+        <p className={`text-xs ${score === 3 ? 'text-accent' : score === 2 ? 'text-yellow-500' : 'text-destructive'}`}>
+          {labels[score]}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─── ViewingsList ──────────────────────────────────────────
 
 function ViewingsList() {
   const [viewings, setViewings] = useState<Array<{
@@ -256,7 +410,6 @@ function ViewingsList() {
     scheduled: 'Запланирован', confirmed: 'Подтверждён', completed: 'Завершён',
     cancelled_user: 'Отменён', cancelled_manager: 'Отменён менеджером', no_show: 'Не явился',
   };
-
   const RESULT_COLORS: Record<string, string> = {
     scheduled: 'bg-primary/10 text-primary',
     confirmed: 'bg-accent/10 text-accent',
@@ -272,22 +425,23 @@ function ViewingsList() {
       toast.success('Запись отменена');
       load();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Ошибка';
-      toast.error(message);
+      toast.error(err instanceof Error ? err.message : 'Ошибка');
     }
   };
 
-  if (loading) return (
-    <div className="bg-white rounded-lg p-12 text-center">
-      <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
-    </div>
-  );
+  if (loading) {
+    return (
+      <div className="bg-card rounded-lg border border-border p-12 text-center">
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+      </div>
+    );
+  }
 
   if (viewings.length === 0) {
     return (
-      <div className="bg-white rounded-lg p-12 text-center">
+      <div className="bg-card rounded-lg border border-border p-12 text-center">
         <Eye className="w-16 h-16 text-muted-foreground mx-auto mb-4 opacity-30" />
-        <h3 className="text-xl font-semibold mb-2">Нет записей на просмотр</h3>
+        <h3 className="text-xl font-semibold text-foreground mb-2">Нет записей на просмотр</h3>
         <p className="text-muted-foreground mb-4">Перейдите в каталог и запишитесь на просмотр понравившегося авто</p>
         <Link to="/catalog" className="inline-block px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90">
           Перейти в каталог
@@ -298,12 +452,12 @@ function ViewingsList() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-2xl font-semibold">Мои записи на просмотр</h2>
+      <h2 className="text-2xl font-semibold text-foreground">Мои записи на просмотр</h2>
       {viewings.map(v => (
-        <div key={v.id} className="bg-white rounded-lg p-6 border border-border">
+        <div key={v.id} className="bg-card rounded-lg border border-border p-6">
           <div className="flex items-center justify-between mb-2">
             <div>
-              <p className="font-semibold">Просмотр авто</p>
+              <p className="font-semibold text-foreground">Просмотр авто</p>
               <p className="text-sm text-muted-foreground">
                 {new Date(v.viewing_date).toLocaleDateString('ru-RU')}
                 {v.viewing_time ? ` в ${v.viewing_time}` : ''}
@@ -315,10 +469,8 @@ function ViewingsList() {
             </span>
           </div>
           {(v.result === 'scheduled' || v.result === 'confirmed') && (
-            <button
-              onClick={() => handleCancel(v.id)}
-              className="mt-3 px-4 py-2 text-sm text-destructive border border-destructive rounded-lg hover:bg-destructive/10 transition-colors"
-            >
+            <button onClick={() => handleCancel(v.id)}
+              className="mt-3 px-4 py-2 text-sm text-destructive border border-destructive rounded-lg hover:bg-destructive/10 transition-colors">
               Отменить запись
             </button>
           )}
