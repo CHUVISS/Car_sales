@@ -197,4 +197,18 @@ export const adminApi = {
   // Deals
   getDeals: (skip = 0, limit = 20) =>
     req<{ data: AdminDeal[]; count: number }>(`/deals?skip=${skip}&limit=${limit}`),
+
+  // Car images upload (multipart — без Content-Type, браузер выставит boundary сам)
+  uploadCarImages: async (id: string, formData: FormData): Promise<void> => {
+    const token = localStorage.getItem('access_token');
+    const res = await fetch(`${BASE_URL}/cars/${id}/images`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Ошибка загрузки' }));
+      throw new Error(err.detail ?? 'Ошибка загрузки');
+    }
+  },
 };

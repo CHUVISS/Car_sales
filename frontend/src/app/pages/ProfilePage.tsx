@@ -4,6 +4,8 @@ import { toast } from 'sonner';
 import { useAuth } from '../hooks/useAuth';
 import { useNavigate, Link, useSearchParams } from 'react-router';
 import { api } from '../api/client';
+import { viewingsApi, type ViewingPublic } from '../api/viewings';
+import { carsApi } from '../api/cars';
 import { FavoritesPage } from './FavoritesPage';
 import { useFavorites } from '../hooks/useFavorites';
 
@@ -385,45 +387,53 @@ function PasswordStrength({ password }: { password: string }) {
 
 // ─── ViewingsList ──────────────────────────────────────────
 
+const RESULT_LABELS: Record<string, string> = {
+  scheduled: 'Запланирован', confirmed: 'Подтверждён', completed: 'Завершён',
+  cancelled_user: 'Отменён', cancelled_manager: 'Отменён менеджером', no_show: 'Не явился',
+};
+const RESULT_COLORS: Record<string, string> = {
+  scheduled: 'bg-primary/10 text-primary',
+  confirmed: 'bg-accent/10 text-accent',
+  completed: 'bg-muted text-muted-foreground',
+  cancelled_user: 'bg-destructive/10 text-destructive',
+  cancelled_manager: 'bg-destructive/10 text-destructive',
+  no_show: 'bg-secondary text-muted-foreground',
+};
+
 function ViewingsList() {
-  const [viewings, setViewings] = useState<Array<{
-    id: string; viewing_date: string; viewing_time: string | null;
-    result: string; car_id: string; comment: string | null;
-  }>>([]);
-  const [loaded, setLoaded] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [viewings, setViewings] = useState<ViewingPublic[]>([]);
+  const [carsMap, setCarsMap] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
 
   const load = async () => {
     setLoading(true);
     try {
-      const data = await api.get<{ data: typeof viewings; count: number }>('/user/viewings');
+      const data = await viewingsApi.list();
       setViewings(data.data);
+
+      // Загружаем названия машин параллельно
+      const uniqueIds = [...new Set(data.data.map(v => v.car_id))];
+      const results = await Promise.allSettled(uniqueIds.map(id => carsApi.get(id)));
+      const map: Record<string, string> = {};
+      results.forEach((r, i) => {
+        if (r.status === 'fulfilled') {
+          const c = r.value;
+          map[uniqueIds[i]] = `${c.brand} ${c.model} ${c.year}`;
+        }
+      });
+      setCarsMap(map);
     } catch {
       // нет записей или не авторизован
     } finally {
       setLoading(false);
-      setLoaded(true);
     }
   };
 
-  if (!loaded && !loading) { load(); }
-
-  const RESULT_LABELS: Record<string, string> = {
-    scheduled: 'Запланирован', confirmed: 'Подтверждён', completed: 'Завершён',
-    cancelled_user: 'Отменён', cancelled_manager: 'Отменён менеджером', no_show: 'Не явился',
-  };
-  const RESULT_COLORS: Record<string, string> = {
-    scheduled: 'bg-primary/10 text-primary',
-    confirmed: 'bg-accent/10 text-accent',
-    completed: 'bg-muted text-muted-foreground',
-    cancelled_user: 'bg-destructive/10 text-destructive',
-    cancelled_manager: 'bg-destructive/10 text-destructive',
-    no_show: 'bg-secondary text-muted-foreground',
-  };
+  useEffect(() => { load(); }, []);
 
   const handleCancel = async (id: string) => {
     try {
-      await api.patch(`/user/viewings/${id}/cancel`, {});
+      await viewingsApi.cancel(id);
       toast.success('Запись отменена');
       load();
     } catch (err: unknown) {
@@ -457,22 +467,31 @@ function ViewingsList() {
       <h2 className="text-2xl font-semibold text-foreground">Мои записи на просмотр</h2>
       {viewings.map(v => (
         <div key={v.id} className="bg-card rounded-lg border border-border p-6">
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <p className="font-semibold text-foreground">Просмотр авто</p>
-              <p className="text-sm text-muted-foreground">
-                {new Date(v.viewing_date).toLocaleDateString('ru-RU')}
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              <Link
+                to={`/car/${v.car_id}`}
+                className="font-semibold text-foreground hover:text-primary transition-colors"
+              >
+                {carsMap[v.car_id] ?? 'Автомобиль'}
+              </Link>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                {new Date(v.viewing_date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
                 {v.viewing_time ? ` в ${v.viewing_time}` : ''}
               </p>
-              {v.comment && <p className="text-sm text-muted-foreground mt-1">{v.comment}</p>}
+              {v.comment && (
+                <p className="text-sm text-muted-foreground mt-1 italic">«{v.comment}»</p>
+              )}
             </div>
-            <span className={`px-3 py-1 rounded-full text-sm font-medium ${RESULT_COLORS[v.result] ?? 'bg-secondary text-muted-foreground'}`}>
+            <span className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium ${RESULT_COLORS[v.result] ?? 'bg-secondary text-muted-foreground'}`}>
               {RESULT_LABELS[v.result] ?? v.result}
             </span>
           </div>
           {(v.result === 'scheduled' || v.result === 'confirmed') && (
-            <button onClick={() => handleCancel(v.id)}
-              className="mt-3 px-4 py-2 text-sm text-destructive border border-destructive rounded-lg hover:bg-destructive/10 transition-colors">
+            <button
+              onClick={() => handleCancel(v.id)}
+              className="mt-4 px-4 py-2 text-sm text-destructive border border-destructive/50 rounded-lg hover:bg-destructive/10 transition-colors"
+            >
               Отменить запись
             </button>
           )}

@@ -126,9 +126,9 @@ export function AboutPage() {
             </a>
             <a
               href="mailto:info@autosalon.ru"
-              className="px-8 py-3 bg-white border border-border rounded-lg hover:bg-secondary transition-colors"
+              className="px-8 py-3 bg-background text-foreground border border-border rounded-lg hover:bg-secondary transition-colors"
             >
-              Написать email
+              Написать на email
             </a>
           </div>
         </div>

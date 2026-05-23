@@ -433,6 +433,7 @@ function CarsTab() {
     } catch { /* тихо */ }
   }, []);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadPage(0); loadAllInBackground(); return () => { allCarsAbort.current?.abort(); }; }, []);
   useEffect(() => { return () => { previews.forEach(url => URL.revokeObjectURL(url)); }; }, [previews]);
 
@@ -481,7 +482,7 @@ function CarsTab() {
     clearFiles(); setShowForm(true);
   };
 
-  const handleSave = async (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault(); setSaving(true);
     try {
       const body = { brand: form.brand, model: form.model, year: Number(form.year), price: Number(form.price), mileage: Number(form.mileage), ...(form.color && { color: form.color }), ...(form.fuel_type && { fuel_type: form.fuel_type }), ...(form.transmission && { transmission: form.transmission }), ...(form.body_type && { body_type: form.body_type }), ...(form.engine_volume && { engine_volume: Number(form.engine_volume) }), ...(form.engine_power && { engine_power: Number(form.engine_power) }), ...(form.description && { description: form.description }), ...(form.vin && { vin: form.vin }), // TODO: подключить когда бэк добавит поля осмотра
@@ -491,7 +492,7 @@ function CarsTab() {
       else { await adminApi.updateCar(editCar.id, body); toast.success('Автомобиль обновлён'); }
       if (selectedFiles.length > 0 && carId) {
         const fd = new FormData(); selectedFiles.forEach(f => fd.append('images', f));
-        await adminApi.uploadCarImages?.(carId, fd); toast.success(`${selectedFiles.length} фото загружено`);
+        await adminApi.uploadCarImages(carId, fd); toast.success(`${selectedFiles.length} фото загружено`);
       }
       setShowForm(false); clearFiles(); handleReload();
     } catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Ошибка'); }
@@ -1065,7 +1066,7 @@ function UsersTab() {
   const openCreate = () => { setEditUser(null); setForm({ full_name: '', email: '', password: '', role: 'manager' }); setShowForm(true); };
   const openEdit = (u: AdminUser) => { setEditUser(u); setForm({ full_name: u.full_name, email: u.email, password: '', role: u.role, status: u.status }); setShowForm(true); };
 
-  const handleSave = async (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault(); setSaving(true);
     try {
       if (editUser) {
@@ -1149,8 +1150,8 @@ function UsersTab() {
               ))}</tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {displayedUsers.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">Пусто</td></tr>
+              {displayedUsers.length === 0 && !searchLoading ? (
+                <tr><td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">{isSearching ? 'По вашему запросу ничего не найдено' : 'Пусто'}</td></tr>
               ) : displayedUsers.map(u => (
                 <tr key={u.id} className="hover:bg-secondary/50 transition-colors">
                   <td className="px-4 py-3"><p className="font-semibold text-foreground">{u.full_name}</p>{u.phone && <p className="text-xs text-muted-foreground">{u.phone}</p>}</td>
@@ -1278,7 +1279,7 @@ export function AdminPage() {
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 ${isActive ? 'bg-foreground text-background shadow-sm' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'}`}>
                 <Icon className="w-4 h-4" /> {tab.label}
                 {tab.badge !== undefined && tab.badge > 0 && (
-                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${isActive ? 'bg-white/20 text-white' : 'bg-destructive/10 text-destructive'}`}>{tab.badge}</span>
+                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${isActive ? 'bg-background/20 text-background' : 'bg-destructive/10 text-destructive'}`}>{tab.badge}</span>
                 )}
               </button>
             );

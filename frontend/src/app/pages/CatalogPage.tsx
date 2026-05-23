@@ -1,9 +1,11 @@
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { useState, useEffect, useMemo, useRef, type KeyboardEvent, type ChangeEvent } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, type KeyboardEvent, type ChangeEvent } from 'react';
 import { CarCard } from '../components/CarCard';
 import { SlidersHorizontal, X, ChevronDown, Check, Search } from 'lucide-react';
-import { useCars } from '../hooks/useCars';
+import { carsApi } from '../api/cars';
 import type { CarFilters, FuelType, Transmission, Car as CarType } from '../api/cars';
+
+const PAGE_SIZE = 30;
 
 const ALL_BRANDS = ['Audi', 'BMW', 'Hyundai', 'Kia', 'Lexus', 'Mazda', 'Mercedes', 'Nissan', 'Skoda', 'Tesla', 'Toyota', 'Volkswagen'];
 const ALL_COLORS = ['Белый', 'Синий', 'Серый', 'Красный', 'Серебристый', 'Черный'];
@@ -226,6 +228,15 @@ export function CatalogPage() {
   const [sortBy, setSortBy] = useState<CarFilters['sort_by']>('date_desc');
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Infinite scroll state
+  const [allCars, setAllCars] = useState<CarType[]>([]);
+  const [serverTotal, setServerTotal] = useState(0);
+  const [serverSkip, setServerSkip] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     const b = searchParams.get('brands'); if (b) setSelectedBrands(b.split(',').filter(Boolean));
     const t = searchParams.get('transmissions'); if (t) setSelectedTransmissions(t.split(',') as Transmission[]);
@@ -262,7 +273,7 @@ export function CatalogPage() {
   }, [selectedBrands, selectedTransmissions, selectedFuels, selectedColors, priceMin, priceMax, mileageMin, mileageMax, yearMin, yearMax, isNew, sortBy, searchQuery]);
 
   const apiFilters: CarFilters = useMemo(() => {
-    const f: CarFilters = { sort_by: sortBy, limit: 100 };
+    const f: CarFilters = { sort_by: sortBy };
     if (selectedBrands.length === 1) f.brand = selectedBrands[0];
     if (priceMin) f.price_from = Number(priceMin);
     if (priceMax) f.price_to = Number(priceMax);
@@ -274,7 +285,52 @@ export function CatalogPage() {
     return f;
   }, [sortBy, selectedBrands, selectedTransmissions, selectedFuels, isNew, priceMin, priceMax, yearMin, yearMax]);
 
-  const { cars, loading, error } = useCars(apiFilters);
+  // Начальная загрузка + сброс при смене фильтров
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    setAllCars([]);
+    setServerSkip(0);
+    setServerTotal(0);
+    carsApi.list({ ...apiFilters, skip: 0, limit: PAGE_SIZE })
+      .then(res => {
+        if (cancelled) return;
+        setAllCars(res.data);
+        setServerTotal(res.count);
+        setServerSkip(res.data.length);
+      })
+      .catch(e => { if (!cancelled) setError(e.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(apiFilters)]);
+
+  // Дозагрузка следующей страницы
+  const loadMore = useCallback(() => {
+    if (loadingMore || serverSkip >= serverTotal) return;
+    setLoadingMore(true);
+    carsApi.list({ ...apiFilters, skip: serverSkip, limit: PAGE_SIZE })
+      .then(res => {
+        setAllCars(prev => [...prev, ...res.data]);
+        setServerSkip(prev => prev + res.data.length);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingMore(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingMore, serverSkip, serverTotal, JSON.stringify(apiFilters)]);
+
+  // IntersectionObserver — триггер за 400px до конца списка
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || serverSkip >= serverTotal || loading) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) loadMore(); },
+      { rootMargin: '400px' },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [loadMore, serverSkip, serverTotal, loading]);
 
   const toggleBrand = (brand: string) => setSelectedBrands(p => p.includes(brand) ? p.filter(b => b !== brand) : [...p, brand]);
   const toggleTransmission = (t: Transmission) => setSelectedTransmissions(p => p.includes(t) ? p.filter(x => x !== t) : [...p, t]);
@@ -290,15 +346,15 @@ export function CatalogPage() {
   };
 
   const searchFilteredCars = useMemo(() => {
-    if (!searchQuery.trim()) return cars;
+    if (!searchQuery.trim()) return allCars;
     const q = searchQuery.toLowerCase().trim();
-    return cars.filter(car =>
+    return allCars.filter(car =>
       car.brand.toLowerCase().includes(q) ||
       car.model.toLowerCase().includes(q) ||
       `${car.brand} ${car.model}`.toLowerCase().includes(q) ||
       car.description?.toLowerCase().includes(q)
     );
-  }, [cars, searchQuery]);
+  }, [allCars, searchQuery]);
 
   const filteredCars = useMemo(() => {
     let result = [...searchFilteredCars];
@@ -344,6 +400,7 @@ export function CatalogPage() {
     images: car.images.length > 0 ? car.images.map(img => img.url) : ['placeholder'],
     description: car.description ?? '',
     isNew: car.status === 'available' && car.mileage === 0,
+    status: car.status,
     createdAt: car.created_at, vin: car.vin ?? undefined,
   })), [filteredCars]);
 
@@ -390,7 +447,7 @@ export function CatalogPage() {
             <div>
               <h1 className="text-3xl font-semibold text-foreground mb-1">Каталог автомобилей</h1>
               <p className="text-muted-foreground">
-                {loading ? 'Загрузка...' : `Найдено: ${adaptedCars.length} автомобилей`}
+                {loading ? 'Загрузка...' : `Найдено: ${serverTotal} автомобилей`}
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -415,7 +472,7 @@ export function CatalogPage() {
           </div>
 
           <CatalogSearch
-            cars={cars}
+            cars={allCars}
             placeholder="Поиск по марке или модели..."
             onSelect={car => { if (car) navigate(`/car/${car.id}`); }}
           />
@@ -468,9 +525,33 @@ export function CatalogPage() {
               </div>
             )}
             {!loading && !error && adaptedCars.length > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {adaptedCars.map(car => <CarCard key={car.id} car={car} />)}
-              </div>
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {adaptedCars.map(car => <CarCard key={car.id} car={car} />)}
+                </div>
+
+                {/* Sentinel + индикатор дозагрузки */}
+                {serverSkip < serverTotal && (
+                  <div ref={sentinelRef} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
+                    {loadingMore && Array.from({ length: 3 }).map((_, i) => (
+                      <div key={i} className="bg-card rounded-lg border border-border overflow-hidden">
+                        <div className="aspect-[4/3] bg-secondary animate-pulse" />
+                        <div className="p-4 space-y-3">
+                          <div className="h-5 bg-secondary rounded animate-pulse" />
+                          <div className="h-4 bg-secondary rounded animate-pulse w-2/3" />
+                          <div className="h-7 bg-secondary rounded animate-pulse w-1/2" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {serverSkip >= serverTotal && allCars.length > PAGE_SIZE && (
+                  <p className="text-center text-sm text-muted-foreground mt-8 pb-4">
+                    Все {serverTotal} автомобилей загружены
+                  </p>
+                )}
+              </>
             )}
             {!loading && !error && adaptedCars.length === 0 && (
               <div className="text-center py-16">
