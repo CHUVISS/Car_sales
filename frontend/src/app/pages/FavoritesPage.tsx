@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
-import { Heart, Trash2, ShoppingBag } from 'lucide-react';
+import { Heart, Trash2, ShoppingBag, AlertTriangle } from 'lucide-react';
 import { carsApi, type Car } from '../api/cars';
 import { useFavorites } from '../hooks/useFavorites';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
@@ -39,7 +39,6 @@ export function FavoritesPage() {
 
   useEffect(() => {
     if (ids.length === 0) { setCars([]); return; }
-
     setLoading(true);
     Promise.allSettled(ids.map(id => carsApi.get(id)))
       .then(results => {
@@ -53,22 +52,23 @@ export function FavoritesPage() {
         setNotFound(missing);
       })
       .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ids.join(',')]);
 
   if (loading) {
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-semibold">Избранное</h2>
+          <h2 className="text-2xl font-semibold text-foreground">Избранное</h2>
         </div>
         <div className="grid grid-cols-1 gap-4">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="bg-white rounded-xl border border-border p-4 flex gap-4 animate-pulse">
-              <div className="w-32 h-24 bg-secondary rounded-lg flex-shrink-0" />
-              <div className="flex-1 space-y-2">
+            <div key={i} className="bg-card border border-border rounded-xl p-4 flex gap-4 animate-pulse">
+              <div className="w-36 h-24 bg-secondary rounded-lg flex-shrink-0" />
+              <div className="flex-1 space-y-2 py-1">
                 <div className="h-5 bg-secondary rounded w-1/2" />
                 <div className="h-4 bg-secondary rounded w-1/3" />
-                <div className="h-6 bg-secondary rounded w-1/4" />
+                <div className="h-6 bg-secondary rounded w-1/4 mt-4" />
               </div>
             </div>
           ))}
@@ -79,11 +79,13 @@ export function FavoritesPage() {
 
   if (ids.length === 0) {
     return (
-      <div className="bg-white rounded-lg p-12 text-center">
-        <Heart className="w-16 h-16 text-muted-foreground mx-auto mb-4 opacity-30" />
-        <h3 className="text-xl font-semibold mb-2">Список избранного пуст</h3>
-        <p className="text-muted-foreground mb-6">
-          Добавляйте понравившиеся автомобили в избранное, нажимая на&nbsp;♥ в карточке
+      <div className="bg-card border border-border rounded-xl p-12 text-center">
+        <div className="w-20 h-20 bg-secondary rounded-full flex items-center justify-center mx-auto mb-5">
+          <Heart className="w-10 h-10 text-muted-foreground opacity-40" />
+        </div>
+        <h3 className="text-xl font-semibold text-foreground mb-2">Список избранного пуст</h3>
+        <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
+          Добавляйте понравившиеся автомобили в избранное, нажимая на ♥ в карточке
         </p>
         <Link
           to="/catalog"
@@ -99,7 +101,7 @@ export function FavoritesPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-semibold">
+        <h2 className="text-2xl font-semibold text-foreground">
           Избранное{' '}
           <span className="text-muted-foreground text-lg font-normal">({cars.length})</span>
         </h2>
@@ -116,11 +118,14 @@ export function FavoritesPage() {
 
       {/* Предупреждение об удалённых авто */}
       {notFound.length > 0 && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3 text-sm text-yellow-800 flex items-center justify-between gap-3">
-          <span>{notFound.length} авто больше не доступно и было удалено из списка.</span>
+        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-sm text-yellow-600 dark:text-yellow-400">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+            <span>{notFound.length} авто больше не доступно в каталоге</span>
+          </div>
           <button
             onClick={() => notFound.forEach(id => toggle(id))}
-            className="text-xs underline hover:no-underline flex-shrink-0"
+            className="text-xs text-yellow-600 dark:text-yellow-400 underline hover:no-underline flex-shrink-0"
           >
             Убрать из списка
           </button>
@@ -133,9 +138,9 @@ export function FavoritesPage() {
           return (
             <div
               key={car.id}
-              className="bg-white rounded-xl border border-border overflow-hidden hover:shadow-md transition-shadow"
+              className="bg-card border border-border rounded-xl overflow-hidden hover:shadow-md transition-shadow group"
             >
-              <div className="flex gap-0">
+              <div className="flex">
                 {/* Фото */}
                 <Link to={`/car/${car.id}`} className="flex-shrink-0 w-36 sm:w-48">
                   <div className="h-full min-h-[100px] bg-secondary">
@@ -143,7 +148,7 @@ export function FavoritesPage() {
                       <ImageWithFallback
                         src={primaryImg.url}
                         alt={`${car.brand} ${car.model}`}
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-muted-foreground/30 text-4xl">🚗</div>
@@ -156,7 +161,7 @@ export function FavoritesPage() {
                   <div>
                     <div className="flex items-start justify-between gap-2 mb-1">
                       <Link to={`/car/${car.id}`} className="hover:text-primary transition-colors">
-                        <h3 className="font-semibold text-lg leading-tight">
+                        <h3 className="font-semibold text-lg text-foreground leading-tight">
                           {car.brand} {car.model}
                         </h3>
                       </Link>
@@ -169,7 +174,7 @@ export function FavoritesPage() {
                       </button>
                     </div>
 
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-center gap-2 flex-wrap mb-2">
                       <span className="text-sm text-muted-foreground">
                         {car.year} г. • {formatMileage(car.mileage)}
                       </span>
