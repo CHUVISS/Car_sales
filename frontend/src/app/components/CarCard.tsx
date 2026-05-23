@@ -1,7 +1,7 @@
 import { Link } from 'react-router';
 import { Heart, Eye } from 'lucide-react';
-import { useState } from 'react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
+import { useFavorites } from '../hooks/useFavorites';
 
 interface Car {
   id: string;
@@ -33,7 +33,7 @@ function formatMileage(m: number): string {
   return `${new Intl.NumberFormat('ru-RU').format(m)} км`;
 }
 const TRANSMISSION_LABELS: Record<string, string> = { automatic: 'Автомат', manual: 'Механика' };
-const FUEL_LABELS: Record<string, string> = { petrol: 'Бензин', diesel: 'Дизель', electric: 'Электро', hybrid: 'Гибрид' };
+const FUEL_LABELS: Record<string, string> = { petrol: 'Бензин', diesel: 'Дизель', electric: 'Электро', hybrid: 'Гибрид', gas: 'Газ' };
 
 function getImageSrc(img: string, carId: string): string {
   if (img.startsWith('http') || img.startsWith('/uploads')) return img;
@@ -50,23 +50,32 @@ function getImageSrc(img: string, carId: string): string {
 }
 
 export function CarCard({ car }: CarCardProps) {
-  const [isFavorite, setIsFavorite] = useState(false);
+  const { isFavorite, toggle } = useFavorites();
+  const favorite = isFavorite(car.id);
   const imageSrc = getImageSrc(car.images[0] ?? '', car.id);
 
   return (
-    <Link to={`/car/${car.id}`}
-      className="group block bg-white rounded-lg border border-border overflow-hidden hover:shadow-lg transition-shadow">
+    <Link
+      to={`/car/${car.id}`}
+      className="group block bg-card text-card-foreground rounded-lg border border-border overflow-hidden hover:shadow-lg transition-shadow"
+    >
       <div className="relative aspect-[4/3] bg-secondary overflow-hidden">
-        <ImageWithFallback src={imageSrc} alt={`${car.brand} ${car.model}`}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-        <div className="absolute top-3 left-3 flex gap-2">
-          {car.isNew && (
-            <span className="px-3 py-1 bg-accent text-accent-foreground rounded-full text-xs">Новый</span>
-          )}
-        </div>
-        <button onClick={e => { e.preventDefault(); setIsFavorite(!isFavorite); }}
-          className="absolute top-3 right-3 p-2 bg-white/90 rounded-full hover:bg-white transition-colors">
-          <Heart className={`w-5 h-5 ${isFavorite ? 'fill-destructive text-destructive' : 'text-foreground'}`} />
+        <ImageWithFallback
+          src={imageSrc}
+          alt={`${car.brand} ${car.model}`}
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+        />
+        {car.isNew && (
+          <div className="absolute top-3 left-3">
+            <span className="px-3 py-1 bg-accent text-accent-foreground rounded-full text-xs font-medium">Новый</span>
+          </div>
+        )}
+        <button
+          onClick={e => { e.preventDefault(); toggle(car.id); }}
+          className="absolute top-3 right-3 p-2 bg-card/90 rounded-full hover:bg-card transition-colors"
+          title={favorite ? 'Убрать из избранного' : 'Добавить в избранное'}
+        >
+          <Heart className={`w-5 h-5 transition-colors ${favorite ? 'fill-destructive text-destructive' : 'text-foreground'}`} />
         </button>
       </div>
 

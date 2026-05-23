@@ -1,7 +1,6 @@
 import { Shield, Award, Users, Clock } from 'lucide-react';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 
-// 🔹 Импорт локальных изображений команды
 import alexImage from '../../assets/Alex_1.png';
 import matveyImage from '../../assets/Matt.png';
 import alekseyImage from '../../assets/Alex2_1.png';

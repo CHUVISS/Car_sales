@@ -7,7 +7,12 @@ import { toast } from 'sonner';
 import { useCars } from '../hooks/useCars';
 import { messagesApi } from '../api/messages';
 
+import Mercedes from '../../assets/mercedes.jpg';
+import Ford from '../../assets/ford.jpg';
+
 const ALL_BRANDS = ['Audi', 'BMW', 'Hyundai', 'Kia', 'Lexus', 'Mazda', 'Mercedes-Benz', 'Nissan', 'Skoda', 'Tesla', 'Toyota', 'Volkswagen'];
+
+const inputCls = "w-full px-4 py-3 bg-secondary text-foreground placeholder:text-muted-foreground rounded-lg outline-none focus:ring-2 focus:ring-primary border border-transparent focus:border-primary";
 
 export function HomePage() {
   const navigate = useNavigate();
@@ -21,24 +26,18 @@ export function HomePage() {
   const { cars, loading } = useCars({ limit: 6, sort_by: 'date_desc' });
 
   const adaptedCars = cars.map(car => ({
-    id: car.id,
-    brand: car.brand,
-    model: car.model,
-    year: car.year,
-    price: Number(car.price),
-    mileage: car.mileage,
+    id: car.id, brand: car.brand, model: car.model, year: car.year,
+    price: Number(car.price), mileage: car.mileage,
     transmission: (car.transmission === 'automatic' || car.transmission === 'robot' || car.transmission === 'variator') ? 'automatic' as const : 'manual' as const,
     fuel: (car.fuel_type ?? 'petrol') as 'petrol' | 'diesel' | 'electric' | 'hybrid',
-    color: car.color ?? '',
-    engineVolume: Number(car.engine_volume ?? 0),
+    color: car.color ?? '', engineVolume: Number(car.engine_volume ?? 0),
     drive: 'front' as const,
     body: (car.body_type ?? 'sedan') as 'sedan' | 'suv' | 'hatchback' | 'wagon' | 'coupe' | 'minivan',
     power: car.engine_power ?? 0,
     images: car.images.length > 0 ? car.images.map(img => img.url) : ['placeholder'],
     description: car.description ?? '',
     isNew: car.status === 'available' && car.mileage === 0,
-    createdAt: car.created_at,
-    vin: car.vin ?? undefined,
+    createdAt: car.created_at, vin: car.vin ?? undefined,
   }));
 
   const handleSearch = (e: React.FormEvent) => {
@@ -48,22 +47,18 @@ export function HomePage() {
 
   const handleLeadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formEmail) {
-      toast.error('Укажите email для связи');
-      return;
-    }
+    if (!formEmail) { toast.error('Укажите email для связи'); return; }
     setSubmitting(true);
     try {
       await messagesApi.send({
-        name: formName,
-        email: formEmail,
+        name: formName, email: formEmail,
         phone: formPhone || undefined,
         body: formComment || 'Заявка с главной страницы',
         message_type: 'callback',
       });
       toast.success('Заявка успешно отправлена! Мы свяжемся с вами в ближайшее время.');
       setFormName(''); setFormPhone(''); setFormComment(''); setFormEmail('');
-    } catch (err) {
+    } catch {
       toast.error('Ошибка отправки. Попробуйте позже.');
     } finally {
       setSubmitting(false);
@@ -72,6 +67,7 @@ export function HomePage() {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Герой */}
       <section className="relative bg-primary text-primary-foreground">
         <div className="absolute inset-0 overflow-hidden">
           <ImageWithFallback
@@ -83,14 +79,15 @@ export function HomePage() {
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 lg:py-32">
           <div className="max-w-2xl">
             <h1 className="text-4xl lg:text-5xl font-semibold mb-4">Найдите автомобиль своей мечты</h1>
-            <p className="text-lg opacity-90 mb-8">
-              Широкий выбор новых и подержанных автомобилей. Выгодные условия, гарантия качества.
-            </p>
-            <form onSubmit={handleSearch} className="bg-white rounded-lg p-4 shadow-lg">
+            <p className="text-lg opacity-90 mb-8">Широкий выбор новых и подержанных автомобилей. Выгодные условия, гарантия качества.</p>
+            <form onSubmit={handleSearch} className="bg-card rounded-lg p-4 shadow-lg border border-border">
               <div className="flex flex-col md:flex-row gap-3">
                 <div className="flex-1">
-                  <select value={searchBrand} onChange={e => setSearchBrand(e.target.value)}
-                    className="w-full px-4 py-3 bg-secondary rounded-lg text-foreground outline-none focus:ring-2 focus:ring-primary">
+                  <select
+                    value={searchBrand}
+                    onChange={e => setSearchBrand(e.target.value)}
+                    className="w-full px-4 py-3 bg-secondary text-foreground rounded-lg outline-none focus:ring-2 focus:ring-primary border border-border"
+                  >
                     <option value="">Все марки</option>
                     {ALL_BRANDS.map(brand => <option key={brand} value={brand}>{brand}</option>)}
                   </select>
@@ -106,44 +103,46 @@ export function HomePage() {
         </div>
       </section>
 
+      {/* Категории */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Link to="/catalog" className="group relative overflow-hidden rounded-lg bg-secondary hover:shadow-lg transition-shadow">
+          <Link to="/catalog" className="group relative overflow-hidden rounded-lg bg-secondary hover:shadow-lg transition-shadow border border-border">
             <div className="absolute inset-0">
-              <ImageWithFallback src="https://images.unsplash.com/photo-1603386329225-868f9b1ee6b1?w=800&q=80"
+              <ImageWithFallback src={Mercedes}
                 alt="Новые автомобили"
-                className="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-300" />
+                className="w-full h-full object-cover opacity-40 group-hover:scale-105 transition-transform duration-300" />
             </div>
             <div className="relative p-8">
               <Car className="w-12 h-12 text-primary mb-3" />
-              <h3 className="text-2xl font-semibold mb-2">Новые автомобили</h3>
+              <h3 className="text-2xl font-semibold text-foreground mb-2">Новые автомобили</h3>
               <p className="text-muted-foreground">Последние модели с заводской гарантией</p>
             </div>
           </Link>
-          <Link to="/catalog" className="group relative overflow-hidden rounded-lg bg-secondary hover:shadow-lg transition-shadow">
+          <Link to="/catalog" className="group relative overflow-hidden rounded-lg bg-secondary hover:shadow-lg transition-shadow border border-border">
             <div className="absolute inset-0">
-              <ImageWithFallback src="https://images.unsplash.com/photo-1583121274602-3e2820c69888?w=800&q=80"
+              <ImageWithFallback src={Ford}
                 alt="С пробегом"
-                className="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-300" />
+                className="w-full h-full object-cover opacity-40 group-hover:scale-105 transition-transform duration-300" />
             </div>
             <div className="relative p-8">
               <Car className="w-12 h-12 text-primary mb-3" />
-              <h3 className="text-2xl font-semibold mb-2">С пробегом</h3>
+              <h3 className="text-2xl font-semibold text-foreground mb-2">С пробегом</h3>
               <p className="text-muted-foreground">Проверенные автомобили по выгодной цене</p>
             </div>
           </Link>
         </div>
       </section>
 
+      {/* Популярные модели */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="flex items-center justify-between mb-8">
-          <h2 className="text-3xl font-semibold">Популярные модели</h2>
+          <h2 className="text-3xl font-semibold text-foreground">Популярные модели</h2>
           <Link to="/catalog" className="text-primary hover:underline">Смотреть все →</Link>
         </div>
         {loading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="bg-white rounded-lg border border-border overflow-hidden">
+              <div key={i} className="bg-card rounded-lg border border-border overflow-hidden">
                 <div className="aspect-[4/3] bg-secondary animate-pulse" />
                 <div className="p-4 space-y-3">
                   <div className="h-5 bg-secondary rounded animate-pulse" />
@@ -160,9 +159,10 @@ export function HomePage() {
         )}
       </section>
 
-      <section className="bg-secondary py-16">
+      {/* Преимущества */}
+      <section className="bg-secondary border-y border-border py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-semibold text-center mb-12">Наши преимущества</h2>
+          <h2 className="text-3xl font-semibold text-center text-foreground mb-12">Наши преимущества</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
               { icon: Shield, title: 'Гарантия качества', desc: 'Все автомобили проходят тщательную проверку перед продажей' },
@@ -173,7 +173,7 @@ export function HomePage() {
                 <div className="inline-flex items-center justify-center w-16 h-16 bg-primary/10 rounded-full mb-4">
                   <Icon className="w-8 h-8 text-primary" />
                 </div>
-                <h3 className="text-xl font-semibold mb-2">{title}</h3>
+                <h3 className="text-xl font-semibold text-foreground mb-2">{title}</h3>
                 <p className="text-muted-foreground">{desc}</p>
               </div>
             ))}
@@ -181,19 +181,16 @@ export function HomePage() {
         </div>
       </section>
 
+      {/* Форма заявки */}
       <section className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <div className="bg-white rounded-lg shadow-lg p-8">
-          <h2 className="text-2xl font-semibold mb-4 text-center">Оставьте заявку</h2>
+        <div className="bg-card rounded-lg border border-border shadow-sm p-8">
+          <h2 className="text-2xl font-semibold text-foreground mb-2 text-center">Оставьте заявку</h2>
           <p className="text-muted-foreground text-center mb-6">Наш менеджер свяжется с вами в течение 10 минут</p>
           <form className="space-y-4" onSubmit={handleLeadSubmit}>
-            <input type="text" placeholder="Ваше имя" required value={formName} onChange={e => setFormName(e.target.value)}
-              className="w-full px-4 py-3 bg-secondary rounded-lg outline-none focus:ring-2 focus:ring-primary" />
-            <input type="email" placeholder="Email *" required value={formEmail} onChange={e => setFormEmail(e.target.value)}
-              className="w-full px-4 py-3 bg-secondary rounded-lg outline-none focus:ring-2 focus:ring-primary" />
-            <input type="tel" placeholder="Телефон" value={formPhone} onChange={e => setFormPhone(e.target.value)}
-              className="w-full px-4 py-3 bg-secondary rounded-lg outline-none focus:ring-2 focus:ring-primary" />
-            <textarea placeholder="Комментарий (необязательно)" rows={3} value={formComment} onChange={e => setFormComment(e.target.value)}
-              className="w-full px-4 py-3 bg-secondary rounded-lg outline-none focus:ring-2 focus:ring-primary resize-none" />
+            <input type="text" placeholder="Ваше имя" required value={formName} onChange={e => setFormName(e.target.value)} className={inputCls} />
+            <input type="email" placeholder="Email *" required value={formEmail} onChange={e => setFormEmail(e.target.value)} className={inputCls} />
+            <input type="tel" placeholder="Телефон" value={formPhone} onChange={e => setFormPhone(e.target.value)} className={inputCls} />
+            <textarea placeholder="Комментарий (необязательно)" rows={3} value={formComment} onChange={e => setFormComment(e.target.value)} className={inputCls + ' resize-none'} />
             <button type="submit" disabled={submitting}
               className="w-full px-6 py-3 bg-accent text-accent-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50">
               {submitting ? 'Отправка...' : 'Отправить заявку'}
