@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router';
 import { Search, Car, Shield, Wallet, Headset } from 'lucide-react';
 import { CarCard } from '../components/CarCard';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 import { toast } from 'sonner';
 import { useCars } from '../hooks/useCars';
@@ -15,6 +15,7 @@ const ALL_BRANDS = ['Audi', 'BMW', 'Hyundai', 'Kia', 'Lexus', 'Mazda', 'Mercedes
 const inputCls = "w-full px-4 py-3 bg-secondary text-foreground placeholder:text-muted-foreground rounded-lg outline-none focus:ring-2 focus:ring-primary border border-transparent focus:border-primary";
 
 export function HomePage() {
+  useEffect(() => { window.scrollTo(0, 0); }, []);
   const navigate = useNavigate();
   const [searchBrand, setSearchBrand] = useState('');
   const [formName, setFormName] = useState('');

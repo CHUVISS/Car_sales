@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { User, Eye, FileText, LogOut, Heart, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../hooks/useAuth';
-import { useNavigate, Link } from 'react-router';
+import { useNavigate, Link, useSearchParams } from 'react-router';
 import { api } from '../api/client';
 import { FavoritesPage } from './FavoritesPage';
 import { useFavorites } from '../hooks/useFavorites';
@@ -14,7 +14,9 @@ const inputCls = "w-full px-4 py-3 bg-secondary text-foreground placeholder:text
 export function ProfilePage() {
   const { user, login, register, logout, loading } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<TabType>('profile');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = (searchParams.get('tab') as TabType) || 'profile';
+  const setActiveTab = (tab: TabType) => setSearchParams({ tab }, { replace: true });
   const { ids: favoriteIds } = useFavorites();
 
   // Форма входа/регистрации

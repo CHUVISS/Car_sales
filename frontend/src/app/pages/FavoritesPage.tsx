@@ -32,6 +32,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export function FavoritesPage() {
+  useEffect(() => { window.scrollTo(0, 0); }, []);
   const { ids, toggle, clear } = useFavorites();
   const [cars, setCars] = useState<Car[]>([]);
   const [loading, setLoading] = useState(false);

@@ -201,6 +201,7 @@ function CatalogSearch({ cars, onSelect, placeholder = 'Поиск по марк
 }
 
 export function CatalogPage() {
+  useEffect(() => { window.scrollTo(0, 0); }, []);
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);

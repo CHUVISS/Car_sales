@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Shield, Award, Users, Clock } from 'lucide-react';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 
@@ -8,6 +9,7 @@ import danilaImage from '../../assets/Danila2.png';
 import timofeyImage from '../../assets/Tima.png';
 
 export function AboutPage() {
+  useEffect(() => { window.scrollTo(0, 0); }, []);
   const teamMembers = [
     { name: 'Чувилов Александр', role: 'Тимлид', image: alexImage },
     { name: 'Дворников Матвей', role: 'Backend-разработчик', image: matveyImage },

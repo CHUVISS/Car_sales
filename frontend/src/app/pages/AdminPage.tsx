@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../hooks/useAuth';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import {
   adminApi,
   type AdminUser, type AdminCar, type AdminCarOffer,
@@ -405,7 +405,7 @@ function CarsTab() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editCar, setEditCar] = useState<AdminCar | null>(null);
-  const emptyForm = { brand: '', model: '', year: '', price: '', mileage: '0', color: '', fuel_type: '', transmission: '', body_type: '', engine_volume: '', engine_power: '', description: '', vin: '' };
+  const emptyForm = { brand: '', model: '', year: '', price: '', mileage: '0', color: '', fuel_type: '', transmission: '', body_type: '', engine_volume: '', engine_power: '', description: '', vin: '', viewing_days: [] as string[], viewing_time_from: '09:00', viewing_time_to: '20:00', viewing_address: '' };
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -476,14 +476,16 @@ function CarsTab() {
   const openCreate = () => { setEditCar(null); setForm(emptyForm); clearFiles(); setShowForm(true); };
   const openEdit = (car: AdminCar) => {
     setEditCar(car);
-    setForm({ brand: car.brand, model: car.model, year: String(car.year), price: String(car.price), mileage: String(car.mileage), color: car.color ?? '', fuel_type: car.fuel_type ?? '', transmission: car.transmission ?? '', body_type: car.body_type ?? '', engine_volume: car.engine_volume ?? '', engine_power: String(car.engine_power ?? ''), description: car.description ?? '', vin: car.vin ?? '' });
+    const c = car as AdminCar & { viewing_days?: string[]; viewing_time_from?: string; viewing_time_to?: string; viewing_address?: string };
+    setForm({ brand: car.brand, model: car.model, year: String(car.year), price: String(car.price), mileage: String(car.mileage), color: car.color ?? '', fuel_type: car.fuel_type ?? '', transmission: car.transmission ?? '', body_type: car.body_type ?? '', engine_volume: car.engine_volume ?? '', engine_power: String(car.engine_power ?? ''), description: car.description ?? '', vin: car.vin ?? '', viewing_days: c.viewing_days ?? [], viewing_time_from: c.viewing_time_from ?? '09:00', viewing_time_to: c.viewing_time_to ?? '20:00', viewing_address: c.viewing_address ?? '' });
     clearFiles(); setShowForm(true);
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault(); setSaving(true);
     try {
-      const body = { brand: form.brand, model: form.model, year: Number(form.year), price: Number(form.price), mileage: Number(form.mileage), ...(form.color && { color: form.color }), ...(form.fuel_type && { fuel_type: form.fuel_type }), ...(form.transmission && { transmission: form.transmission }), ...(form.body_type && { body_type: form.body_type }), ...(form.engine_volume && { engine_volume: Number(form.engine_volume) }), ...(form.engine_power && { engine_power: Number(form.engine_power) }), ...(form.description && { description: form.description }), ...(form.vin && { vin: form.vin }) };
+      const body = { brand: form.brand, model: form.model, year: Number(form.year), price: Number(form.price), mileage: Number(form.mileage), ...(form.color && { color: form.color }), ...(form.fuel_type && { fuel_type: form.fuel_type }), ...(form.transmission && { transmission: form.transmission }), ...(form.body_type && { body_type: form.body_type }), ...(form.engine_volume && { engine_volume: Number(form.engine_volume) }), ...(form.engine_power && { engine_power: Number(form.engine_power) }), ...(form.description && { description: form.description }), ...(form.vin && { vin: form.vin }), // TODO: подключить когда бэк добавит поля осмотра
+        ...(form.viewing_days.length && { viewing_days: form.viewing_days }), ...(form.viewing_time_from && { viewing_time_from: form.viewing_time_from }), ...(form.viewing_time_to && { viewing_time_to: form.viewing_time_to }), ...(form.viewing_address && { viewing_address: form.viewing_address }) };
       let carId = editCar?.id;
       if (!editCar) { const c = await adminApi.createCar(body); carId = c.id; toast.success('Автомобиль добавлен'); }
       else { await adminApi.updateCar(editCar.id, body); toast.success('Автомобиль обновлён'); }
@@ -660,8 +662,8 @@ function CarsTab() {
       </div>
 
       {showForm && (
-        <Modal title={editCar ? 'Редактировать авто' : 'Добавить авто'} onClose={() => setShowForm(false)}>
-          <form onSubmit={handleSave} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+        <Modal title={editCar ? 'Редактировать авто' : 'Добавить авто'} onClose={() => setShowForm(false)} size="lg">
+          <form onSubmit={handleSave} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
             <div className="grid grid-cols-2 gap-3">
               {([['brand','Марка *','text',true],['model','Модель *','text',true],['year','Год *','number',true],['price','Цена (₽) *','number',true],['mileage','Пробег (км)','number',false],['color','Цвет','text',false],['engine_volume','Объём (л)','number',false],['engine_power','Мощность (л.с.)','number',false],['vin','VIN','text',false]] as const).map(([key, label, type, required]) => (
                 <div key={key}>
@@ -722,6 +724,42 @@ function CarsTab() {
               <label className="block text-xs font-semibold mb-1 text-muted-foreground">Описание</label>
               <textarea value={form.description} rows={3} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} className={inputCls + ' resize-none'} />
             </div>
+
+            <div className="pt-2 border-t border-border">
+              <p className="text-sm font-semibold text-foreground mb-3">Осмотр автомобиля</p>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold mb-2 text-muted-foreground">Дни приёма</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map(day => {
+                      const active = form.viewing_days.includes(day);
+                      return (
+                        <button key={day} type="button"
+                          onClick={() => setForm(p => ({ ...p, viewing_days: active ? p.viewing_days.filter(d => d !== day) : [...p.viewing_days, day] }))}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${active ? 'bg-primary text-primary-foreground border-primary' : 'bg-secondary text-muted-foreground border-border hover:bg-secondary/80'}`}>
+                          {day}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold mb-1 text-muted-foreground">Время с</label>
+                    <input type="time" value={form.viewing_time_from} onChange={e => setForm(p => ({ ...p, viewing_time_from: e.target.value }))} className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1 text-muted-foreground">Время до</label>
+                    <input type="time" value={form.viewing_time_to} onChange={e => setForm(p => ({ ...p, viewing_time_to: e.target.value }))} className={inputCls} />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-muted-foreground">Адрес / место осмотра</label>
+                  <input type="text" placeholder="Например: г. Москва, ул. Автомобильная, д. 1" value={form.viewing_address} onChange={e => setForm(p => ({ ...p, viewing_address: e.target.value }))} className={inputCls} />
+                </div>
+              </div>
+            </div>
+
             <div className="flex gap-3 pt-2 sticky bottom-0 bg-card/95 backdrop-blur py-2 border-t border-border">
               <button type="button" onClick={() => setShowForm(false)} className="flex-1 px-4 py-2 bg-secondary text-foreground rounded-lg text-sm hover:bg-secondary/80 transition-colors">Отмена</button>
               <button type="submit" disabled={saving} className="flex-1 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm hover:opacity-90 disabled:opacity-50 transition-opacity">
@@ -1172,11 +1210,12 @@ function EmptyTableState({ text }: { text: string }) {
   return <div className="bg-card rounded-xl border border-border py-12 text-center"><p className="text-muted-foreground">{text}</p></div>;
 }
 
-function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+function Modal({ title, children, onClose, size = 'md' }: { title: string; children: React.ReactNode; onClose: () => void; size?: 'md' | 'lg' }) {
+  const maxW = size === 'lg' ? 'max-w-2xl' : 'max-w-lg';
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-card border border-border rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-xl">
+      <div className={`relative bg-card border border-border rounded-2xl p-6 w-full ${maxW} max-h-[90vh] overflow-y-auto shadow-xl`}>
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-lg font-semibold text-foreground">{title}</h3>
           <button onClick={onClose} className="p-1.5 hover:bg-secondary rounded-lg transition-colors text-foreground"><X className="w-5 h-5" /></button>
@@ -1190,9 +1229,12 @@ function Modal({ title, children, onClose }: { title: string; children: React.Re
 // ─── Main Page ─────────────────────────────────────────────
 
 export function AdminPage() {
+  useEffect(() => { window.scrollTo(0, 0); }, []);
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<TabType>('stats');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = (searchParams.get('tab') as TabType) || 'stats';
+  const setActiveTab = (tab: TabType) => setSearchParams({ tab }, { replace: true });
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
 

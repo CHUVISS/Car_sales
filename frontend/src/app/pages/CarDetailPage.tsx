@@ -1,10 +1,11 @@
-import { useParams, Link } from 'react-router';
-import { ArrowLeft, Heart, Share2, Phone, Calendar, Check, ChevronLeft, ChevronRight } from 'lucide-react';
-import { useState } from 'react';
+import { useParams, Link, useNavigate } from 'react-router';
+import { ArrowLeft, Heart, Share2, Phone, Calendar, Check, ChevronLeft, ChevronRight, Clock, MapPin } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 import { toast } from 'sonner';
 import { useCar } from '../hooks/useCars';
 import { useFavorites } from '../hooks/useFavorites';
+import { useSalonInfo } from '../hooks/useSalonInfo';
 import { messagesApi } from '../api/messages';
 import { viewingsApi } from '../api/viewings';
 
@@ -18,12 +19,25 @@ const TRANSMISSION_LABELS: Record<string, string> = { manual: 'Механика'
 const FUEL_LABELS: Record<string, string> = { petrol: 'Бензин', diesel: 'Дизель', electric: 'Электро', hybrid: 'Гибрид', gas: 'Газ' };
 const BODY_LABELS: Record<string, string> = { sedan: 'Седан', suv: 'Внедорожник', hatchback: 'Хэтчбек', wagon: 'Универсал', coupe: 'Купе', minivan: 'Минивэн', convertible: 'Кабриолет', pickup: 'Пикап' };
 
+const STATUS_LABELS: Record<string, string> = { available: 'В наличии', reserved: 'Зарезервирован', sold: 'Продан', inactive: 'Снят с продажи' };
+const STATUS_COLORS: Record<string, string> = {
+  available: 'bg-accent/15 text-accent border-accent/30',
+  reserved: 'bg-primary/10 text-primary border-primary/30',
+  sold: 'bg-muted text-muted-foreground border-border',
+  inactive: 'bg-muted text-muted-foreground border-border',
+};
+
 const inputCls = "w-full px-4 py-2 bg-secondary text-foreground placeholder:text-muted-foreground rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary border border-border focus:border-primary";
 
 export function CarDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { car, loading, error } = useCar(id);
   const { isFavorite, toggle: toggleFavorite } = useFavorites();
+  const navigate = useNavigate();
+  const salonInfo = useSalonInfo();
+
+  useEffect(() => { window.scrollTo(0, 0); }, []);
+
   const [showAppointmentForm, setShowAppointmentForm] = useState(false);
   const [activeSlide, setActiveSlide] = useState(0);
 
@@ -63,6 +77,25 @@ export function CarDetailPage() {
 
   const prevSlide = () => setActiveSlide(p => p === 0 ? carImages.length - 1 : p - 1);
   const nextSlide = () => setActiveSlide(p => p === carImages.length - 1 ? 0 : p + 1);
+
+  const handleShare = async () => {
+    const url = window.location.href;
+    const title = `${car.brand} ${car.model} ${car.year}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title, url });
+      } catch {
+        // пользователь отменил — ничего не делаем
+      }
+    } else {
+      try {
+        await navigator.clipboard.writeText(url);
+        toast.success('Ссылка скопирована в буфер обмена');
+      } catch {
+        toast.error('Не удалось скопировать ссылку');
+      }
+    }
+  };
 
   const handleAppointmentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -115,10 +148,10 @@ export function CarDetailPage() {
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <Link to="/catalog" className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground mb-6 transition-colors">
+        <button onClick={() => navigate(-1)} className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground mb-6 transition-colors">
           <ArrowLeft className="w-5 h-5" />
-          <span>Назад к каталогу</span>
-        </Link>
+          <span>Назад</span>
+        </button>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
@@ -127,7 +160,14 @@ export function CarDetailPage() {
               <div className="relative aspect-[16/9]">
                 <ImageWithFallback src={carImages[activeSlide]}
                   alt={`${car.brand} ${car.model} — фото ${activeSlide + 1}`}
-                  className="w-full h-full object-cover" />
+                  className={`w-full h-full object-cover ${car.status === 'sold' || car.status === 'inactive' ? 'brightness-75' : ''}`} />
+                {(car.status === 'sold' || car.status === 'inactive') && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <span className="px-6 py-3 bg-black/60 text-white text-xl font-bold rounded-xl tracking-wide backdrop-blur-sm border border-white/20">
+                      {STATUS_LABELS[car.status]}
+                    </span>
+                  </div>
+                )}
                 {carImages.length > 1 && (
                   <>
                     <button onClick={prevSlide}
@@ -163,10 +203,15 @@ export function CarDetailPage() {
             <div className="bg-card rounded-lg border border-border p-6">
               <div className="flex items-start justify-between mb-4">
                 <div>
-                  <div className="flex items-center gap-3 mb-2">
+                  <div className="flex items-center gap-3 mb-2 flex-wrap">
                     <h1 className="text-3xl font-semibold text-foreground">{car.brand} {car.model}</h1>
                     {car.mileage === 0 && (
                       <span className="px-3 py-1 bg-accent text-accent-foreground rounded-full text-sm font-medium">Новый</span>
+                    )}
+                    {car.status && (
+                      <span className={`px-3 py-1 rounded-full text-sm font-medium border ${STATUS_COLORS[car.status] ?? 'bg-muted text-muted-foreground border-border'}`}>
+                        {STATUS_LABELS[car.status] ?? car.status}
+                      </span>
                     )}
                   </div>
                   <p className="text-muted-foreground">{car.year} год • {formatMileage(car.mileage)}</p>
@@ -179,7 +224,11 @@ export function CarDetailPage() {
                   >
                     <Heart className={`w-6 h-6 transition-colors ${favorite ? 'fill-destructive text-destructive' : 'text-muted-foreground'}`} />
                   </button>
-                  <button className="p-2 rounded-lg hover:bg-secondary transition-colors border border-border">
+                  <button
+                    onClick={handleShare}
+                    className="p-2 rounded-lg hover:bg-secondary transition-colors border border-border"
+                    title="Поделиться"
+                  >
                     <Share2 className="w-6 h-6 text-muted-foreground" />
                   </button>
                 </div>
@@ -226,23 +275,46 @@ export function CarDetailPage() {
           {/* Боковая панель */}
           <div className="space-y-6">
             <div className="bg-card rounded-lg border border-border p-6 sticky top-20">
-              <h3 className="font-semibold text-foreground mb-4">Свяжитесь с нами</h3>
-              <div className="space-y-3 mb-6">
-                <button
-                  onClick={() => { window.location.href = 'tel:+79001234567'; }}
-                  className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-accent text-accent-foreground rounded-lg hover:opacity-90 transition-opacity"
-                >
-                  <Phone className="w-5 h-5" />
-                  <span>Позвонить</span>
-                </button>
-                <button
-                  onClick={() => setShowAppointmentForm(!showAppointmentForm)}
-                  className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity"
-                >
-                  <Calendar className="w-5 h-5" />
-                  <span>Записаться на просмотр</span>
-                </button>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-foreground">Свяжитесь с нами</h3>
+                {car.status && (
+                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${STATUS_COLORS[car.status] ?? 'bg-muted text-muted-foreground border-border'}`}>
+                    {STATUS_LABELS[car.status] ?? car.status}
+                  </span>
+                )}
               </div>
+
+              {(car.status === 'sold' || car.status === 'inactive') ? (
+                <div className="mb-6 p-4 rounded-lg bg-muted/50 border border-border text-center">
+                  <p className="font-semibold text-foreground mb-1">
+                    {car.status === 'sold' ? 'Автомобиль продан' : 'Снят с продажи'}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {car.status === 'sold'
+                      ? 'Этот автомобиль уже нашёл своего владельца'
+                      : 'Автомобиль временно недоступен для покупки'}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3 mb-6">
+                  <button
+                    onClick={() => { window.location.href = 'tel:+79001234567'; }}
+                    className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-accent text-accent-foreground rounded-lg hover:opacity-90 transition-opacity"
+                  >
+                    <Phone className="w-5 h-5" />
+                    <span>Позвонить</span>
+                  </button>
+                  <button
+                    onClick={() => setShowAppointmentForm(!showAppointmentForm)}
+                    className={`flex items-center justify-center gap-2 w-full px-4 py-3 rounded-lg transition-opacity ${car.status === 'reserved' ? 'bg-primary/60 text-primary-foreground cursor-default' : 'bg-primary text-primary-foreground hover:opacity-90'}`}
+                    disabled={car.status === 'reserved'}
+                    title={car.status === 'reserved' ? 'Автомобиль зарезервирован' : undefined}
+                  >
+                    <Calendar className="w-5 h-5" />
+                    <span>{car.status === 'reserved' ? 'Зарезервирован' : 'Записаться на просмотр'}</span>
+                  </button>
+                </div>
+              )}
 
               {showAppointmentForm && (
                 <form className="space-y-3 pt-4 border-t border-border" onSubmit={handleAppointmentSubmit}>
@@ -271,6 +343,39 @@ export function CarDetailPage() {
                     <p className="text-sm text-muted-foreground">Менеджер по продажам</p>
                   </div>
                 </div>
+              </div>
+
+              <div className="mt-6 pt-6 border-t border-border">
+                <h4 className="font-semibold text-foreground mb-3">Осмотр автомобиля</h4>
+                {salonInfo ? (
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-2">
+                      <Clock className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+                      <div className="space-y-1">
+                        {salonInfo.working_hours.map(wh => (
+                          <div key={wh.days} className="flex gap-2 text-sm">
+                            <span className="text-muted-foreground w-16 flex-shrink-0">{wh.days}</span>
+                            <span className="font-medium text-foreground">{wh.hours}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <MapPin className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+                      {salonInfo.map_url ? (
+                        <a href={salonInfo.map_url} target="_blank" rel="noopener noreferrer"
+                          className="text-sm text-primary hover:underline">{salonInfo.address}</a>
+                      ) : (
+                        <span className="text-sm text-foreground">{salonInfo.address}</span>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="h-4 bg-secondary rounded animate-pulse w-3/4" />
+                    <div className="h-4 bg-secondary rounded animate-pulse w-1/2" />
+                  </div>
+                )}
               </div>
 
               <div className="mt-6 pt-6 border-t border-border">
