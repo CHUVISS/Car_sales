@@ -181,24 +181,6 @@ export function HomePage() {
           </div>
         </div>
       </section>
-
-      {/* Форма заявки */}
-      <section className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <div className="bg-card rounded-lg border border-border shadow-sm p-8">
-          <h2 className="text-2xl font-semibold text-foreground mb-2 text-center">Оставьте заявку</h2>
-          <p className="text-muted-foreground text-center mb-6">Наш менеджер свяжется с вами в течение 10 минут</p>
-          <form className="space-y-4" onSubmit={handleLeadSubmit}>
-            <input type="text" placeholder="Ваше имя" required value={formName} onChange={e => setFormName(e.target.value)} className={inputCls} />
-            <input type="email" placeholder="Email *" required value={formEmail} onChange={e => setFormEmail(e.target.value)} className={inputCls} />
-            <input type="tel" placeholder="Телефон" value={formPhone} onChange={e => setFormPhone(e.target.value)} className={inputCls} />
-            <textarea placeholder="Комментарий (необязательно)" rows={3} value={formComment} onChange={e => setFormComment(e.target.value)} className={inputCls + ' resize-none'} />
-            <button type="submit" disabled={submitting}
-              className="w-full px-6 py-3 bg-accent text-accent-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50">
-              {submitting ? 'Отправка...' : 'Отправить заявку'}
-            </button>
-          </form>
-        </div>
-      </section>
     </div>
   );
 }

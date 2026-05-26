@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { User, Eye, FileText, LogOut, Heart, EyeOff, Car, PenLine, Loader2, ExternalLink, Trash2, Send } from 'lucide-react';
+import { User, Eye, FileText, LogOut, Heart, EyeOff, Car, PenLine, Loader2, ExternalLink, Trash2, Send, Pencil, Archive } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../hooks/useAuth';
 import { useNavigate, Link, useSearchParams } from 'react-router';
@@ -9,8 +9,9 @@ import { carsApi } from '../api/cars';
 import { FavoritesPage } from './FavoritesPage';
 import { useFavorites } from '../hooks/useFavorites';
 import { listingsApi, type MyListing } from '../api/catalog';
+import { formatCatalogId } from '../api/cars';
 
-type TabType = 'profile' | 'viewings' | 'favorites' | 'listings' | 'drafts';
+type TabType = 'profile' | 'viewings' | 'favorites' | 'listings' | 'drafts' | 'archive';
 
 const inputCls = "w-full px-4 py-3 bg-secondary text-foreground placeholder:text-muted-foreground rounded-lg outline-none focus:ring-2 focus:ring-primary border border-border focus:border-primary transition-colors";
 
@@ -305,10 +306,11 @@ export function ProfilePage() {
 
   const tabs: { id: TabType; label: string; icon: React.ElementType; badge?: number }[] = [
     { id: 'profile', label: 'Профиль', icon: User },
+    { id: 'favorites', label: 'Избранное', icon: Heart, badge: favoriteIds.length },
     { id: 'listings', label: 'Мои объявления', icon: Car },
     { id: 'drafts', label: 'Черновики', icon: PenLine },
+    { id: 'archive', label: 'Архив', icon: Archive },
     { id: 'viewings', label: 'Мои записи', icon: FileText },
-    { id: 'favorites', label: 'Избранное', icon: Heart, badge: favoriteIds.length },
   ];
 
   return (
@@ -393,6 +395,7 @@ export function ProfilePage() {
             )}
             {activeTab === 'listings' && <MyListingsTab />}
             {activeTab === 'drafts' && <DraftsTab />}
+            {activeTab === 'archive' && <ArchiveTab />}
             {activeTab === 'viewings' && <ViewingsList />}
             {activeTab === 'favorites' && <FavoritesPage />}
           </div>
@@ -611,7 +614,7 @@ function ListingCard({ listing, actions }: { listing: MyListing; actions?: React
               to={`/car/${listing.id}`}
               className="font-semibold text-foreground hover:text-primary transition-colors truncate"
             >
-              {listing.mark_id} {listing.model_id} {listing.year}
+              {formatCatalogId(listing.mark_id)} {formatCatalogId(listing.model_id)} {listing.year}
             </Link>
             <span className={`flex-shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${LISTING_STATUS_COLORS[listing.status] ?? 'bg-secondary text-muted-foreground'}`}>
               {LISTING_STATUS_LABELS[listing.status] ?? listing.status}
@@ -671,6 +674,38 @@ function MyListingsTab() {
         <Link to="/sell" className="text-sm text-primary hover:underline">+ Новое</Link>
       </div>
       {active.map(l => <ListingCard key={l.id} listing={l} />)}
+    </div>
+  );
+}
+
+// ─── Архив ─────────────────────────────────────────────────────────
+
+function ArchiveTab() {
+  const { listings, loading } = useMyListings();
+  const archived = listings.filter(l => l.status === 'archived' || l.status === 'sold');
+
+  if (loading) {
+    return (
+      <div className="bg-card rounded-lg border border-border p-12 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (archived.length === 0) {
+    return (
+      <div className="bg-card rounded-lg border border-border p-12 text-center">
+        <Archive className="w-16 h-16 text-muted-foreground mx-auto mb-4 opacity-30" />
+        <h3 className="text-xl font-semibold text-foreground mb-2">Архив пуст</h3>
+        <p className="text-muted-foreground">Проданные и снятые с продажи автомобили появятся здесь</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <h2 className="text-2xl font-semibold text-foreground">Архив</h2>
+      {archived.map(l => <ListingCard key={l.id} listing={l} />)}
     </div>
   );
 }
@@ -745,7 +780,7 @@ function DraftsTab() {
               <button
                 onClick={() => handlePublish(l.id)}
                 disabled={publishing === l.id || deleting === l.id}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+                className="flex flex-1 justify-center items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
               >
                 {publishing === l.id
                   ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -753,10 +788,17 @@ function DraftsTab() {
                 }
                 Опубликовать
               </button>
+              <Link
+                to={`/listing/${l.id}/edit`}
+                className="flex flex-1 justify-center items-center gap-1.5 px-4 py-2 text-sm border border-border rounded-lg hover:bg-secondary transition-colors"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+                Редактировать
+              </Link>
               <button
                 onClick={() => handleDelete(l.id)}
                 disabled={publishing === l.id || deleting === l.id}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm text-destructive border border-destructive/50 rounded-lg hover:bg-destructive/10 transition-colors disabled:opacity-50"
+                className="flex flex-1 justify-center items-center gap-1.5 px-4 py-2 text-sm text-destructive border border-destructive/50 rounded-lg hover:bg-destructive/10 transition-colors disabled:opacity-50"
               >
                 {deleting === l.id
                   ? <Loader2 className="w-3.5 h-3.5 animate-spin" />

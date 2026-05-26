@@ -342,17 +342,6 @@ export function CreateListingPage() {
               <div>
                 <label className={labelCls}>Марка *</label>
                 <div className="flex flex-col gap-2">
-                  <div className="flex items-center gap-2 px-3 py-2 bg-secondary rounded-lg border border-border">
-                    <Search className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                    <input
-                      type="text"
-                      value={markSearch}
-                      onChange={e => setMarkSearch(e.target.value)}
-                      placeholder="Поиск марки..."
-                      className="flex-1 text-sm bg-transparent outline-none text-foreground placeholder:text-muted-foreground"
-                    />
-                    {marksLoading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground flex-shrink-0" />}
-                  </div>
                   <SearchSelect
                     options={marks}
                     value={selectedMark}
@@ -431,13 +420,17 @@ export function CreateListingPage() {
                 </div>
                 <div>
                   <label className={labelCls}>Цена, ₽ *</label>
-                  <input type="number" min="0" value={price}
-                    onChange={e => setPrice(e.target.value)} placeholder="1 500 000" className={inputCls} />
+                  <input type="text" inputMode="numeric"
+                    value={price.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}
+                    onChange={e => setPrice(e.target.value.replace(/\D/g, ''))}
+                    placeholder="1 500 000" className={inputCls} />
                 </div>
                 <div>
                   <label className={labelCls}>Пробег, км *</label>
-                  <input type="number" min="0" value={mileage}
-                    onChange={e => setMileage(e.target.value)} placeholder="50 000" className={inputCls} />
+                  <input type="text" inputMode="numeric"
+                    value={mileage.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}
+                    onChange={e => setMileage(e.target.value.replace(/\D/g, ''))}
+                    placeholder="50 000" className={inputCls} />
                 </div>
               </div>
 

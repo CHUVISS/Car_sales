@@ -62,6 +62,37 @@ export interface CarFilters {
   skip?: number;
 }
 
+const BRAND_NAMES: Record<string, string> = {
+  ACURA: 'Acura', ALFA_ROMEO: 'Alfa Romeo', AUDI: 'Audi',
+  BENTLEY: 'Bentley', BMW: 'BMW', BYD: 'BYD',
+  CADILLAC: 'Cadillac', CHANGAN: 'Changan', CHERY: 'Chery', CHEVROLET: 'Chevrolet', CHRYSLER: 'Chrysler', CITROEN: 'Citroën',
+  DACIA: 'Dacia', DATSUN: 'Datsun', DODGE: 'Dodge', DONGFENG: 'Dongfeng',
+  FERRARI: 'Ferrari', FIAT: 'Fiat', FORD: 'Ford',
+  GAZ: 'ГАЗ', GEELY: 'Geely', GENESIS: 'Genesis', GREAT_WALL: 'Great Wall',
+  HAVAL: 'Haval', HONDA: 'Honda', HYUNDAI: 'Hyundai',
+  INFINITI: 'INFINITI', ISUZU: 'Isuzu',
+  JAC: 'JAC', JAGUAR: 'Jaguar', JEEP: 'Jeep',
+  KIA: 'KIA',
+  LAMBORGHINI: 'Lamborghini', LADA: 'Lada', LAND_ROVER: 'Land Rover', LEXUS: 'Lexus', LINCOLN: 'Lincoln',
+  MASERATI: 'Maserati', MAZDA: 'Mazda', MERCEDES: 'Mercedes-Benz', MERCEDES_BENZ: 'Mercedes-Benz',
+  MINI: 'MINI', MITSUBISHI: 'Mitsubishi', MOSKVICH: 'Москвич',
+  NISSAN: 'Nissan',
+  OPEL: 'Opel',
+  PEUGEOT: 'Peugeot', PORSCHE: 'Porsche',
+  RAM: 'RAM', RENAULT: 'Renault', ROLLS_ROYCE: 'Rolls-Royce',
+  SEAT: 'SEAT', SKODA: 'Škoda', SMART: 'smart', SUBARU: 'Subaru', SUZUKI: 'Suzuki',
+  TESLA: 'Tesla', TOYOTA: 'Toyota',
+  UAZ: 'УАЗ',
+  VAZ: 'Lada', VOLKSWAGEN: 'Volkswagen', VOLVO: 'Volvo',
+  ZOTYE: 'Zotye',
+};
+
+export function formatCatalogId(id: string): string {
+  const upper = id.toUpperCase().replace(/-/g, '_');
+  if (BRAND_NAMES[upper]) return BRAND_NAMES[upper];
+  return id.split(/[_\s]/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+}
+
 function mapSort(sort_by?: string): string {
   switch (sort_by) {
     case 'price_asc': return 'price_asc';
@@ -152,8 +183,8 @@ function mapDetail(d: ListingDetail): Car {
   const specs = d.catalog_specs ?? {};
   return {
     id: d.id,
-    brand: d.mark_id,
-    model: d.model_id,
+    brand: formatCatalogId(d.mark_id),
+    model: formatCatalogId(d.model_id),
     year: d.year,
     price: d.price,
     mileage: d.mileage,

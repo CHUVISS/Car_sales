@@ -15,7 +15,7 @@ export function AboutPage() {
     { name: 'Дворников Матвей', role: 'Backend-разработчик', image: matveyImage },
     { name: 'Иващенко Алексей', role: 'Тестировщик', image: alekseyImage },
     { name: 'Барышев Данила', role: 'Архитектор (Возможно умер)', image: danilaImage },
-    { name: 'Жуков Тимофей', role: 'Frontend-разработчик', image: timofeyImage }
+    { name: 'Жуков Тимофей', role: 'Frontend-разработчик (Возможно умер)', image: timofeyImage }
   ];
 
   return (

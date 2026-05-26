@@ -22,7 +22,7 @@ export function Header() {
         <div className="flex justify-between items-center h-16">
           <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <Car className="w-8 h-8 text-primary" />
-            <span className="text-xl font-semibold text-foreground">АвтоСалон</span>
+            <span className="text-xl font-semibold text-foreground">FastAuto</span>
           </Link>
 
           <nav className="hidden md:flex items-center gap-8">

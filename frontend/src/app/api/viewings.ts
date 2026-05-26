@@ -52,8 +52,12 @@ export const viewingsApi = {
 
   // Create a transaction to reserve a listing (simplified viewing book)
   book: (data: { car_id: string; viewing_date?: string; viewing_time?: string; comment?: string }) =>
-    api.post<Record<string, unknown>>('/transactions', { listing_id: data.car_id })
-      .then(mapTransaction),
+    api.post<Record<string, unknown>>('/transactions', {
+      listing_id: data.car_id,
+      ...(data.viewing_date && { viewing_date: data.viewing_date }),
+      ...(data.viewing_time && { viewing_time: data.viewing_time }),
+      ...(data.comment && { comment: data.comment }),
+    }).then(mapTransaction),
 
   // List user's transactions as viewings
   list: () =>

@@ -87,9 +87,14 @@ function SearchableMultiSelect<T extends string>({
   );
 }
 
-function NumberFilterInput({ placeholder, value, onChange, onConfirm }: { placeholder: string; value: string; onChange: (v: string) => void; onConfirm: (v: string) => void }) {
+function fmtNum(s: string) { return s.replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
+
+function NumberFilterInput({ placeholder, value, onChange, onConfirm, format = false }: {
+  placeholder: string; value: string; onChange: (v: string) => void; onConfirm: (v: string) => void; format?: boolean;
+}) {
   return (
-    <input type="text" inputMode="numeric" placeholder={placeholder} value={value}
+    <input type="text" inputMode="numeric" placeholder={placeholder}
+      value={format ? fmtNum(value) : value}
       onChange={(e: ChangeEvent<HTMLInputElement>) => { const c = e.target.value.replace(/\D/g, ''); if (c !== value) onChange(c); }}
       onBlur={() => onConfirm(value.trim())}
       onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }}
@@ -427,8 +432,8 @@ export function CatalogPage() {
       <div>
         <h3 className="font-semibold text-foreground mb-2">Цена, ₽</h3>
         <div className="flex gap-2">
-          <NumberFilterInput placeholder="От" value={displayPriceMin} onChange={setDisplayPriceMin} onConfirm={setPriceMin} />
-          <NumberFilterInput placeholder="До" value={displayPriceMax} onChange={setDisplayPriceMax} onConfirm={setPriceMax} />
+          <NumberFilterInput placeholder="От" value={displayPriceMin} onChange={setDisplayPriceMin} onConfirm={setPriceMin} format />
+          <NumberFilterInput placeholder="До" value={displayPriceMax} onChange={setDisplayPriceMax} onConfirm={setPriceMax} format />
         </div>
       </div>
       <div>
@@ -441,8 +446,8 @@ export function CatalogPage() {
       <div>
         <h3 className="font-semibold text-foreground mb-2">Пробег, км</h3>
         <div className="flex gap-2">
-          <NumberFilterInput placeholder="От" value={displayMileageMin} onChange={setDisplayMileageMin} onConfirm={setMileageMin} />
-          <NumberFilterInput placeholder="До" value={displayMileageMax} onChange={setDisplayMileageMax} onConfirm={setMileageMax} />
+          <NumberFilterInput placeholder="От" value={displayMileageMin} onChange={setDisplayMileageMin} onConfirm={setMileageMin} format />
+          <NumberFilterInput placeholder="До" value={displayMileageMax} onChange={setDisplayMileageMax} onConfirm={setMileageMax} format />
         </div>
       </div>
       <SearchableMultiSelect label="Марка" options={ALL_BRANDS.map(b => ({ value: b, label: b }))} selected={selectedBrands} onToggle={v => setSelectedBrands(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])} onClear={() => setSelectedBrands([])} placeholder="Все марки" />

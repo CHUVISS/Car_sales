@@ -302,7 +302,7 @@ function StatsTab({ stats, loading }: { stats: DashboardStats | null; loading: b
   if (loading) return <LoadingSpinner />;
   if (!stats) return <ErrorState message="Не удалось загрузить статистику" />;
   const cards = [
-    { label: 'Всего объявлений', value: stats.total_listings, sub: `${stats.active_listings} активных`, icon: Car, color: 'bg-primary/10 text-primary' },
+    { label: 'Всего объявлений', value: stats.active_listings + stats.reserved_listings + stats.sold_listings, sub: `${stats.active_listings} активных`, icon: Car, color: 'bg-primary/10 text-primary' },
     { label: 'Продано', value: stats.sold_listings, sub: `${stats.reserved_listings} зарезервировано`, icon: DollarSign, color: 'bg-accent/10 text-accent' },
     { label: 'Всего сделок', value: stats.total_transactions, sub: `${stats.completed_transactions} завершено`, icon: BarChart3, color: 'bg-purple-500/10 text-purple-500' },
     { label: 'Выручка', value: formatPrice(stats.total_revenue), sub: 'По завершённым сделкам', icon: DollarSign, color: 'bg-green-500/10 text-green-500' },

@@ -37,8 +37,9 @@ export function CarDetailPage() {
 
   const [showAppointmentForm, setShowAppointmentForm] = useState(false);
   const [activeSlide, setActiveSlide] = useState(0);
-
   const [submitting, setSubmitting] = useState(false);
+  const [selectedDate, setSelectedDate] = useState('');
+  const [selectedTime, setSelectedTime] = useState('');
 
   if (loading) {
     return (
@@ -98,9 +99,11 @@ export function CarDetailPage() {
     }
     setSubmitting(true);
     try {
-      await viewingsApi.book({ car_id: car.id });
+      await viewingsApi.book({ car_id: car.id, viewing_date: selectedDate || undefined, viewing_time: selectedTime || undefined });
       toast.success('Заявка на просмотр отправлена! Продавец свяжется с вами.');
       setShowAppointmentForm(false);
+      setSelectedDate('');
+      setSelectedTime('');
     } catch {
       toast.error('Ошибка отправки. Попробуйте позже.');
     } finally {
@@ -292,10 +295,39 @@ export function CarDetailPage() {
               )}
 
               {showAppointmentForm && (
-                <form className="space-y-3 pt-4 border-t border-border" onSubmit={handleAppointmentSubmit}>
-                  <p className="text-sm text-muted-foreground">
-                    Отправьте заявку на просмотр — продавец свяжется с вами для уточнения даты и времени.
-                  </p>
+                <form className="space-y-4 pt-4 border-t border-border" onSubmit={handleAppointmentSubmit}>
+                  <div>
+                    <p className="text-xs font-medium text-foreground mb-2">Удобная дата</p>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {Array.from({ length: 7 }, (_, i) => {
+                        const d = new Date();
+                        d.setDate(d.getDate() + i + 1);
+                        const iso = d.toISOString().slice(0, 10);
+                        const label = d.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short' });
+                        const active = selectedDate === iso;
+                        return (
+                          <button key={iso} type="button" onClick={() => setSelectedDate(active ? '' : iso)}
+                            className={`px-2.5 py-1.5 rounded-lg text-xs border transition-colors ${active ? 'border-primary bg-primary/5 text-primary font-medium' : 'border-border hover:border-foreground/30 text-foreground'}`}>
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-foreground mb-2">Удобное время</p>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {['10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00'].map(t => {
+                        const active = selectedTime === t;
+                        return (
+                          <button key={t} type="button" onClick={() => setSelectedTime(active ? '' : t)}
+                            className={`py-1.5 rounded-lg text-xs border transition-colors ${active ? 'border-primary bg-primary/5 text-primary font-medium' : 'border-border hover:border-foreground/30 text-foreground'}`}>
+                            {t}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                   <button type="submit" disabled={submitting}
                     className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity text-sm disabled:opacity-50">
                     {submitting ? 'Отправка...' : 'Отправить заявку'}

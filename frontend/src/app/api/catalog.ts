@@ -85,6 +85,9 @@ export interface MyListing {
   created_at: string;
   description: string | null;
   vin: string | null;
+  color_id: string | null;
+  city_id: string | null;
+  condition: string | null;
 }
 
 export interface ListingCreateBody {
@@ -125,6 +128,11 @@ export const listingsApi = {
     api.post<{ id: string; status: string }>(`/listings/${listingId}/publish`, {}),
 
   my: () => api.get<MyListing[]>('/listings/my'),
+
+  get: (listingId: string) => api.get<MyListing>(`/listings/${listingId}`),
+
+  update: (listingId: string, body: Partial<ListingCreateBody>) =>
+    api.patch<MyListing>(`/listings/${listingId}`, body),
 
   archive: (listingId: string) => api.delete<unknown>(`/listings/${listingId}`),
 };
