@@ -7,7 +7,6 @@ import { AdminPage } from './pages/AdminPage';
 import { AboutPage } from './pages/AboutPage';
 import { AiPage } from './pages/AiPage';
 import { CreateListingPage } from './pages/CreateListingPage';
-import { EditListingPage } from './pages/EditListingPage';
 import { Layout } from './components/Layout';
 import { NotFoundPage } from './pages/NotFoundPage';
 
@@ -24,7 +23,7 @@ export const router = createBrowserRouter([
       { path: 'about', element: <AboutPage /> },
       { path: 'ai', element: <AiPage /> },
       { path: 'sell', element: <CreateListingPage /> },
-      { path: 'listing/:id/edit', element: <EditListingPage /> },
+      { path: 'listing/:id/edit', element: <CreateListingPage /> },
       { path: '*', element: <NotFoundPage /> },
     ],
   },

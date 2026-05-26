@@ -43,11 +43,11 @@ export function Header() {
 
             {user ? (
               <div className="flex items-center gap-2">
-                <Link to="/sell"
+                {/* <Link to="/sell"
                   className="flex items-center gap-2 px-4 py-2 bg-accent text-accent-foreground rounded-lg hover:opacity-90 transition-opacity">
                   <PlusCircle className="w-4 h-4" />
                   <span>Продать авто</span>
-                </Link>
+                </Link> */}
                 <Link to="/profile"
                   className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity">
                   <User className="w-5 h-5" />

@@ -4,6 +4,7 @@ import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../hooks/useAuth';
 import { listingsApi, catalogApi, type CatalogColor, type GeoCity } from '../api/catalog';
+import { viewingsApi } from '../api/viewings';
 import { formatCatalogId } from '../api/cars';
 
 const CONDITION_OPTIONS = [
@@ -12,6 +13,9 @@ const CONDITION_OPTIONS = [
   { value: 'fair', label: 'Удовлетворительное', desc: 'Заметные следы эксплуатации' },
   { value: 'poor', label: 'Плохое', desc: 'Требует ремонта' },
 ];
+
+const WEEK_DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+const TIME_SLOTS = ['08:00','09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00'];
 
 const inputCls = 'w-full px-4 py-2.5 bg-secondary text-foreground placeholder:text-muted-foreground rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary border border-border focus:border-primary transition-colors';
 const labelCls = 'block text-sm font-medium text-foreground mb-1.5';
@@ -37,6 +41,13 @@ export function EditListingPage() {
   const [colors, setColors] = useState<CatalogColor[]>([]);
   const [cities, setCities] = useState<GeoCity[]>([]);
 
+  const [viewingDays, setViewingDays] = useState<number[]>([]);
+  const [viewingFrom, setViewingFrom] = useState('10:00');
+  const [viewingTo, setViewingTo] = useState('18:00');
+
+  const toggleDay = (i: number) =>
+    setViewingDays(prev => prev.includes(i) ? prev.filter(d => d !== i) : [...prev, i]);
+
   useEffect(() => {
     if (!id) return;
     Promise.all([
@@ -61,9 +72,13 @@ export function EditListingPage() {
     }).finally(() => setPageLoading(false));
   }, [id]);
 
+  const canSubmit = Boolean(
+    year && price && mileage && condition && colorId && cityId && vin.trim().length === 17
+  );
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!id) return;
+    if (!id || !canSubmit) return;
     setSubmitting(true);
     try {
       await listingsApi.update(id, {
@@ -71,11 +86,32 @@ export function EditListingPage() {
         price: Number(price),
         mileage: Number(mileage),
         condition: condition as 'excellent' | 'good' | 'fair' | 'poor',
-        color_id: colorId || undefined,
-        city_id: cityId || undefined,
-        vin: vin.trim() || undefined,
+        color_id: colorId,
+        city_id: cityId,
+        vin: vin.trim(),
         description: description.trim() || undefined,
       });
+
+      if (viewingDays.length > 0) {
+        const windows: Promise<unknown>[] = [];
+        for (let week = 0; week < 4; week++) {
+          for (const dayIdx of viewingDays) {
+            const d = new Date();
+            const jsDay = (dayIdx + 1) % 7;
+            const diff = (jsDay - d.getDay() + 7) % 7 || 7;
+            d.setDate(d.getDate() + diff + week * 7);
+            windows.push(
+              viewingsApi.createWindow(id, {
+                window_date: d.toISOString().slice(0, 10),
+                time_from: viewingFrom,
+                time_to: viewingTo,
+              }).catch(() => null)
+            );
+          }
+        }
+        await Promise.all(windows);
+      }
+
       toast.success('Изменения сохранены');
       navigate('/profile?tab=drafts');
     } catch (err: unknown) {
@@ -108,19 +144,19 @@ export function EditListingPage() {
 
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <label className={labelCls}>Год выпуска</label>
+              <label className={labelCls}>Год выпуска *</label>
               <input type="number" min="1900" max={new Date().getFullYear()} value={year}
                 onChange={e => setYear(e.target.value)} className={inputCls} />
             </div>
             <div>
-              <label className={labelCls}>Цена, ₽</label>
+              <label className={labelCls}>Цена, ₽ *</label>
               <input type="text" inputMode="numeric"
                 value={price.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}
                 onChange={e => setPrice(e.target.value.replace(/\D/g, ''))}
                 placeholder="1 500 000" className={inputCls} />
             </div>
             <div>
-              <label className={labelCls}>Пробег, км</label>
+              <label className={labelCls}>Пробег, км *</label>
               <input type="text" inputMode="numeric"
                 value={mileage.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}
                 onChange={e => setMileage(e.target.value.replace(/\D/g, ''))}
@@ -129,7 +165,7 @@ export function EditListingPage() {
           </div>
 
           <div>
-            <label className={labelCls}>Состояние</label>
+            <label className={labelCls}>Состояние *</label>
             <div className="grid grid-cols-2 gap-2">
               {CONDITION_OPTIONS.map(opt => (
                 <button key={opt.value} type="button" onClick={() => setCondition(opt.value)}
@@ -143,27 +179,30 @@ export function EditListingPage() {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className={labelCls}>Цвет</label>
+              <label className={labelCls}>Цвет *</label>
               <select value={colorId} onChange={e => setColorId(e.target.value)}
                 className={inputCls + ' appearance-none cursor-pointer'}>
-                <option value="">Не указан</option>
+                <option value="">Выберите цвет</option>
                 {colors.map(c => <option key={c.id} value={c.id}>{c.name_ru}</option>)}
               </select>
             </div>
             <div>
-              <label className={labelCls}>Город</label>
+              <label className={labelCls}>Город *</label>
               <select value={cityId} onChange={e => setCityId(e.target.value)}
                 className={inputCls + ' appearance-none cursor-pointer'}>
-                <option value="">Не указан</option>
+                <option value="">Выберите город</option>
                 {cities.map(c => <option key={c.id} value={c.id}>{c.name_ru}</option>)}
               </select>
             </div>
           </div>
 
           <div>
-            <label className={labelCls}>VIN-номер</label>
-            <input type="text" value={vin} onChange={e => setVin(e.target.value)}
+            <label className={labelCls}>VIN-номер *</label>
+            <input type="text" value={vin} onChange={e => setVin(e.target.value.toUpperCase())}
               placeholder="WBAXXXXXXXXXXXXXXX" maxLength={17} className={inputCls} />
+            {vin.length > 0 && vin.length < 17 && (
+              <p className="text-xs text-destructive mt-1">VIN должен содержать 17 символов ({vin.length}/17)</p>
+            )}
           </div>
 
           <div>
@@ -173,12 +212,43 @@ export function EditListingPage() {
               className={inputCls + ' resize-none'} />
           </div>
 
+          <div className="pt-2 border-t border-border">
+            <label className={labelCls}>Расписание просмотров</label>
+            <p className="text-xs text-muted-foreground mb-3">Выберите дни недели, когда покупатели могут посмотреть авто</p>
+            <div className="flex gap-1.5 mb-4">
+              {WEEK_DAYS.map((day, i) => (
+                <button key={i} type="button" onClick={() => toggleDay(i)}
+                  className={`flex-1 py-2 rounded-lg text-xs font-medium border transition-colors ${viewingDays.includes(i) ? 'border-primary bg-primary/5 text-primary' : 'border-border hover:border-foreground/30 text-foreground'}`}>
+                  {day}
+                </button>
+              ))}
+            </div>
+            {viewingDays.length > 0 && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1">С</label>
+                  <select value={viewingFrom} onChange={e => setViewingFrom(e.target.value)}
+                    className={inputCls + ' appearance-none cursor-pointer'}>
+                    {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1">До</label>
+                  <select value={viewingTo} onChange={e => setViewingTo(e.target.value)}
+                    className={inputCls + ' appearance-none cursor-pointer'}>
+                    {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="flex gap-3 pt-2 border-t border-border">
             <button type="button" onClick={() => navigate('/profile?tab=drafts')}
               className="px-5 py-2.5 text-sm border border-border rounded-lg hover:bg-secondary transition-colors">
               Отмена
             </button>
-            <button type="submit" disabled={submitting}
+            <button type="submit" disabled={submitting || !canSubmit}
               className="flex items-center gap-2 px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50">
               {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
               {submitting ? 'Сохранение...' : 'Сохранить изменения'}

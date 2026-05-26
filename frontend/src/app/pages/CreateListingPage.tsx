@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, Link } from 'react-router';
+import { useNavigate, useParams, Link } from 'react-router';
 import { ChevronRight, Upload, X, CheckCircle, Loader2, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../hooks/useAuth';
@@ -14,6 +14,7 @@ import {
   type CatalogColor,
   type GeoCity,
 } from '../api/catalog';
+import { viewingsApi } from '../api/viewings';
 
 const CONDITION_OPTIONS: { value: string; label: string; desc: string }[] = [
   { value: 'excellent', label: 'Отличное', desc: 'Как новый, без дефектов' },
@@ -22,19 +23,14 @@ const CONDITION_OPTIONS: { value: string; label: string; desc: string }[] = [
   { value: 'poor', label: 'Плохое', desc: 'Требует ремонта' },
 ];
 
+const WEEK_DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+const TIME_SLOTS = ['08:00','09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00'];
+
 const inputCls = 'w-full px-4 py-2.5 bg-secondary text-foreground placeholder:text-muted-foreground rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary border border-border focus:border-primary transition-colors';
 const labelCls = 'block text-sm font-medium text-foreground mb-1.5';
 
-// Generic searchable select component
 function SearchSelect<T extends { id: string }>({
-  options,
-  value,
-  onChange,
-  getLabel,
-  placeholder,
-  searchPlaceholder,
-  disabled,
-  loading,
+  options, value, onChange, getLabel, placeholder, searchPlaceholder, disabled, loading,
 }: {
   options: T[];
   value: string;
@@ -78,7 +74,6 @@ function SearchSelect<T extends { id: string }>({
           : <ChevronRight className={`w-4 h-4 flex-shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-90' : ''}`} />
         }
       </button>
-
       {open && !loading && (
         <div className="absolute top-full left-0 right-0 mt-1 bg-background border border-border rounded-lg shadow-lg z-50 max-h-64 overflow-hidden flex flex-col">
           {options.length > 6 && (
@@ -120,18 +115,22 @@ function SearchSelect<T extends { id: string }>({
 }
 
 export function CreateListingPage() {
+  const { id: editId } = useParams<{ id?: string }>();
+  const isEdit = Boolean(editId);
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
-  const STEPS = ['Автомобиль', 'Данные', 'Фото и публикация'];
+  const STEPS = ['Автомобиль', 'Данные', 'Фото'];
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [editLoading, setEditLoading] = useState(isEdit);
 
   // Step 1 — car selection
   const [marks, setMarks] = useState<CatalogMark[]>([]);
-  const [markSearch, setMarkSearch] = useState('');
+  const [markSearch] = useState('');
   const [marksLoading, setMarksLoading] = useState(false);
   const [selectedMark, setSelectedMark] = useState('');
+  const [originalModId, setOriginalModId] = useState('');
 
   const [models, setModels] = useState<CatalogModel[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
@@ -162,17 +161,71 @@ export function CreateListingPage() {
   const [colors, setColors] = useState<CatalogColor[]>([]);
   const [cities, setCities] = useState<GeoCity[]>([]);
 
+  // Viewing schedule
+  const [viewingDays, setViewingDays] = useState<number[]>([]);
+  const [viewingFrom, setViewingFrom] = useState('10:00');
+  const [viewingTo, setViewingTo] = useState('18:00');
+
+  const toggleDay = (i: number) =>
+    setViewingDays(prev => prev.includes(i) ? prev.filter(d => d !== i) : [...prev, i]);
+
   // Step 3 — images
   const [images, setImages] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
 
-  // Load marks on mount
+  // Load marks on mount (always)
   useEffect(() => {
     setMarksLoading(true);
     catalogApi.searchMarks('').then(setMarks).catch(() => setMarks([])).finally(() => setMarksLoading(false));
-    catalogApi.getColors().then(setColors).catch(() => setColors([]));
-    catalogApi.getPopularCities().then(setCities).catch(() => setCities([]));
+    if (!isEdit) {
+      catalogApi.getColors().then(setColors).catch(() => setColors([]));
+      catalogApi.getPopularCities().then(setCities).catch(() => setCities([]));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Load edit data
+  useEffect(() => {
+    if (!editId) return;
+    setEditLoading(true);
+    Promise.all([
+      listingsApi.get(editId),
+      catalogApi.getColors(),
+      catalogApi.getPopularCities(),
+    ]).then(async ([listing, cols, cts]) => {
+      setYear(String(listing.year));
+      setPrice(String(listing.price));
+      setMileage(String(listing.mileage));
+      setCondition(listing.condition ?? '');
+      setSelectedColor(listing.color_id ?? '');
+      setSelectedCity(listing.city_id ?? '');
+      setVin(listing.vin ?? '');
+      setDescription(listing.description ?? '');
+      setColors(cols);
+      setCities(cts);
+      if (listing.modification_id) setOriginalModId(listing.modification_id);
+
+      // Pre-fill cascade: mark → model → generations
+      setSelectedMark(listing.mark_id);
+      try {
+        setModelsLoading(true);
+        const mods = await catalogApi.getModels(listing.mark_id);
+        setModels(mods);
+        setSelectedModel(listing.model_id);
+        setGensLoading(true);
+        const gens = await catalogApi.getGenerations(listing.model_id);
+        setGenerations(gens);
+      } catch {
+        // silently fail
+      } finally {
+        setModelsLoading(false);
+        setGensLoading(false);
+      }
+    }).catch(() => {
+      toast.error('Не удалось загрузить объявление');
+      navigate('/profile?tab=drafts');
+    }).finally(() => setEditLoading(false));
+  }, [editId]);
 
   // Mark search debounce
   const markDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -192,6 +245,7 @@ export function CreateListingPage() {
     setSelectedGen(''); setGenerations([]);
     setSelectedConf(''); setConfigurations([]);
     setSelectedMod(''); setModifications([]);
+    setOriginalModId('');
     setModelsLoading(true);
     catalogApi.getModels(id).then(setModels).catch(() => setModels([])).finally(() => setModelsLoading(false));
   };
@@ -201,6 +255,7 @@ export function CreateListingPage() {
     setSelectedGen(''); setGenerations([]);
     setSelectedConf(''); setConfigurations([]);
     setSelectedMod(''); setModifications([]);
+    setOriginalModId('');
     setGensLoading(true);
     catalogApi.getGenerations(id).then(setGenerations).catch(() => setGenerations([])).finally(() => setGensLoading(false));
   };
@@ -209,6 +264,7 @@ export function CreateListingPage() {
     setSelectedGen(id);
     setSelectedConf(''); setConfigurations([]);
     setSelectedMod(''); setModifications([]);
+    setOriginalModId('');
     setConfsLoading(true);
     catalogApi.getConfigurations(id).then(setConfigurations).catch(() => setConfigurations([])).finally(() => setConfsLoading(false));
   };
@@ -216,6 +272,7 @@ export function CreateListingPage() {
   const handleConfChange = (id: string) => {
     setSelectedConf(id);
     setSelectedMod(''); setModifications([]);
+    setOriginalModId('');
     setModsLoading(true);
     catalogApi.getModifications(id).then(setModifications).catch(() => setModifications([])).finally(() => setModsLoading(false));
   };
@@ -235,49 +292,92 @@ export function CreateListingPage() {
     setPreviews(next.map(f => URL.createObjectURL(f)));
   };
 
+  const saveViewingWindows = async (listingId: string) => {
+    if (viewingDays.length === 0) return;
+    const windows: Promise<unknown>[] = [];
+    for (let week = 0; week < 4; week++) {
+      for (const dayIdx of viewingDays) {
+        const d = new Date();
+        const jsDay = (dayIdx + 1) % 7;
+        const diff = (jsDay - d.getDay() + 7) % 7 || 7;
+        d.setDate(d.getDate() + diff + week * 7);
+        windows.push(
+          viewingsApi.createWindow(listingId, {
+            window_date: d.toISOString().slice(0, 10),
+            time_from: viewingFrom,
+            time_to: viewingTo,
+          }).catch(() => null)
+        );
+      }
+    }
+    await Promise.all(windows);
+  };
+
   const handleSubmit = async () => {
-    if (!selectedMod || !year || !price || !mileage || !condition || !selectedColor || !selectedCity) {
+    const modId = selectedMod || originalModId;
+    if (!modId || !year || !price || !mileage || !condition || !selectedColor || !selectedCity || vin.trim().length !== 17) {
       toast.error('Заполните все обязательные поля');
       return;
     }
     setSubmitting(true);
     try {
-      const listing = await listingsApi.create({
-        modification_id: selectedMod,
-        year: Number(year),
-        price: Number(price),
-        mileage: Number(mileage),
-        condition: condition as 'excellent' | 'good' | 'fair' | 'poor',
-        color_id: selectedColor,
-        city_id: selectedCity,
-        vin: vin.trim() || undefined,
-        description: description.trim() || undefined,
-      });
-
-      if (images.length > 0) {
-        try {
-          await listingsApi.uploadImages(listing.id, images);
-        } catch {
-          toast.error('Фото не удалось загрузить, но объявление создано');
+      if (isEdit && editId) {
+        await listingsApi.update(editId, {
+          year: Number(year),
+          price: Number(price),
+          mileage: Number(mileage),
+          condition: condition as 'excellent' | 'good' | 'fair' | 'poor',
+          color_id: selectedColor,
+          city_id: selectedCity,
+          vin: vin.trim(),
+          description: description.trim() || undefined,
+        });
+        if (images.length > 0) {
+          try {
+            await listingsApi.uploadImages(editId, images);
+          } catch {
+            toast.error('Новые фото не удалось загрузить');
+          }
         }
+        await saveViewingWindows(editId);
+        toast.success('Изменения сохранены');
+        navigate('/profile?tab=drafts');
+      } else {
+        const listing = await listingsApi.create({
+          modification_id: modId,
+          year: Number(year),
+          price: Number(price),
+          mileage: Number(mileage),
+          condition: condition as 'excellent' | 'good' | 'fair' | 'poor',
+          color_id: selectedColor,
+          city_id: selectedCity,
+          vin: vin.trim(),
+          description: description.trim() || undefined,
+        });
+        if (images.length > 0) {
+          try {
+            await listingsApi.uploadImages(listing.id, images);
+          } catch {
+            toast.error('Фото не удалось загрузить, но объявление создано');
+          }
+        }
+        await saveViewingWindows(listing.id);
+        try {
+          await listingsApi.publish(listing.id);
+          toast.success('Объявление отправлено на модерацию!');
+        } catch {
+          toast.success('Объявление сохранено в черновиках');
+        }
+        navigate('/profile');
       }
-
-      try {
-        await listingsApi.publish(listing.id);
-        toast.success('Объявление отправлено на модерацию!');
-      } catch {
-        toast.success('Объявление сохранено в черновиках');
-      }
-
-      navigate('/profile');
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Ошибка создания объявления');
+      toast.error(err instanceof Error ? err.message : isEdit ? 'Ошибка сохранения' : 'Ошибка создания объявления');
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (authLoading) {
+  if (authLoading || editLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
@@ -307,13 +407,16 @@ export function CreateListingPage() {
 
   const modLabel = (m: CatalogModification) => m.name ?? m.group_name ?? m.id;
 
-  const canGoNext0 = Boolean(selectedMod);
-  const canGoNext1 = Boolean(year && price && mileage && condition && selectedColor && selectedCity);
+  // In edit mode, can proceed with step 1 if modification was pre-loaded OR newly selected
+  const canGoNext0 = Boolean(selectedMod || originalModId);
+  const canGoNext1 = Boolean(year && price && mileage && condition && selectedColor && selectedCity && vin.trim().length === 17);
 
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-2xl mx-auto px-4 sm:px-6 py-10">
-        <h1 className="text-3xl font-semibold text-foreground mb-8">Подать объявление</h1>
+        <h1 className="text-3xl font-semibold text-foreground mb-8">
+          {isEdit ? 'Редактировать объявление' : 'Подать объявление'}
+        </h1>
 
         {/* Progress steps */}
         <div className="flex items-center gap-2 mb-10">
@@ -337,20 +440,26 @@ export function CreateListingPage() {
           {/* Step 1: Car selection */}
           {step === 0 && (
             <div className="space-y-4">
-              <h2 className="text-xl font-semibold text-foreground mb-4">Выберите автомобиль</h2>
+              <h2 className="text-xl font-semibold text-foreground mb-4">
+                {isEdit ? 'Изменить автомобиль' : 'Выберите автомобиль'}
+              </h2>
+
+              {isEdit && originalModId && !selectedMod && (
+                <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg text-sm text-muted-foreground">
+                  Автомобиль уже выбран. Перевыберите поколение и модификацию, если хотите изменить.
+                </div>
+              )}
 
               <div>
                 <label className={labelCls}>Марка *</label>
-                <div className="flex flex-col gap-2">
-                  <SearchSelect
-                    options={marks}
-                    value={selectedMark}
-                    onChange={(id) => handleMarkChange(id)}
-                    getLabel={(m) => m.cyrillic_name ?? m.name ?? m.id}
-                    placeholder="Выберите марку"
-                    loading={marksLoading}
-                  />
-                </div>
+                <SearchSelect
+                  options={marks}
+                  value={selectedMark}
+                  onChange={(id) => handleMarkChange(id)}
+                  getLabel={(m) => m.cyrillic_name ?? m.name ?? m.id}
+                  placeholder="Выберите марку"
+                  loading={marksLoading}
+                />
               </div>
 
               <div>
@@ -480,9 +589,12 @@ export function CreateListingPage() {
               </div>
 
               <div>
-                <label className={labelCls}>VIN-номер</label>
-                <input type="text" value={vin} onChange={e => setVin(e.target.value)}
+                <label className={labelCls}>VIN-номер *</label>
+                <input type="text" value={vin} onChange={e => setVin(e.target.value.toUpperCase())}
                   placeholder="WBAXXXXXXXXXXXXXXX" maxLength={17} className={inputCls} />
+                {vin.length > 0 && vin.length < 17 && (
+                  <p className="text-xs text-destructive mt-1">VIN должен содержать 17 символов ({vin.length}/17)</p>
+                )}
               </div>
 
               <div>
@@ -491,10 +603,41 @@ export function CreateListingPage() {
                   rows={4} placeholder="Расскажите об автомобиле подробнее..."
                   className={inputCls + ' resize-none'} />
               </div>
+
+              <div className="pt-2 border-t border-border">
+                <label className={labelCls}>Расписание просмотров</label>
+                <p className="text-xs text-muted-foreground mb-3">Выберите дни недели, когда покупатели могут посмотреть авто</p>
+                <div className="flex gap-1.5 mb-4">
+                  {WEEK_DAYS.map((day, i) => (
+                    <button key={i} type="button" onClick={() => toggleDay(i)}
+                      className={`flex-1 py-2 rounded-lg text-xs font-medium border transition-colors ${viewingDays.includes(i) ? 'border-primary bg-primary/5 text-primary' : 'border-border hover:border-foreground/30 text-foreground'}`}>
+                      {day}
+                    </button>
+                  ))}
+                </div>
+                {viewingDays.length > 0 && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-muted-foreground mb-1">С</label>
+                      <select value={viewingFrom} onChange={e => setViewingFrom(e.target.value)}
+                        className={inputCls + ' appearance-none cursor-pointer'}>
+                        {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-muted-foreground mb-1">До</label>
+                      <select value={viewingTo} onChange={e => setViewingTo(e.target.value)}
+                        className={inputCls + ' appearance-none cursor-pointer'}>
+                        {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
-          {/* Step 3: Photos & Publish */}
+          {/* Step 3: Photos */}
           {step === 2 && (
             <div className="space-y-6">
               <h2 className="text-xl font-semibold text-foreground mb-4">Фотографии</h2>
@@ -531,20 +674,22 @@ export function CreateListingPage() {
                 )}
               </div>
 
-              <div className="p-4 bg-secondary/50 rounded-xl border border-border">
-                <p className="text-sm font-medium text-foreground mb-1">Что будет после отправки?</p>
-                <p className="text-sm text-muted-foreground">
-                  Объявление отправится на модерацию. После проверки оно появится в каталоге.
-                </p>
-              </div>
+              {!isEdit && (
+                <div className="p-4 bg-secondary/50 rounded-xl border border-border">
+                  <p className="text-sm font-medium text-foreground mb-1">Что будет после отправки?</p>
+                  <p className="text-sm text-muted-foreground">
+                    Объявление отправится на модерацию. После проверки оно появится в каталоге.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
-          {/* Navigation buttons */}
+          {/* Navigation */}
           <div className="flex justify-between mt-8 pt-6 border-t border-border">
             <button
               type="button"
-              onClick={() => step === 0 ? navigate(-1) : setStep(s => s - 1)}
+              onClick={() => step === 0 ? navigate(isEdit ? '/profile?tab=drafts' : -1 as never) : setStep(s => s - 1)}
               className="px-5 py-2.5 text-sm text-foreground border border-border rounded-lg hover:bg-secondary transition-colors"
             >
               {step === 0 ? 'Отмена' : 'Назад'}
@@ -567,7 +712,9 @@ export function CreateListingPage() {
                 className="flex items-center gap-2 px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
               >
                 {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-                {submitting ? 'Публикация...' : 'Опубликовать'}
+                {submitting
+                  ? (isEdit ? 'Сохранение...' : 'Публикация...')
+                  : (isEdit ? 'Сохранить изменения' : 'Опубликовать')}
               </button>
             )}
           </div>

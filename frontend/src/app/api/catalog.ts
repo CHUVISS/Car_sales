@@ -78,6 +78,7 @@ export interface MyListing {
   id: string;
   mark_id: string;
   model_id: string;
+  modification_id?: string;
   year: number;
   price: number;
   mileage: number;

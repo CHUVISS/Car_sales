@@ -50,6 +50,10 @@ export const viewingsApi = {
   getAvailableSlots: (listingId: string) =>
     api.get<ViewingWindow[]>(`/listings/${listingId}/viewing-windows`),
 
+  // Create a viewing window for a listing
+  createWindow: (listingId: string, body: { window_date: string; time_from: string; time_to: string }) =>
+    api.post<ViewingWindow>(`/listings/${listingId}/viewing-windows`, body),
+
   // Create a transaction to reserve a listing (simplified viewing book)
   book: (data: { car_id: string; viewing_date?: string; viewing_time?: string; comment?: string }) =>
     api.post<Record<string, unknown>>('/transactions', {
