@@ -359,10 +359,10 @@ export const adminApi = {
   },
 
   // Tickets (replaces Messages)
-  getMessages: async (_status?: MessageStatus, skip = 0, limit = 20) => {
-    const tickets = await req<Record<string, unknown>[]>(
-      `/tickets?skip=${skip}&limit=${limit}`
-    );
+  getMessages: async (status?: MessageStatus, skip = 0, limit = 20) => {
+    let url = `/tickets?skip=${skip}&limit=${limit}`;
+    if (status) url += `&status=${status}`;
+    const tickets = await req<Record<string, unknown>[]>(url);
     const data = tickets.map(mapTicketToMessage);
     return { data, count: data.length };
   },

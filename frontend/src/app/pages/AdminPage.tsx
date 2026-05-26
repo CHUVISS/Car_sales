@@ -1054,15 +1054,18 @@ function OffersTab() {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <h2 className="text-2xl font-semibold text-foreground">Заявки на продажу <span className="text-muted-foreground text-lg font-normal">({displayedCount})</span></h2>
           <div className="flex gap-2">
-            <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value as CarOfferStatus | ''); setSkip(0); }}
-              className="px-3 py-2 bg-card border border-border text-foreground rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary">
-              <option value="">Все статусы</option><option value="pending">На рассмотрении</option><option value="approved">Одобренные</option><option value="rejected">Отклонённые</option>
-            </select>
-            <button onClick={isSearching ? clearSearch : load} className="p-2 border border-border rounded-lg hover:bg-secondary transition-colors text-foreground">
+            {filterStatus && (
+              <button onClick={() => { setFilterStatus(''); setSkip(0); }}
+                className="flex items-center gap-1.5 px-3 py-2 bg-destructive/10 text-destructive rounded-lg text-sm hover:bg-destructive/20 transition-colors">
+                <X className="w-4 h-4" /> Сбросить
+              </button>
+            )}
+            <button onClick={isSearching ? clearSearch : load} className="p-2 border border-border rounded-lg hover:bg-secondary transition-colors text-foreground" title={isSearching ? 'Очистить поиск' : 'Обновить'}>
               {isSearching ? <X className="w-4 h-4" /> : <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />}
             </button>
           </div>
         </div>
+
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
@@ -1070,6 +1073,23 @@ function OffersTab() {
             className="w-full pl-10 pr-10 py-2.5 bg-card border border-border text-foreground placeholder:text-muted-foreground rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary transition-all" />
           {searchQuery && <button onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-secondary rounded transition-colors"><X className="w-4 h-4 text-muted-foreground" /></button>}
         </div>
+
+        <div className="flex flex-wrap gap-3">
+          <div className="flex items-center gap-1.5 bg-secondary/50 rounded-lg px-2 py-1.5">
+            <span className="text-xs font-medium text-muted-foreground">Статус:</span>
+            <button onClick={() => { setFilterStatus(''); setSkip(0); }}
+              className={`text-xs px-2 py-0.5 rounded-full transition-colors ${!filterStatus ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'}`}>
+              Все
+            </button>
+            {(['pending', 'approved', 'rejected'] as CarOfferStatus[]).map(s => (
+              <button key={s} onClick={() => { setFilterStatus(filterStatus === s ? '' : s); setSkip(0); }}
+                className={`text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${filterStatus === s ? `${OFFER_STATUS_COLORS[s]} ring-2 ring-offset-1 ring-primary/20` : 'text-muted-foreground bg-secondary hover:bg-secondary/80'}`}>
+                {OFFER_STATUS_LABELS[s]}
+              </button>
+            ))}
+          </div>
+        </div>
+
       </div>
       <div className="space-y-3">
         {displayedOffers.length === 0 && !searchLoading && <EmptyTableState text={isSearching ? 'По вашему запросу ничего не найдено' : 'Заявок нет'} />}
@@ -1140,81 +1160,109 @@ function OffersTab() {
 
 function MessagesTab() {
   const [messages, setMessages] = useState<AdminMessage[]>([]);
-  const [count, setCount] = useState(0); const [skip, setSkip] = useState(0);
+  const [count, setCount] = useState(0);
+  const [skip, setSkip] = useState(0);
   const [filterStatus, setFilterStatus] = useState<MessageStatus | ''>('open');
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [processing, setProcessing] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<AdminMessage[]>([]);
-  const [searchLoading, setSearchLoading] = useState(false);
   const debouncedSearch = useDebounce(searchQuery, 300);
-  const searchAbortRef = useRef<AbortController | null>(null);
 
   const load = useCallback(async () => {
     if (searchQuery.trim()) return;
     setLoading(true);
-    try { const data = await adminApi.getMessages(filterStatus || undefined, skip); setMessages(data.data); setCount(data.count); }
-    catch { toast.error('Ошибка загрузки сообщений'); } finally { setLoading(false); }
+    try {
+      const data = await adminApi.getMessages(filterStatus || undefined, skip);
+      setMessages(data.data); setCount(data.count);
+    } catch { toast.error('Ошибка загрузки тикетов'); }
+    finally { setLoading(false); }
   }, [skip, filterStatus, searchQuery]);
 
-  const performSearch = useCallback(async (query: string) => {
-    if (!query.trim()) { setSearchResults([]); return; }
-    setSearchLoading(true);
-    if (searchAbortRef.current) searchAbortRef.current.abort();
-    searchAbortRef.current = new AbortController();
-    try {
-      const data = await adminApi.getMessages(filterStatus || undefined, 0);
-      const q = query.toLowerCase();
-      setSearchResults(data.data.filter((m: AdminMessage) =>
-        (m.subject && m.subject.toLowerCase().includes(q)) || m.body.toLowerCase().includes(q) ||
-        m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q) ||
-        (m.phone && m.phone.toLowerCase().includes(q))
-      ));
-    } catch (err) { if ((err as Error).name !== 'AbortError') { toast.error('Ошибка поиска'); setSearchResults([]); } }
-    finally { setSearchLoading(false); }
-  }, [filterStatus]);
-
-  useEffect(() => { performSearch(debouncedSearch); }, [debouncedSearch, performSearch]);
   useEffect(() => { load(); }, [load]);
-  const clearSearch = () => { setSearchQuery(''); setSearchResults([]); setSkip(0); };
 
   const handleStatusChange = async (id: string, status: MessageStatus) => {
     setProcessing(id);
-    try { await adminApi.updateMessage(id, { status }); toast.success('Статус обновлён'); if (searchQuery.trim()) performSearch(searchQuery); else load(); }
-    catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Ошибка'); } finally { setProcessing(null); }
+    try {
+      await adminApi.updateMessage(id, { status });
+      toast.success('Статус обновлён');
+      load();
+    }
+    catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Ошибка'); }
+    finally { setProcessing(null); }
   };
 
-  const isSearching = searchQuery.trim().length > 0;
-  const displayedMessages = isSearching ? searchResults : messages;
-  const displayedCount = isSearching ? searchResults.length : count;
-  if (loading && messages.length === 0 && !isSearching) return <LoadingSpinner />;
+  const clearSearch = () => { setSearchQuery(''); setSkip(0); };
+
+  const filteredMessages = useMemo(() => {
+    let result = filterStatus ? messages.filter(m => m.status === filterStatus) : messages;
+    if (!debouncedSearch.trim()) return result;
+    const q = debouncedSearch.toLowerCase();
+    return result.filter(m =>
+      (m.subject && m.subject.toLowerCase().includes(q)) ||
+      m.body.toLowerCase().includes(q) ||
+      m.name.toLowerCase().includes(q) ||
+      m.email.toLowerCase().includes(q) ||
+      (m.phone && m.phone.toLowerCase().includes(q))
+    );
+  }, [messages, debouncedSearch, filterStatus]);
+
+  const displayedMessages = filteredMessages;
+  const hasActiveFilter = !!filterStatus;
+  if (loading && messages.length === 0) return <LoadingSpinner />;
 
   return (
     <div className="space-y-4">
       <div className="space-y-3">
         <div className="flex items-center justify-between flex-wrap gap-3">
-          <h2 className="text-2xl font-semibold text-foreground">Сообщения <span className="text-muted-foreground text-lg font-normal">({displayedCount})</span></h2>
+          <h2 className="text-2xl font-semibold text-foreground">
+            Тикеты <span className="text-muted-foreground text-lg font-normal">({debouncedSearch ? filteredMessages.length : count})</span>
+          </h2>
           <div className="flex gap-2">
-            <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value as MessageStatus | ''); setSkip(0); }}
-              className="px-3 py-2 bg-card border border-border text-foreground rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary">
-              <option value="">Все</option><option value="open">Открытые</option><option value="in_progress">В работе</option><option value="resolved">Решено</option><option value="closed">Закрыто</option>
-            </select>
-            <button onClick={isSearching ? clearSearch : load} className="p-2 border border-border rounded-lg hover:bg-secondary transition-colors text-foreground">
-              {isSearching ? <X className="w-4 h-4" /> : <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />}
+            {hasActiveFilter && (
+              <button onClick={() => { setFilterStatus(''); setSkip(0); }}
+                className="flex items-center gap-1.5 px-3 py-2 bg-destructive/10 text-destructive rounded-lg text-sm hover:bg-destructive/20 transition-colors">
+                <X className="w-4 h-4" /> Сбросить
+              </button>
+            )}
+            <button onClick={searchQuery ? clearSearch : load}
+              className="p-2 border border-border rounded-lg hover:bg-secondary transition-colors text-foreground" title={searchQuery ? 'Очистить поиск' : 'Обновить'}>
+              {searchQuery ? <X className="w-4 h-4" /> : <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />}
             </button>
           </div>
         </div>
+
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
             placeholder="Поиск по теме, тексту, имени, email..."
             className="w-full pl-10 pr-10 py-2.5 bg-card border border-border text-foreground placeholder:text-muted-foreground rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary transition-all" />
-          {searchQuery && <button onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-secondary rounded transition-colors"><X className="w-4 h-4 text-muted-foreground" /></button>}
+          {searchQuery && (
+            <button onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-secondary rounded transition-colors">
+              <X className="w-4 h-4 text-muted-foreground" />
+            </button>
+          )}
         </div>
+
+        <div className="flex flex-wrap gap-3">
+          <div className="flex items-center gap-1.5 bg-secondary/50 rounded-lg px-2 py-1.5">
+            <span className="text-xs font-medium text-muted-foreground">Статус:</span>
+            <button onClick={() => { setFilterStatus(''); setSkip(0); }}
+              className={`text-xs px-2 py-0.5 rounded-full transition-colors ${!filterStatus ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'}`}>
+              Все
+            </button>
+            {(['open', 'in_progress', 'resolved', 'closed'] as MessageStatus[]).map(s => (
+              <button key={s} onClick={() => { setFilterStatus(filterStatus === s ? '' : s); setSkip(0); }}
+                className={`text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${filterStatus === s ? `${MSG_STATUS_COLORS[s]} ring-2 ring-offset-1 ring-primary/20` : 'text-muted-foreground bg-secondary hover:bg-secondary/80'}`}>
+                {MSG_STATUS_LABELS[s]}
+              </button>
+            ))}
+          </div>
+        </div>
+
       </div>
       <div className="space-y-2">
-        {displayedMessages.length === 0 && !searchLoading && <EmptyTableState text={isSearching ? 'По вашему запросу ничего не найдено' : 'Сообщений нет'} />}
+        {displayedMessages.length === 0 && <EmptyTableState text={debouncedSearch ? 'По вашему запросу ничего не найдено' : 'Сообщений нет'} />}
         {displayedMessages.map(msg => (
           <div key={msg.id} className="bg-card rounded-xl border border-border overflow-hidden">
             <button onClick={() => setExpanded(expanded === msg.id ? null : msg.id)}
@@ -1242,7 +1290,7 @@ function MessagesTab() {
           </div>
         ))}
       </div>
-      {!isSearching && <Pagination skip={skip} limit={20} count={count} onChange={setSkip} />}
+      <Pagination skip={skip} limit={20} count={count} onChange={setSkip} />
     </div>
   );
 }
