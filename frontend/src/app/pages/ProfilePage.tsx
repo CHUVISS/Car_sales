@@ -644,7 +644,7 @@ function ListingCard({ listing, actions }: { listing: MyListing; actions?: React
 
 function MyListingsTab() {
   const { listings, loading } = useMyListings();
-  const active = listings.filter(l => l.status !== 'draft');
+  const active = listings.filter(l => l.status === 'active' || l.status === 'reserved');
 
   if (loading) {
     return (
@@ -717,11 +717,15 @@ function DraftsTab() {
   const drafts = listings.filter(l => l.status === 'draft');
   const [publishing, setPublishing] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [publishConfirm, setPublishConfirm] = useState<{ id: string; label: string } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; label: string } | null>(null);
 
-  const handlePublish = async (id: string) => {
-    setPublishing(id);
+  const handlePublish = async () => {
+    if (!publishConfirm) return;
+    setPublishing(publishConfirm.id);
+    setPublishConfirm(null);
     try {
-      await listingsApi.publish(id);
+      await listingsApi.publish(publishConfirm.id);
       toast.success('Объявление отправлено на модерацию');
       reload();
     } catch (err: unknown) {
@@ -731,10 +735,12 @@ function DraftsTab() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    setDeleting(id);
+  const handleDelete = async () => {
+    if (!deleteConfirm) return;
+    setDeleting(deleteConfirm.id);
+    setDeleteConfirm(null);
     try {
-      await listingsApi.archive(id);
+      await listingsApi.archive(deleteConfirm.id);
       toast.success('Черновик удалён');
       reload();
     } catch (err: unknown) {
@@ -766,6 +772,7 @@ function DraftsTab() {
   }
 
   return (
+    <>
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-semibold text-foreground">Черновики</h2>
@@ -778,7 +785,7 @@ function DraftsTab() {
           actions={
             <>
               <button
-                onClick={() => handlePublish(l.id)}
+                onClick={() => setPublishConfirm({ id: l.id, label: `${formatCatalogId(l.mark_id)} ${formatCatalogId(l.model_id)} ${l.year}` })}
                 disabled={publishing === l.id || deleting === l.id}
                 className="flex flex-1 justify-center items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
               >
@@ -796,7 +803,7 @@ function DraftsTab() {
                 Редактировать
               </Link>
               <button
-                onClick={() => handleDelete(l.id)}
+                onClick={() => setDeleteConfirm({ id: l.id, label: `${formatCatalogId(l.mark_id)} ${formatCatalogId(l.model_id)} ${l.year}` })}
                 disabled={publishing === l.id || deleting === l.id}
                 className="flex flex-1 justify-center items-center gap-1.5 px-4 py-2 text-sm text-destructive border border-destructive/50 rounded-lg hover:bg-destructive/10 transition-colors disabled:opacity-50"
               >
@@ -811,5 +818,46 @@ function DraftsTab() {
         />
       ))}
     </div>
+
+    {publishConfirm && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setPublishConfirm(null)} />
+        <div className="relative bg-card border border-border rounded-2xl p-6 w-full max-w-md shadow-xl">
+          <h3 className="text-lg font-semibold text-foreground mb-2 text-center">Подтверждение публикации</h3>
+          <p className="text-sm text-muted-foreground mb-5">
+            Отправить объявление <span className="font-semibold text-foreground">{publishConfirm.label}</span> на модерацию?
+            После проверки оно появится в каталоге.
+          </p>
+          <div className="flex gap-3">
+            <button onClick={() => setPublishConfirm(null)} className="flex-1 px-4 py-2 text-sm border border-border rounded-lg hover:bg-secondary transition-colors">Отмена</button>
+            <button onClick={handlePublish} disabled={!!publishing} className="flex-1 flex justify-center items-center gap-2 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity">
+              {publishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              Опубликовать
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {deleteConfirm && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setDeleteConfirm(null)} />
+        <div className="relative bg-card border border-border rounded-2xl p-6 w-full max-w-md shadow-xl">
+          <h3 className="text-lg font-semibold text-foreground mb-2 text-center">Подтверждение удаления</h3>
+          <p className="text-sm text-muted-foreground mb-5">
+            Удалить черновик <span className="font-semibold text-foreground">{deleteConfirm.label}</span>?
+            Это действие необратимо.
+          </p>
+          <div className="flex gap-3">
+            <button onClick={() => setDeleteConfirm(null)} className="flex-1 px-4 py-2 text-sm border border-border rounded-lg hover:bg-secondary transition-colors">Отмена</button>
+            <button onClick={handleDelete} disabled={!!deleting} className="flex-1 flex justify-center items-center gap-2 px-4 py-2 text-sm bg-destructive text-white rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity">
+              {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+              Удалить
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

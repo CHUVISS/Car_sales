@@ -309,6 +309,9 @@ export const adminApi = {
   deleteCar: (_id: string): Promise<void> =>
     Promise.reject(new Error('Удаление авто недоступно через панель администратора')),
 
+  deleteListing: (id: string): Promise<void> =>
+    req<void>(`/listings/${id}`, { method: 'DELETE' }),
+
   // Moderation queue (pending listings) — replaces Car offers
   getOffers: async (_status?: CarOfferStatus, skip = 0, limit = 20) => {
     const listings = await req<Record<string, unknown>[]>(

@@ -336,12 +336,12 @@ export function CarDetailPage() {
               )}
 
               <div className="mt-6 pt-6 border-t border-border">
-                <h4 className="font-semibold text-foreground mb-3">Менеджер</h4>
+                <h4 className="font-semibold text-foreground mb-3">Продавец</h4>
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="w-12 h-12 bg-primary rounded-full flex items-center justify-center text-primary-foreground text-lg font-semibold">АИ</div>
+                  <div className="w-12 h-12 bg-primary rounded-full flex items-center justify-center text-primary-foreground text-lg font-semibold">МД</div>
                   <div>
-                    <p className="font-semibold text-foreground">Алексей Иванов</p>
-                    <p className="text-sm text-muted-foreground">Менеджер по продажам</p>
+                    <p className="font-semibold text-foreground">Матвей Дворников</p>
+                    {/* <p className="text-sm text-muted-foreground">Менеджер по продажам</p> */}
                   </div>
                 </div>
               </div>
@@ -379,8 +379,8 @@ export function CarDetailPage() {
                 )}
               </div>
 
-              <div className="mt-6 pt-6 border-t border-border">
-                <h4 className="font-semibold text-foreground mb-3">Гарантии</h4>
+              {/* <div className="mt-6 pt-6 border-t border-border">
+                {/* <h4 className="font-semibold text-foreground mb-3">Гарантии</h4>
                 <div className="space-y-2">
                   {['Проверка юридической чистоты', 'Техническая диагностика', 'Гарантия на автомобиль', 'Помощь в оформлении'].map(text => (
                     <div key={text} className="flex items-start gap-2">
@@ -389,7 +389,7 @@ export function CarDetailPage() {
                     </div>
                   ))}
                 </div>
-              </div>
+              </div> */}
             </div>
           </div>
         </div>

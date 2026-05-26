@@ -409,6 +409,8 @@ function CarsTab() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editCar, setEditCar] = useState<AdminCar | null>(null);
+  const [deleteModal, setDeleteModal] = useState<{ id: string; name: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const emptyForm = { brand: '', model: '', year: '', price: '', mileage: '0', color: '', fuel_type: '', transmission: '', body_type: '', engine_volume: '', engine_power: '', description: '', vin: '', viewing_days: [] as string[], viewing_time_from: '09:00', viewing_time_to: '20:00', viewing_address: '' };
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
@@ -491,8 +493,23 @@ function CarsTab() {
     toast.error('Создание/редактирование авто недоступно: в новой системе пользователи создают объявления самостоятельно');
   };
 
-  const handleDelete = async (_id: string, _name: string) => {
-    toast.error('Удаление авто недоступно через панель администратора');
+  const handleDelete = (id: string, name: string) => {
+    setDeleteModal({ id, name });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteModal) return;
+    setDeleting(true);
+    try {
+      await adminApi.deleteListing(deleteModal.id);
+      toast.success('Объявление удалено');
+      setDeleteModal(null);
+      handleReload();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Ошибка удаления');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handleStatusChange = async (_id: string, _status: string) => {
@@ -648,6 +665,24 @@ function CarsTab() {
         )}
       </div>
 
+      {deleteModal && (
+        <Modal title="Подтверждение удаления" onClose={() => setDeleteModal(null)}>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Вы уверены, что хотите удалить объявление{' '}
+              <span className="font-semibold text-foreground">{deleteModal.name}</span>?
+              Это действие необратимо.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteModal(null)} className="flex-1 px-4 py-2 bg-secondary text-foreground rounded-lg text-sm hover:bg-secondary/80">Отмена</button>
+              <button onClick={confirmDelete} disabled={deleting} className="flex-1 px-4 py-2 bg-destructive text-white rounded-lg text-sm hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2">
+                {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                Удалить
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
       {showForm && (
         <Modal title={editCar ? 'Редактировать авто' : 'Добавить авто'} onClose={() => setShowForm(false)} size="lg">
           <form onSubmit={handleSave} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
@@ -767,6 +802,7 @@ function OffersTab() {
   const [count, setCount] = useState(0); const [skip, setSkip] = useState(0);
   const [filterStatus, setFilterStatus] = useState<CarOfferStatus | ''>('');
   const [loading, setLoading] = useState(true);
+  const [approveModal, setApproveModal] = useState<{ id: string; brand: string; model: string } | null>(null);
   const [rejectModal, setRejectModal] = useState<{ id: string; brand: string; model: string } | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [processing, setProcessing] = useState<string | null>(null);
@@ -803,9 +839,10 @@ function OffersTab() {
   useEffect(() => { load(); }, [load]);
   const clearSearch = () => { setSearchQuery(''); setSearchResults([]); setSkip(0); };
 
-  const handleApprove = async (id: string) => {
-    setProcessing(id);
-    try { await adminApi.reviewOffer(id, 'approved'); toast.success('Заявка одобрена'); if (searchQuery.trim()) performSearch(searchQuery); else load(); }
+  const handleApprove = async () => {
+    if (!approveModal) return;
+    setProcessing(approveModal.id);
+    try { await adminApi.reviewOffer(approveModal.id, 'approved'); toast.success('Объявление опубликовано'); setApproveModal(null); if (searchQuery.trim()) performSearch(searchQuery); else load(); }
     catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Ошибка'); } finally { setProcessing(null); }
   };
   const handleReject = async () => {
@@ -862,7 +899,7 @@ function OffersTab() {
                   {offer.rejection_reason && <p className="text-xs text-destructive mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{offer.rejection_reason}</p>}
                   {offer.status === 'pending' && (
                     <div className="flex gap-2 mt-3">
-                      <button onClick={() => handleApprove(offer.id)} disabled={processing === offer.id} className="flex items-center gap-1.5 px-3 py-1.5 bg-accent text-accent-foreground rounded-lg text-sm hover:opacity-90 disabled:opacity-50">{processing === offer.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Одобрить</button>
+                      <button onClick={() => setApproveModal({ id: offer.id, brand: offer.brand, model: offer.model })} disabled={processing === offer.id} className="flex items-center gap-1.5 px-3 py-1.5 bg-accent text-accent-foreground rounded-lg text-sm hover:opacity-90 disabled:opacity-50">{processing === offer.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Одобрить</button>
                       <button onClick={() => setRejectModal({ id: offer.id, brand: offer.brand, model: offer.model })} disabled={processing === offer.id} className="flex items-center gap-1.5 px-3 py-1.5 bg-destructive/10 text-destructive rounded-lg text-sm hover:bg-destructive/20 disabled:opacity-50"><X className="w-3.5 h-3.5" /> Отклонить</button>
                     </div>
                   )}
@@ -873,6 +910,24 @@ function OffersTab() {
         })}
       </div>
       {!isSearching && <Pagination skip={skip} limit={20} count={count} onChange={setSkip} />}
+      {approveModal && (
+        <Modal title="Подтверждение публикации" onClose={() => setApproveModal(null)}>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Вы уверены, что хотите опубликовать объявление{' '}
+              <span className="font-semibold text-foreground">{approveModal.brand} {approveModal.model}</span>?
+              После публикации оно появится в каталоге.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setApproveModal(null)} className="flex-1 px-4 py-2 bg-secondary text-foreground rounded-lg text-sm hover:bg-secondary/80">Отмена</button>
+              <button onClick={handleApprove} disabled={!!processing} className="flex-1 px-4 py-2 bg-accent text-accent-foreground rounded-lg text-sm hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2">
+                {processing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                Опубликовать
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
       {rejectModal && (
         <Modal title={`Отклонить: ${rejectModal.brand} ${rejectModal.model}`} onClose={() => setRejectModal(null)}>
           <div className="space-y-4">
