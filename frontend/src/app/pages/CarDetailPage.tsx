@@ -25,6 +25,21 @@ const STATUS_COLORS: Record<string, string> = {
   sold: 'bg-muted text-muted-foreground border-border',
   inactive: 'bg-muted text-muted-foreground border-border',
 };
+const CONDITION_LABELS: Record<string, string> = {
+  excellent: 'Отличное состояние', good: 'Хорошее состояние', fair: 'Удовлетворительное состояние', poor: 'Плохое состояние',
+};
+const CONDITION_DESCS: Record<string, string> = {
+  excellent: 'Как новый, без дефектов',
+  good: 'Небольшие следы эксплуатации',
+  fair: 'Заметные следы эксплуатации',
+  poor: 'Требует ремонта',
+};
+const CONDITION_COLORS: Record<string, string> = {
+  excellent: 'bg-accent/15 text-accent border-accent/30',
+  good: 'bg-primary/10 text-primary border-primary/30',
+  fair: 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/30',
+  poor: 'bg-destructive/10 text-destructive border-destructive/30',
+};
 
 export function CarDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -114,6 +129,7 @@ export function CarDetailPage() {
   const specs = [
     ['Марка', car.brand], ['Модель', car.model], ['Год выпуска', String(car.year)],
     ['Пробег', formatMileage(car.mileage)],
+    ...(car.condition ? [['Состояние', CONDITION_LABELS[car.condition] ?? car.condition]] : []),
     ...(car.body_type ? [['Тип кузова', BODY_LABELS[car.body_type] ?? car.body_type]] : []),
     ...(car.color ? [['Цвет', car.color]] : []),
     ...(car.engine_volume ? [['Двигатель', `${car.engine_volume} л`]] : []),
@@ -189,6 +205,22 @@ export function CarDetailPage() {
                     {car.status && (
                       <span className={`px-3 py-1 rounded-full text-sm font-medium border ${STATUS_COLORS[car.status] ?? 'bg-muted text-muted-foreground border-border'}`}>
                         {STATUS_LABELS[car.status] ?? car.status}
+                      </span>
+                    )}
+                    {car.condition && (
+                      <span className="relative group cursor-default">
+                        <span className={`px-3 py-1 rounded-full text-sm font-medium border ${CONDITION_COLORS[car.condition] ?? 'bg-muted text-muted-foreground border-border'}`}>
+                          {CONDITION_LABELS[car.condition] ?? car.condition}
+                        </span>
+                        {CONDITION_DESCS[car.condition] && (
+                          <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 pointer-events-none z-20 opacity-0 scale-95 -translate-y-1 group-hover:opacity-100 group-hover:scale-100 group-hover:translate-y-0 transition-all duration-200 ease-out">
+                            <span className={`relative flex items-center gap-1.5 px-3 py-2 rounded-lg shadow-xl border text-xs font-medium whitespace-nowrap backdrop-blur-sm ${CONDITION_COLORS[car.condition] ?? 'bg-popover text-popover-foreground border-border'}`}>
+                              <span className="w-1.5 h-1.5 rounded-full bg-current opacity-70 flex-shrink-0" />
+                              {CONDITION_DESCS[car.condition]}
+                              <span className="absolute top-full left-1/2 -translate-x-1/2 border-[5px] border-transparent border-t-current opacity-30" />
+                            </span>
+                          </span>
+                        )}
                       </span>
                     )}
                   </div>

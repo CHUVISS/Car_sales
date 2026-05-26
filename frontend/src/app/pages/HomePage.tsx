@@ -7,8 +7,8 @@ import { toast } from 'sonner';
 import { useCars } from '../hooks/useCars';
 import { messagesApi } from '../api/messages';
 
-import Mercedes from '../../assets/mercedes.jpg';
-import Ford from '../../assets/ford.jpg';
+// import Mercedes from '../../assets/mercedes.jpg';
+// import Ford from '../../assets/ford.jpg';
 
 const ALL_BRANDS = ['Audi', 'BMW', 'Hyundai', 'Kia', 'Lexus', 'Mazda', 'Mercedes-Benz', 'Nissan', 'Skoda', 'Tesla', 'Toyota', 'Volkswagen'];
 
@@ -104,7 +104,7 @@ export function HomePage() {
         </div>
       </section>
 
-      {/* Категории */}
+      {/* Категории
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Link to="/catalog" className="group relative overflow-hidden rounded-lg bg-secondary hover:shadow-lg transition-shadow border border-border">
@@ -132,7 +132,7 @@ export function HomePage() {
             </div>
           </Link>
         </div>
-      </section>
+      </section> */}
 
       {/* Популярные модели */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
