@@ -141,6 +141,20 @@ export interface DashboardStats {
   total_offers: number;
 }
 
+export interface AdminListingFilters {
+  sort?: string;
+  cursor?: string;
+  limit?: number;
+  mark_id?: string;
+  model_id?: string;
+  price_min?: number;
+  price_max?: number;
+  year_min?: number;
+  year_max?: number;
+  engine_type?: string;
+  body_type?: string;
+}
+
 export interface UserCreate {
   full_name: string;
   email: string;
@@ -292,12 +306,23 @@ export const adminApi = {
     req<void>(`/admin/users/${id}`, { method: 'DELETE' }),
 
   // Listings (replaces Cars)
-  getCars: async (skip = 0, limit = 20) => {
+  getCars: async (filters: AdminListingFilters = {}) => {
+    const params = new URLSearchParams();
+    params.set('sort', filters.sort ?? 'newest');
+    if (filters.limit) params.set('limit', String(filters.limit));
+    if (filters.cursor) params.set('cursor', filters.cursor);
+    if (filters.mark_id) params.set('mark_id', filters.mark_id);
+    if (filters.model_id) params.set('model_id', filters.model_id);
+    if (filters.price_min != null) params.set('price_min', String(filters.price_min));
+    if (filters.price_max != null) params.set('price_max', String(filters.price_max));
+    if (filters.year_min != null) params.set('year_min', String(filters.year_min));
+    if (filters.year_max != null) params.set('year_max', String(filters.year_max));
+    if (filters.engine_type) params.set('engine_type', filters.engine_type);
+    if (filters.body_type) params.set('body_type', filters.body_type);
     const res = await req<{ items: Record<string, unknown>[]; next_cursor: string | null }>(
-      `/listings?sort=newest&limit=${limit}${skip > 0 ? `&cursor=skip:${skip}` : ''}`
+      `/listings?${params.toString()}`
     );
-    const data = res.items.map(mapListingRow);
-    return { data, count: data.length + (res.next_cursor ? 1 : 0) };
+    return { data: res.items.map(mapListingRow), next_cursor: res.next_cursor };
   },
 
   // Admin cannot create/delete cars in the new backend

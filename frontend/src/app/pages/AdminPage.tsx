@@ -14,9 +14,16 @@ import {
   type AdminMessage, type DashboardStats,
   type UserCreate, type UserRole, type UserStatus,
   type CarOfferStatus, type MessageStatus, type CarStatus,
+  type AdminListingFilters,
 } from '../api/admin';
+import { catalogApi } from '../api/catalog';
+import type { CatalogMark, CatalogModel, CatalogGeneration, CatalogConfiguration, CatalogModification } from '../api/catalog';
+import { formatCatalogId } from '../api/cars';
 
 type TabType = 'stats' | 'cars' | 'offers' | 'messages' | 'users';
+
+function markLabel(m: CatalogMark) { return m.name ?? m.cyrillic_name ?? formatCatalogId(m.id); }
+function modelLabel(m: CatalogModel) { return m.name ?? formatCatalogId(m.id); }
 
 // Helpers
 
@@ -128,20 +135,25 @@ function Pagination({ skip, limit, count, onChange }: {
 interface CarFiltersState {
   status: string; priceMin: string; priceMax: string;
   mileageMin: string; mileageMax: string; yearMin: string; yearMax: string;
-  brands: string[]; transmissions: string[]; fuelTypes: string[]; bodyTypes: string[];
+  brands: string[]; models: string[]; transmissions: string[]; fuelTypes: string[]; bodyTypes: string[];
+  selectedGenIds: string[]; selectedConfIds: string[]; selectedModifIds: string[];
 }
 const EMPTY_FILTERS: CarFiltersState = {
   status: '', priceMin: '', priceMax: '', mileageMin: '', mileageMax: '',
-  yearMin: '', yearMax: '', brands: [], transmissions: [], fuelTypes: [], bodyTypes: [],
+  yearMin: '', yearMax: '', brands: [], models: [], transmissions: [], fuelTypes: [], bodyTypes: [],
+  selectedGenIds: [], selectedConfIds: [], selectedModifIds: [],
 };
 
 function hasActiveFilters(f: CarFiltersState): boolean {
   return !!(f.status || f.priceMin || f.priceMax || f.mileageMin || f.mileageMax ||
-    f.yearMin || f.yearMax || f.brands.length || f.transmissions.length ||
-    f.fuelTypes.length || f.bodyTypes.length);
+    f.yearMin || f.yearMax || f.brands.length || f.models.length || f.transmissions.length ||
+    f.fuelTypes.length || f.bodyTypes.length || f.selectedGenIds.length || f.selectedConfIds.length || f.selectedModifIds.length);
 }
 
-function applyFilters(cars: AdminCar[], f: CarFiltersState, search: string): AdminCar[] {
+function applyFilters(
+  cars: AdminCar[], f: CarFiltersState, search: string,
+  availableGens: CatalogGeneration[] = [], availableConfs: CatalogConfiguration[] = [],
+): AdminCar[] {
   return cars.filter(car => {
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -157,9 +169,24 @@ function applyFilters(cars: AdminCar[], f: CarFiltersState, search: string): Adm
     if (f.yearMin && car.year < Number(f.yearMin)) return false;
     if (f.yearMax && car.year > Number(f.yearMax)) return false;
     if (f.brands.length && !f.brands.includes(car.brand)) return false;
+    if (f.models.length && !f.models.includes(car.model)) return false;
     if (f.transmissions.length && (!car.transmission || !f.transmissions.includes(car.transmission))) return false;
     if (f.fuelTypes.length && (!car.fuel_type || !f.fuelTypes.includes(car.fuel_type))) return false;
     if (f.bodyTypes.length && (!car.body_type || !f.bodyTypes.includes(car.body_type))) return false;
+    if (f.selectedGenIds.length) {
+      const matched = f.selectedGenIds.some(genId => {
+        const gen = availableGens.find(g => g.id === genId);
+        if (!gen || (!gen.year_from && !gen.year_to)) return true;
+        return (!gen.year_from || car.year >= gen.year_from) && (!gen.year_to || car.year <= gen.year_to);
+      });
+      if (!matched) return false;
+    }
+    if (f.selectedConfIds.length) {
+      const bodyTypes = f.selectedConfIds
+        .map(id => availableConfs.find(c => c.id === id)?.body_type)
+        .filter(Boolean) as string[];
+      if (bodyTypes.length > 0 && (!car.body_type || !bodyTypes.includes(car.body_type))) return false;
+    }
     return true;
   });
 }
@@ -211,9 +238,13 @@ function MultiSelectDropdown({ label, options, selected, onToggle, onClear }: {
   );
 }
 
-function CarFilterPanel({ filters, onChange, onReset, availableBrands, brandsLoading }: {
+function CarFilterPanel({ filters, onChange, onReset, availableBrands, brandsLoading,
+  availableModels, modelsLoading, availableGens, availableConfs, availableModifs,
+}: {
   filters: CarFiltersState; onChange: (f: CarFiltersState) => void;
   onReset: () => void; availableBrands: string[]; brandsLoading: boolean;
+  availableModels: CatalogModel[]; modelsLoading: boolean;
+  availableGens: CatalogGeneration[]; availableConfs: CatalogConfiguration[]; availableModifs: CatalogModification[];
 }) {
   const set = (patch: Partial<CarFiltersState>) => onChange({ ...filters, ...patch });
   const toggleArr = (key: keyof CarFiltersState, val: string) => {
@@ -280,9 +311,47 @@ function CarFilterPanel({ filters, onChange, onReset, availableBrands, brandsLoa
           </div>
         ) : (
           <MultiSelectDropdown label="" options={availableBrands.map(b => ({ value: b, label: b }))}
-            selected={filters.brands} onToggle={v => toggleArr('brands', v)} onClear={() => set({ brands: [] })} />
+            selected={filters.brands} onToggle={v => toggleArr('brands', v)}
+            onClear={() => set({ brands: [], models: [], selectedGenIds: [], selectedConfIds: [], selectedModifIds: [] })} />
         )}
       </div>
+      {filters.brands.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground mb-1">Модель</p>
+          {modelsLoading ? (
+            <div className="flex items-center gap-2 px-3 py-2 bg-secondary rounded-lg text-sm text-muted-foreground border border-border">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Загрузка...
+            </div>
+          ) : availableModels.length > 0 ? (
+            <MultiSelectDropdown label="" options={availableModels.map(m => ({ value: modelLabel(m), label: modelLabel(m) }))}
+              selected={filters.models} onToggle={v => toggleArr('models', v)}
+              onClear={() => set({ models: [], selectedGenIds: [], selectedConfIds: [], selectedModifIds: [] })} />
+          ) : (
+            <p className="text-xs text-muted-foreground px-1">Нет моделей</p>
+          )}
+        </div>
+      )}
+      {filters.models.length === 1 && availableGens.length > 0 && (
+        <MultiSelectDropdown label="Поколение"
+          options={availableGens.map(g => ({ value: g.id, label: g.name ?? `${g.year_from ?? ''}–${g.year_to ?? '...'}` }))}
+          selected={filters.selectedGenIds}
+          onToggle={v => { const next = filters.selectedGenIds.includes(v) ? filters.selectedGenIds.filter(x => x !== v) : [...filters.selectedGenIds, v]; set({ selectedGenIds: next, selectedConfIds: [], selectedModifIds: [] }); }}
+          onClear={() => set({ selectedGenIds: [], selectedConfIds: [], selectedModifIds: [] })} />
+      )}
+      {filters.selectedGenIds.length > 0 && availableConfs.length > 0 && (
+        <MultiSelectDropdown label="Комплектация"
+          options={availableConfs.map(c => ({ value: c.id, label: c.name ?? c.id }))}
+          selected={filters.selectedConfIds}
+          onToggle={v => { const next = filters.selectedConfIds.includes(v) ? filters.selectedConfIds.filter(x => x !== v) : [...filters.selectedConfIds, v]; set({ selectedConfIds: next, selectedModifIds: [] }); }}
+          onClear={() => set({ selectedConfIds: [], selectedModifIds: [] })} />
+      )}
+      {filters.selectedConfIds.length > 0 && availableModifs.length > 0 && (
+        <MultiSelectDropdown label="Модификация"
+          options={availableModifs.map(m => ({ value: m.id, label: m.name ?? m.group_name ?? m.id }))}
+          selected={filters.selectedModifIds}
+          onToggle={v => { const next = filters.selectedModifIds.includes(v) ? filters.selectedModifIds.filter(x => x !== v) : [...filters.selectedModifIds, v]; set({ selectedModifIds: next }); }}
+          onClear={() => set({ selectedModifIds: [] })} />
+      )}
       <MultiSelectDropdown label="Коробка передач"
         options={Object.entries(TRANSMISSION_LABELS).map(([v, l]) => ({ value: v, label: l }))}
         selected={filters.transmissions} onToggle={v => toggleArr('transmissions', v)} onClear={() => set({ transmissions: [] })} />
@@ -372,41 +441,37 @@ function CarTableRow({ car, onEdit, onDelete, onStatusChange, onRowClick }: {
   );
 }
 
-// fetchAllCars
-
-const PAGE_SIZE = 20;
-
-async function fetchAllCars(signal?: AbortSignal): Promise<AdminCar[]> {
-  const result: AdminCar[] = [];
-  const first = await adminApi.getCars(0, PAGE_SIZE);
-  result.push(...first.data);
-  const total: number = first.count;
-  let skip = PAGE_SIZE;
-  while (result.length < total) {
-    if (signal?.aborted) break;
-    const page = await adminApi.getCars(skip, PAGE_SIZE);
-    result.push(...page.data);
-    skip += PAGE_SIZE;
-    if (page.data.length === 0) break;
-  }
-  return result;
-}
-
 // CarsTab
+
+const ADMIN_PAGE_SIZE = 20;
 
 function CarsTab() {
   const navigate = useNavigate();
-  const [serverPage, setServerPage] = useState<AdminCar[]>([]);
-  const [serverCount, setServerCount] = useState(0);
-  const [serverSkip, setServerSkip] = useState(0);
-  const [pageLoading, setPageLoading] = useState(true);
-  const [allCars, setAllCars] = useState<AdminCar[]>([]);
-  const [allCarsReady, setAllCarsReady] = useState(false);
-  const allCarsAbort = useRef<AbortController | null>(null);
+
+  // Catalog cascade state
+  const [marks, setMarks] = useState<CatalogMark[]>([]);
+  const [availableModels, setAvailableModels] = useState<CatalogModel[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [availableGens, setAvailableGens] = useState<CatalogGeneration[]>([]);
+  const [availableConfs, setAvailableConfs] = useState<CatalogConfiguration[]>([]);
+  const [availableModifs, setAvailableModifs] = useState<CatalogModification[]>([]);
+
+  // Filters & search
   const [filters, setFilters] = useState<CarFiltersState>(EMPTY_FILTERS);
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearch = useDebounce(searchQuery, 300);
   const [filtersOpen, setFiltersOpen] = useState(false);
+
+  // Server data
+  const [allCars, setAllCars] = useState<AdminCar[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // Form state
   const [showForm, setShowForm] = useState(false);
   const [editCar, setEditCar] = useState<AdminCar | null>(null);
   const [deleteModal, setDeleteModal] = useState<{ id: string; name: string } | null>(null);
@@ -417,48 +482,144 @@ function CarsTab() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
 
-  const isFilteringActive = debouncedSearch.trim().length > 0 || hasActiveFilters(filters);
+  // Load marks from catalog
+  useEffect(() => { catalogApi.searchMarks('').then(setMarks).catch(() => {}); }, []);
 
-  const loadPage = useCallback(async (skip: number) => {
-    setPageLoading(true);
-    try {
-      const data = await adminApi.getCars(skip, PAGE_SIZE);
-      setServerPage(data.data); setServerCount(data.count); setServerSkip(skip);
-    } catch { toast.error('Ошибка загрузки автомобилей'); }
-    finally { setPageLoading(false); }
-  }, []);
-
-  const loadAllInBackground = useCallback(async () => {
-    if (allCarsAbort.current) allCarsAbort.current.abort();
-    const ctrl = new AbortController();
-    allCarsAbort.current = ctrl;
-    setAllCarsReady(false);
-    try {
-      const all = await fetchAllCars(ctrl.signal);
-      if (!ctrl.signal.aborted) { setAllCars(all); setAllCarsReady(true); }
-    } catch { /* тихо */ }
-  }, []);
-
+  // Cascade: brands → models
+  useEffect(() => {
+    if (filters.brands.length === 0) { setAvailableModels([]); return; }
+    const ids = filters.brands.map(name => marks.find(m => markLabel(m) === name)?.id).filter(Boolean) as string[];
+    if (ids.length === 0) return;
+    setModelsLoading(true);
+    Promise.all(ids.map(id => catalogApi.getModels(id)))
+      .then(results => setAvailableModels(results.flat()))
+      .catch(() => {})
+      .finally(() => setModelsLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { loadPage(0); loadAllInBackground(); return () => { allCarsAbort.current?.abort(); }; }, []);
+  }, [filters.brands, marks]);
+
+  // Cascade: model → generations
+  useEffect(() => {
+    setAvailableGens([]); setAvailableConfs([]); setAvailableModifs([]);
+    if (filters.models.length !== 1) return;
+    const modelId = availableModels.find(m => modelLabel(m) === filters.models[0])?.id;
+    if (!modelId) return;
+    catalogApi.getGenerations(modelId).then(setAvailableGens).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.models, availableModels]);
+
+  // Cascade: selectedGenIds → configurations (load for all selected gens, deduplicate)
+  useEffect(() => {
+    setAvailableConfs([]); setAvailableModifs([]);
+    if (filters.selectedGenIds.length === 0) return;
+    Promise.all(filters.selectedGenIds.map(id => catalogApi.getConfigurations(id)))
+      .then(results => {
+        const seen = new Set<string>();
+        const unique = results.flat().filter(c => { if (seen.has(c.id)) return false; seen.add(c.id); return true; });
+        setAvailableConfs(unique);
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(filters.selectedGenIds)]);
+
+  // Cascade: selectedConfIds → modifications (load for all selected confs, deduplicate)
+  useEffect(() => {
+    setAvailableModifs([]);
+    if (filters.selectedConfIds.length === 0) return;
+    Promise.all(filters.selectedConfIds.map(id => catalogApi.getModifications(id)))
+      .then(results => {
+        const seen = new Set<string>();
+        const unique = results.flat().filter(m => { if (seen.has(m.id)) return false; seen.add(m.id); return true; });
+        setAvailableModifs(unique);
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(filters.selectedConfIds)]);
+
+  // Build server-side filters (params supported by /listings)
+  const serverFilters = useMemo((): AdminListingFilters => {
+    const f: AdminListingFilters = { sort: 'newest', limit: ADMIN_PAGE_SIZE };
+    if (filters.priceMin) f.price_min = Number(filters.priceMin);
+    if (filters.priceMax) f.price_max = Number(filters.priceMax);
+    if (filters.yearMin) f.year_min = Number(filters.yearMin);
+    if (filters.yearMax) f.year_max = Number(filters.yearMax);
+    if (filters.fuelTypes.length === 1) f.engine_type = filters.fuelTypes[0];
+    if (filters.bodyTypes.length === 1) f.body_type = filters.bodyTypes[0];
+    if (filters.brands.length === 1) {
+      const mark = marks.find(m => markLabel(m) === filters.brands[0]);
+      if (mark) f.mark_id = mark.id;
+    }
+    if (filters.models.length === 1) {
+      const model = availableModels.find(m => modelLabel(m) === filters.models[0]);
+      if (model) f.model_id = model.id;
+    }
+    return f;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.priceMin, filters.priceMax, filters.yearMin, filters.yearMax,
+      filters.fuelTypes, filters.bodyTypes, filters.brands, filters.models, marks, availableModels]);
+
+  // Fetch first page when server filters or refreshKey change
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true); setAllCars([]); setNextCursor(null); setHasMore(false);
+    adminApi.getCars(serverFilters)
+      .then(res => {
+        if (cancelled) return;
+        setAllCars(res.data);
+        setNextCursor(res.next_cursor);
+        setHasMore(res.next_cursor !== null);
+      })
+      .catch(() => { if (!cancelled) toast.error('Ошибка загрузки автомобилей'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(serverFilters), refreshKey]);
+
+  // Load more pages (cursor-based)
+  const loadMore = useCallback(() => {
+    if (loadingMore || !hasMore || !nextCursor) return;
+    setLoadingMore(true);
+    adminApi.getCars({ ...serverFilters, cursor: nextCursor })
+      .then(res => {
+        setAllCars(prev => [...prev, ...res.data]);
+        setNextCursor(res.next_cursor);
+        setHasMore(res.next_cursor !== null);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingMore(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingMore, hasMore, nextCursor, JSON.stringify(serverFilters)]);
+
+  // IntersectionObserver for auto-load
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasMore || loading) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) loadMore(); },
+      { rootMargin: '400px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [loadMore, hasMore, loading]);
+
   useEffect(() => { return () => { previews.forEach(url => URL.revokeObjectURL(url)); }; }, [previews]);
 
-  const filterSource = allCarsReady ? allCars : serverPage;
-  const filteredCars = useMemo(() => {
-    if (!isFilteringActive) return [];
-    return applyFilters(filterSource, filters, debouncedSearch);
-  }, [filterSource, filters, debouncedSearch, isFilteringActive]);
+  // Client-side filters applied on top of server results
+  const filteredCars = useMemo(
+    () => applyFilters(allCars, filters, debouncedSearch, availableGens, availableConfs),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [allCars, filters, debouncedSearch, availableGens, availableConfs]
+  );
 
-  const availableBrands = useMemo(() => [...new Set(filterSource.map(c => c.brand))].sort(), [filterSource]);
-  const displayedCars = isFilteringActive ? filteredCars : serverPage;
-  const isLoading = pageLoading && serverPage.length === 0;
-
-  const handleReload = () => { loadPage(serverSkip); loadAllInBackground(); };
+  const availableBrands = useMemo(() => marks.map(m => markLabel(m)).sort(), [marks]);
+  const isLoading = loading && allCars.length === 0;
+  const handleReload = () => setRefreshKey(k => k + 1);
 
   const activeFiltersCount = [
     filters.status, filters.priceMin, filters.priceMax,
     filters.mileageMin, filters.mileageMax, filters.yearMin, filters.yearMax,
-    ...filters.brands, ...filters.transmissions, ...filters.fuelTypes, ...filters.bodyTypes,
+    ...filters.selectedGenIds, ...filters.selectedConfIds, ...filters.selectedModifIds,
+    ...filters.brands, ...filters.models, ...filters.transmissions, ...filters.fuelTypes, ...filters.bodyTypes,
   ].filter(Boolean).length;
 
   const handleFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -522,7 +683,9 @@ function CarsTab() {
     <div className="flex gap-4">
       <aside className="hidden lg:block w-60 flex-shrink-0">
         <CarFilterPanel filters={filters} onChange={setFilters} onReset={() => setFilters(EMPTY_FILTERS)}
-          availableBrands={availableBrands} brandsLoading={!allCarsReady && availableBrands.length === 0} />
+          availableBrands={availableBrands} brandsLoading={marks.length === 0}
+          availableModels={availableModels} modelsLoading={modelsLoading}
+          availableGens={availableGens} availableConfs={availableConfs} availableModifs={availableModifs} />
       </aside>
 
       <div className="flex-1 min-w-0 space-y-4">
@@ -530,7 +693,7 @@ function CarsTab() {
           <div className="flex items-center justify-between flex-wrap gap-3">
             <h2 className="text-2xl font-semibold text-foreground">
               Автомобили <span className="text-muted-foreground text-lg font-normal">
-                {isFilteringActive ? `(${filteredCars.length}${!allCarsReady ? ', загрузка...' : ` из ${allCars.length}`})` : `(${serverCount})`}
+                ({loading ? '…' : `${filteredCars.length}${hasMore ? '+' : ''}`})
               </span>
             </h2>
             <div className="flex gap-2 flex-wrap">
@@ -544,8 +707,8 @@ function CarsTab() {
                   <X className="w-4 h-4" /> Сбросить
                 </button>
               )}
-              <button onClick={handleReload} disabled={pageLoading} className="p-2 border border-border rounded-lg hover:bg-secondary transition-colors disabled:opacity-50 text-foreground" title="Обновить">
-                <RefreshCw className={`w-4 h-4 ${pageLoading ? 'animate-spin' : ''}`} />
+              <button onClick={handleReload} disabled={loading} className="p-2 border border-border rounded-lg hover:bg-secondary transition-colors disabled:opacity-50 text-foreground" title="Обновить">
+                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
               </button>
               <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity text-sm">
                 <Plus className="w-4 h-4" /> Добавить
@@ -597,7 +760,30 @@ function CarsTab() {
               )}
               {filters.brands.map(b => (
                 <span key={b} className="flex items-center gap-1 text-xs bg-secondary text-foreground px-2.5 py-1 rounded-full">
-                  {b} <button onClick={() => setFilters(f => ({ ...f, brands: f.brands.filter(x => x !== b) }))}><X className="w-3 h-3" /></button>
+                  {b} <button onClick={() => setFilters(f => ({ ...f, brands: f.brands.filter(x => x !== b), models: [], selectedGenIds: [], selectedConfIds: [], selectedModifIds: [] }))}><X className="w-3 h-3" /></button>
+                </span>
+              ))}
+              {filters.models.map(m => (
+                <span key={m} className="flex items-center gap-1 text-xs bg-secondary text-foreground px-2.5 py-1 rounded-full">
+                  {m} <button onClick={() => setFilters(f => ({ ...f, models: f.models.filter(x => x !== m), selectedGenIds: [], selectedConfIds: [], selectedModifIds: [] }))}><X className="w-3 h-3" /></button>
+                </span>
+              ))}
+              {filters.selectedGenIds.map(id => (
+                <span key={id} className="flex items-center gap-1 text-xs bg-secondary text-foreground px-2.5 py-1 rounded-full">
+                  {availableGens.find(g => g.id === id)?.name ?? 'Поколение'}
+                  <button onClick={() => setFilters(f => ({ ...f, selectedGenIds: f.selectedGenIds.filter(x => x !== id), selectedConfIds: [], selectedModifIds: [] }))}><X className="w-3 h-3" /></button>
+                </span>
+              ))}
+              {filters.selectedConfIds.map(id => (
+                <span key={id} className="flex items-center gap-1 text-xs bg-secondary text-foreground px-2.5 py-1 rounded-full">
+                  {availableConfs.find(c => c.id === id)?.name ?? 'Комплектация'}
+                  <button onClick={() => setFilters(f => ({ ...f, selectedConfIds: f.selectedConfIds.filter(x => x !== id), selectedModifIds: [] }))}><X className="w-3 h-3" /></button>
+                </span>
+              ))}
+              {filters.selectedModifIds.map(id => (
+                <span key={id} className="flex items-center gap-1 text-xs bg-secondary text-foreground px-2.5 py-1 rounded-full">
+                  {availableModifs.find(m => m.id === id)?.name ?? 'Модификация'}
+                  <button onClick={() => setFilters(f => ({ ...f, selectedModifIds: f.selectedModifIds.filter(x => x !== id) }))}><X className="w-3 h-3" /></button>
                 </span>
               ))}
               {filters.transmissions.map(t => (
@@ -615,9 +801,9 @@ function CarsTab() {
                   {BODY_LABELS[bt]} <button onClick={() => setFilters(f => ({ ...f, bodyTypes: f.bodyTypes.filter(x => x !== bt) }))}><X className="w-3 h-3" /></button>
                 </span>
               ))}
-              {isFilteringActive && !allCarsReady && (
+              {loading && (
                 <span className="flex items-center gap-1 text-xs text-muted-foreground px-2 py-1">
-                  <Loader2 className="w-3 h-3 animate-spin" /> Загрузка всех авто...
+                  <Loader2 className="w-3 h-3 animate-spin" /> Загрузка...
                 </span>
               )}
             </div>
@@ -627,7 +813,9 @@ function CarsTab() {
         {filtersOpen && (
           <div className="lg:hidden">
             <CarFilterPanel filters={filters} onChange={setFilters} onReset={() => setFilters(EMPTY_FILTERS)}
-              availableBrands={availableBrands} brandsLoading={!allCarsReady && availableBrands.length === 0} />
+              availableBrands={availableBrands} brandsLoading={marks.length === 0}
+              availableModels={availableModels} modelsLoading={modelsLoading}
+              availableGens={availableGens} availableConfs={availableConfs} availableModifs={availableModifs} />
           </div>
         )}
 
@@ -640,13 +828,13 @@ function CarsTab() {
                 ))}</tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {pageLoading && !isFilteringActive ? (
+                {loading && allCars.length === 0 ? (
                   <tr><td colSpan={6} className="px-4 py-12 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-muted-foreground" /></td></tr>
-                ) : displayedCars.length === 0 ? (
+                ) : filteredCars.length === 0 ? (
                   <tr><td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
-                    {isFilteringActive ? 'По вашему запросу ничего не найдено' : 'Список автомобилей пуст'}
+                    {hasActiveFilters(filters) || searchQuery ? 'По вашему запросу ничего не найдено' : 'Список автомобилей пуст'}
                   </td></tr>
-                ) : displayedCars.map(car => (
+                ) : filteredCars.map((car: AdminCar) => (
                   <CarTableRow key={car.id} car={car} onEdit={openEdit} onDelete={handleDelete}
                     onStatusChange={handleStatusChange} onRowClick={id => navigate(`/car/${id}`)} />
                 ))}
@@ -655,14 +843,18 @@ function CarsTab() {
           </div>
         </div>
 
-        {!isFilteringActive && (
-          <Pagination skip={serverSkip} limit={PAGE_SIZE} count={serverCount} onChange={skip => loadPage(skip)} />
-        )}
-        {isFilteringActive && allCarsReady && filteredCars.length > 0 && (
-          <p className="text-center text-xs text-muted-foreground mt-2">
-            Найдено {filteredCars.length} из {allCars.length} автомобилей
-          </p>
-        )}
+        <div ref={sentinelRef} className="mt-2">
+          {loadingMore && (
+            <div className="flex justify-center py-4">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            </div>
+          )}
+          {!hasMore && filteredCars.length > 0 && (
+            <p className="text-center text-xs text-muted-foreground py-4">
+              Все {filteredCars.length} объявлений загружены
+            </p>
+          )}
+        </div>
       </div>
 
       {deleteModal && (
