@@ -1,17 +1,21 @@
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useState, useEffect, useMemo, useRef, useCallback, type KeyboardEvent, type ChangeEvent } from 'react';
 import { SlidersHorizontal, X, ChevronDown, Check, Search, LayoutGrid, List, Heart, Plus } from 'lucide-react';
-import { carsApi } from '../api/cars';
+import { carsApi, formatCatalogId } from '../api/cars';
+import { catalogApi } from '../api/catalog';
+import type { CatalogMark, CatalogModel, CatalogGeneration, CatalogConfiguration, CatalogModification } from '../api/catalog';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 import { useFavorites } from '../hooks/useFavorites';
 import type { CarFilters, FuelType, Transmission, Car as CarType } from '../api/cars';
 
 const PAGE_SIZE = 30;
-
-const ALL_BRANDS = ['Audi', 'BMW', 'Hyundai', 'Kia', 'Lexus', 'Mazda', 'Mercedes', 'Nissan', 'Skoda', 'Tesla', 'Toyota', 'Volkswagen'];
 const ALL_COLORS = ['Белый', 'Синий', 'Серый', 'Красный', 'Серебристый', 'Черный'];
+
+function markLabel(m: CatalogMark) { return m.name ?? m.cyrillic_name ?? formatCatalogId(m.id); }
+function modelLabel(m: CatalogModel) { return m.name ?? formatCatalogId(m.id); }
 const TRANSMISSIONS = [['automatic', 'Автомат'], ['manual', 'Механика'], ['robot', 'Робот'], ['variator', 'Вариатор']] as const;
 const FUELS = [['petrol', 'Бензин'], ['diesel', 'Дизель'], ['electric', 'Электро'], ['hybrid', 'Гибрид'], ['gas', 'Газ']] as const;
+const BODY_TYPES = ['Седан', 'Хэтчбек', 'Универсал', 'Внедорожник', 'Кроссовер', 'Купе', 'Минивэн', 'Пикап', 'Кабриолет', 'Лифтбек', 'Фургон'] as const;
 
 const inputCls = "w-full px-3 py-2 bg-secondary text-foreground placeholder:text-muted-foreground rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary border border-transparent focus:border-primary";
 const selectCls = "w-full px-3 py-2 bg-secondary text-foreground rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary border border-transparent appearance-none cursor-pointer";
@@ -313,8 +317,19 @@ export function CatalogPage() {
   const [selectedTransmissions, setSelectedTransmissions] = useState<Transmission[]>([]);
   const [selectedFuels, setSelectedFuels] = useState<FuelType[]>([]);
   const [selectedColors, setSelectedColors] = useState<string[]>([]);
+  const [selectedBodyTypes, setSelectedBodyTypes] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<CarFilters['sort_by']>('date_desc');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedModels, setSelectedModels] = useState<string[]>([]);
+
+  const [marks, setMarks] = useState<CatalogMark[]>([]);
+  const [availableModels, setAvailableModels] = useState<CatalogModel[]>([]);
+  const [selectedGenId, setSelectedGenId] = useState('');
+  const [selectedConfId, setSelectedConfId] = useState('');
+  const [selectedModifId, setSelectedModifId] = useState('');
+  const [availableGens, setAvailableGens] = useState<CatalogGeneration[]>([]);
+  const [availableConfs, setAvailableConfs] = useState<CatalogConfiguration[]>([]);
+  const [availableModifs, setAvailableModifs] = useState<CatalogModification[]>([]);
 
   const [allCars, setAllCars] = useState<CarType[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -326,9 +341,11 @@ export function CatalogPage() {
 
   useEffect(() => {
     const b = searchParams.get('brands'); if (b) setSelectedBrands(b.split(',').filter(Boolean));
+    const md = searchParams.get('models'); if (md) setSelectedModels(md.split(',').filter(Boolean));
     const t = searchParams.get('transmissions'); if (t) setSelectedTransmissions(t.split(',') as Transmission[]);
     const f = searchParams.get('fuels'); if (f) setSelectedFuels(f.split(',') as FuelType[]);
     const c = searchParams.get('colors'); if (c) setSelectedColors(c.split(',').filter(Boolean));
+    const bt = searchParams.get('body_types'); if (bt) setSelectedBodyTypes(bt.split(',').filter(Boolean));
     const pMin = searchParams.get('price_min'); if (pMin) { setDisplayPriceMin(pMin); setPriceMin(pMin); }
     const pMax = searchParams.get('price_max'); if (pMax) { setDisplayPriceMax(pMax); setPriceMax(pMax); }
     const mMin = searchParams.get('mileage_min'); if (mMin) { setDisplayMileageMin(mMin); setMileageMin(mMin); }
@@ -342,9 +359,11 @@ export function CatalogPage() {
   useEffect(() => {
     const params = new URLSearchParams();
     if (selectedBrands.length) params.set('brands', selectedBrands.join(','));
+    if (selectedModels.length) params.set('models', selectedModels.join(','));
     if (selectedTransmissions.length) params.set('transmissions', selectedTransmissions.join(','));
     if (selectedFuels.length) params.set('fuels', selectedFuels.join(','));
     if (selectedColors.length) params.set('colors', selectedColors.join(','));
+    if (selectedBodyTypes.length) params.set('body_types', selectedBodyTypes.join(','));
     if (priceMin) params.set('price_min', priceMin);
     if (priceMax) params.set('price_max', priceMax);
     if (mileageMin) params.set('mileage_min', mileageMin);
@@ -354,7 +373,47 @@ export function CatalogPage() {
     if (sortBy && sortBy !== 'date_desc') params.set('sort_by', sortBy);
     if (searchQuery) params.set('q', searchQuery);
     if (params.toString() !== searchParams.toString()) setSearchParams(params);
-  }, [selectedBrands, selectedTransmissions, selectedFuels, selectedColors, priceMin, priceMax, mileageMin, mileageMax, yearMin, yearMax, sortBy, searchQuery]);
+  }, [selectedBrands, selectedModels, selectedTransmissions, selectedFuels, selectedColors, selectedBodyTypes, priceMin, priceMax, mileageMin, mileageMax, yearMin, yearMax, sortBy, searchQuery]);
+
+  useEffect(() => {
+    catalogApi.searchMarks('').then(setMarks).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (selectedBrands.length === 0) { setAvailableModels([]); setSelectedModels([]); return; }
+    const ids = selectedBrands
+      .map(name => marks.find(m => markLabel(m) === name)?.id)
+      .filter(Boolean) as string[];
+    if (ids.length === 0) return;
+    Promise.all(ids.map(id => catalogApi.getModels(id)))
+      .then(results => setAvailableModels(results.flat()))
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBrands, marks]);
+
+  useEffect(() => {
+    setSelectedGenId(''); setSelectedConfId(''); setSelectedModifId('');
+    setAvailableGens([]); setAvailableConfs([]); setAvailableModifs([]);
+    if (selectedModels.length !== 1) return;
+    const modelId = availableModels.find(m => modelLabel(m) === selectedModels[0])?.id;
+    if (!modelId) return;
+    catalogApi.getGenerations(modelId).then(setAvailableGens).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedModels, availableModels]);
+
+  useEffect(() => {
+    setSelectedConfId(''); setSelectedModifId('');
+    setAvailableConfs([]); setAvailableModifs([]);
+    if (!selectedGenId) return;
+    catalogApi.getConfigurations(selectedGenId).then(setAvailableConfs).catch(() => {});
+  }, [selectedGenId]);
+
+  useEffect(() => {
+    setSelectedModifId('');
+    setAvailableModifs([]);
+    if (!selectedConfId) return;
+    catalogApi.getModifications(selectedConfId).then(setAvailableModifs).catch(() => {});
+  }, [selectedConfId]);
 
   const apiFilters: CarFilters = useMemo(() => {
     const f: CarFilters = { sort_by: sortBy };
@@ -401,31 +460,42 @@ export function CatalogPage() {
       const q = searchQuery.toLowerCase();
       result = result.filter(c => c.brand.toLowerCase().includes(q) || c.model.toLowerCase().includes(q) || `${c.brand} ${c.model}`.toLowerCase().includes(q) || c.description?.toLowerCase().includes(q));
     }
-    if (selectedBrands.length > 1) result = result.filter(c => selectedBrands.includes(c.brand));
+    if (selectedBrands.length > 0) result = result.filter(c => selectedBrands.includes(c.brand));
+    if (selectedModels.length > 0) result = result.filter(c => selectedModels.includes(c.model));
     if (selectedTransmissions.length > 1) result = result.filter(c => selectedTransmissions.includes(c.transmission as Transmission));
     if (selectedFuels.length > 1) result = result.filter(c => selectedFuels.includes(c.fuel_type as FuelType));
     if (selectedColors.length > 0) {
       const norm = selectedColors.map(normalizeColor);
       result = result.filter(c => c.color && norm.includes(normalizeColor(c.color)));
     }
+    if (selectedBodyTypes.length > 0) result = result.filter(c => c.body_type && selectedBodyTypes.includes(c.body_type));
     const pMin = priceMin ? Number(priceMin) : null;
     const pMax = priceMax ? Number(priceMax) : null;
     const mMin = mileageMin ? Number(mileageMin) : null;
     const mMax = mileageMax ? Number(mileageMax) : null;
     if (pMin !== null || pMax !== null) result = result.filter(c => { const p = Number(c.price); return (pMin === null || p >= pMin) && (pMax === null || p <= pMax); });
     if (mMin !== null || mMax !== null) result = result.filter(c => { const m = Number(c.mileage); return (mMin === null || m >= mMin) && (mMax === null || m <= mMax); });
+    if (selectedGenId) {
+      const gen = availableGens.find(g => g.id === selectedGenId);
+      if (gen) result = result.filter(c => (!gen.year_from || c.year >= gen.year_from) && (!gen.year_to || c.year <= gen.year_to));
+    }
+    if (selectedConfId) {
+      const conf = availableConfs.find(cf => cf.id === selectedConfId);
+      if (conf?.body_type) result = result.filter(c => c.body_type === conf.body_type);
+    }
     return result;
-  }, [allCars, searchQuery, selectedBrands, selectedTransmissions, selectedFuels, selectedColors, priceMin, priceMax, mileageMin, mileageMax]);
+  }, [allCars, searchQuery, selectedBrands, selectedModels, selectedTransmissions, selectedFuels, selectedColors, selectedBodyTypes, priceMin, priceMax, mileageMin, mileageMax, selectedGenId, selectedConfId, availableGens, availableConfs]);
 
   const resetFilters = () => {
-    setSelectedBrands([]); setSelectedTransmissions([]); setSelectedFuels([]); setSelectedColors([]);
+    setSelectedBrands([]); setSelectedModels([]); setSelectedGenId(''); setSelectedConfId(''); setSelectedModifId('');
+    setSelectedTransmissions([]); setSelectedFuels([]); setSelectedColors([]); setSelectedBodyTypes([]);
     setSortBy('date_desc'); setSearchQuery('');
     setPriceMin(''); setPriceMax(''); setMileageMin(''); setMileageMax(''); setYearMin(''); setYearMax('');
     setDisplayPriceMin(''); setDisplayPriceMax(''); setDisplayMileageMin(''); setDisplayMileageMax(''); setDisplayYearMin(''); setDisplayYearMax('');
     setSearchParams({});
   };
 
-  const hasActiveFilters = selectedBrands.length > 0 || selectedTransmissions.length > 0 || selectedFuels.length > 0 || selectedColors.length > 0 || priceMin || priceMax || mileageMin || mileageMax || yearMin || yearMax;
+  const hasActiveFilters = selectedBrands.length > 0 || selectedModels.length > 0 || Boolean(selectedGenId) || Boolean(selectedConfId) || Boolean(selectedModifId) || selectedTransmissions.length > 0 || selectedFuels.length > 0 || selectedColors.length > 0 || selectedBodyTypes.length > 0 || priceMin || priceMax || mileageMin || mileageMax || yearMin || yearMax;
 
   const filtersPanel = (
     <div className="bg-card rounded-xl border border-border p-5 space-y-5">
@@ -450,9 +520,55 @@ export function CatalogPage() {
           <NumberFilterInput placeholder="До" value={displayMileageMax} onChange={setDisplayMileageMax} onConfirm={setMileageMax} format />
         </div>
       </div>
-      <SearchableMultiSelect label="Марка" options={ALL_BRANDS.map(b => ({ value: b, label: b }))} selected={selectedBrands} onToggle={v => setSelectedBrands(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])} onClear={() => setSelectedBrands([])} placeholder="Все марки" />
+      <SearchableMultiSelect label="Марка" options={marks.map(m => ({ value: markLabel(m), label: markLabel(m) }))} selected={selectedBrands} onToggle={v => setSelectedBrands(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])} onClear={() => { setSelectedBrands([]); setSelectedModels([]); }} placeholder="Все марки" />
+      {selectedBrands.length > 0 && availableModels.length > 0 && (
+        <SearchableMultiSelect label="Модель" options={availableModels.map(m => ({ value: modelLabel(m), label: modelLabel(m) }))} selected={selectedModels} onToggle={v => setSelectedModels(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])} onClear={() => setSelectedModels([])} placeholder="Все модели" />
+      )}
+      {selectedModels.length === 1 && availableGens.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="font-semibold text-foreground">Поколение</h3>
+            {selectedGenId && <button type="button" onClick={() => setSelectedGenId('')} className="text-xs text-destructive hover:underline flex items-center gap-1"><X className="w-3 h-3" />Очистить</button>}
+          </div>
+          <select value={selectedGenId} onChange={e => setSelectedGenId(e.target.value)} className={selectCls}>
+            <option value="">Любое</option>
+            {availableGens.map(g => (
+              <option key={g.id} value={g.id}>{g.name ?? `${g.year_from ?? ''}–${g.year_to ?? '...'}`}</option>
+            ))}
+          </select>
+        </div>
+      )}
+      {selectedGenId && availableConfs.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="font-semibold text-foreground">Комплектация</h3>
+            {selectedConfId && <button type="button" onClick={() => setSelectedConfId('')} className="text-xs text-destructive hover:underline flex items-center gap-1"><X className="w-3 h-3" />Очистить</button>}
+          </div>
+          <select value={selectedConfId} onChange={e => setSelectedConfId(e.target.value)} className={selectCls}>
+            <option value="">Любая</option>
+            {availableConfs.map(c => (
+              <option key={c.id} value={c.id}>{c.name ?? c.id}</option>
+            ))}
+          </select>
+        </div>
+      )}
+      {selectedConfId && availableModifs.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="font-semibold text-foreground">Модификация</h3>
+            {selectedModifId && <button type="button" onClick={() => setSelectedModifId('')} className="text-xs text-destructive hover:underline flex items-center gap-1"><X className="w-3 h-3" />Очистить</button>}
+          </div>
+          <select value={selectedModifId} onChange={e => setSelectedModifId(e.target.value)} className={selectCls}>
+            <option value="">Любая</option>
+            {availableModifs.map(m => (
+              <option key={m.id} value={m.id}>{m.name ?? m.group_name ?? m.id}</option>
+            ))}
+          </select>
+        </div>
+      )}
       <SearchableMultiSelect label="Коробка передач" options={TRANSMISSIONS.map(([v, l]) => ({ value: v, label: l }))} selected={selectedTransmissions} onToggle={v => setSelectedTransmissions(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])} onClear={() => setSelectedTransmissions([])} placeholder="Любая" />
       <SearchableMultiSelect label="Тип топлива" options={FUELS.map(([v, l]) => ({ value: v as FuelType, label: l }))} selected={selectedFuels} onToggle={v => setSelectedFuels(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])} onClear={() => setSelectedFuels([])} placeholder="Любой" />
+      <SearchableMultiSelect label="Кузов" options={BODY_TYPES.map(b => ({ value: b, label: b }))} selected={selectedBodyTypes} onToggle={v => setSelectedBodyTypes(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])} onClear={() => setSelectedBodyTypes([])} placeholder="Любой кузов" />
       <SearchableMultiSelect label="Цвет" options={ALL_COLORS.map(c => ({ value: c, label: c }))} selected={selectedColors} onToggle={v => setSelectedColors(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])} onClear={() => setSelectedColors([])} placeholder="Любой цвет" />
       {hasActiveFilters && (
         <button onClick={resetFilters} className="w-full px-4 py-2 text-sm text-destructive hover:bg-destructive/10 rounded-lg transition-colors border border-destructive/30">
@@ -505,7 +621,7 @@ export function CatalogPage() {
             <Link to="/sell"
               className="hidden sm:flex items-center gap-2 px-4 py-2.5 bg-accent text-accent-foreground rounded-xl hover:opacity-90 transition-opacity text-sm font-medium self-start">
               <Plus className="w-4 h-4" />
-              Подать объявление
+              Создать объявление
             </Link>
           </div>
 
