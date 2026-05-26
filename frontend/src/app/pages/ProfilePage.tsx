@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { User, Eye, FileText, LogOut, Heart, EyeOff } from 'lucide-react';
+import { User, Eye, FileText, LogOut, Heart, EyeOff, Car, PenLine, Loader2, ExternalLink, Trash2, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../hooks/useAuth';
 import { useNavigate, Link, useSearchParams } from 'react-router';
@@ -8,8 +8,9 @@ import { viewingsApi, type ViewingPublic } from '../api/viewings';
 import { carsApi } from '../api/cars';
 import { FavoritesPage } from './FavoritesPage';
 import { useFavorites } from '../hooks/useFavorites';
+import { listingsApi, type MyListing } from '../api/catalog';
 
-type TabType = 'profile' | 'viewings' | 'favorites';
+type TabType = 'profile' | 'viewings' | 'favorites' | 'listings' | 'drafts';
 
 const inputCls = "w-full px-4 py-3 bg-secondary text-foreground placeholder:text-muted-foreground rounded-lg outline-none focus:ring-2 focus:ring-primary border border-border focus:border-primary transition-colors";
 
@@ -304,6 +305,8 @@ export function ProfilePage() {
 
   const tabs: { id: TabType; label: string; icon: React.ElementType; badge?: number }[] = [
     { id: 'profile', label: 'Профиль', icon: User },
+    { id: 'listings', label: 'Мои объявления', icon: Car },
+    { id: 'drafts', label: 'Черновики', icon: PenLine },
     { id: 'viewings', label: 'Мои записи', icon: FileText },
     { id: 'favorites', label: 'Избранное', icon: Heart, badge: favoriteIds.length },
   ];
@@ -388,6 +391,8 @@ export function ProfilePage() {
                 </form>
               </div>
             )}
+            {activeTab === 'listings' && <MyListingsTab />}
+            {activeTab === 'drafts' && <DraftsTab />}
             {activeTab === 'viewings' && <ViewingsList />}
             {activeTab === 'favorites' && <FavoritesPage />}
           </div>
@@ -428,16 +433,22 @@ function PasswordStrength({ password }: { password: string }) {
 // ViewingsList
 
 const RESULT_LABELS: Record<string, string> = {
-  scheduled: 'Запланирован', confirmed: 'Подтверждён', completed: 'Завершён',
-  cancelled_user: 'Отменён', cancelled_manager: 'Отменён менеджером', no_show: 'Не явился',
+  reserved: 'Зарезервирован',
+  viewing_scheduled: 'Просмотр назначен',
+  viewing_completed: 'Просмотр завершён',
+  payment_confirmed: 'Оплата подтверждена',
+  completed: 'Сделка завершена',
+  cancelled: 'Отменён',
+  disputed: 'Спор',
 };
 const RESULT_COLORS: Record<string, string> = {
-  scheduled: 'bg-primary/10 text-primary',
-  confirmed: 'bg-accent/10 text-accent',
+  reserved: 'bg-primary/10 text-primary',
+  viewing_scheduled: 'bg-accent/10 text-accent',
+  viewing_completed: 'bg-accent/10 text-accent',
+  payment_confirmed: 'bg-accent/10 text-accent',
   completed: 'bg-muted text-muted-foreground',
-  cancelled_user: 'bg-destructive/10 text-destructive',
-  cancelled_manager: 'bg-destructive/10 text-destructive',
-  no_show: 'bg-secondary text-muted-foreground',
+  cancelled: 'bg-destructive/10 text-destructive',
+  disputed: 'bg-yellow-500/10 text-yellow-600',
 };
 
 function ViewingsList() {
@@ -516,7 +527,9 @@ function ViewingsList() {
                 {carsMap[v.car_id] ?? 'Автомобиль'}
               </Link>
               <p className="text-sm text-muted-foreground mt-0.5">
-                {new Date(v.viewing_date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
+                {v.viewing_date
+                  ? new Date(v.viewing_date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
+                  : new Date(v.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
                 {v.viewing_time ? ` в ${v.viewing_time}` : ''}
               </p>
               {v.comment && (
@@ -527,7 +540,7 @@ function ViewingsList() {
               {RESULT_LABELS[v.result] ?? v.result}
             </span>
           </div>
-          {(v.result === 'scheduled' || v.result === 'confirmed') && (
+          {(v.result === 'reserved' || v.result === 'viewing_scheduled') && (
             <button
               onClick={() => handleCancel(v.id)}
               className="mt-4 px-4 py-2 text-sm text-destructive border border-destructive/50 rounded-lg hover:bg-destructive/10 transition-colors"
@@ -536,6 +549,224 @@ function ViewingsList() {
             </button>
           )}
         </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Shared helpers ────────────────────────────────────────────────
+
+function formatPrice(p: number) {
+  return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(p);
+}
+function formatMileage(m: number) {
+  return `${new Intl.NumberFormat('ru-RU').format(m)} км`;
+}
+
+const LISTING_STATUS_LABELS: Record<string, string> = {
+  draft: 'Черновик',
+  pending_review: 'На модерации',
+  active: 'Активно',
+  reserved: 'Зарезервировано',
+  sold: 'Продано',
+  archived: 'В архиве',
+};
+const LISTING_STATUS_COLORS: Record<string, string> = {
+  draft: 'bg-secondary text-muted-foreground',
+  pending_review: 'bg-primary/10 text-primary',
+  active: 'bg-accent/10 text-accent',
+  reserved: 'bg-yellow-500/10 text-yellow-600',
+  sold: 'bg-muted text-muted-foreground',
+  archived: 'bg-muted text-muted-foreground',
+};
+
+function useMyListings() {
+  const [listings, setListings] = useState<MyListing[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const data = await listingsApi.my();
+      setListings(data);
+    } catch {
+      setListings([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  return { listings, loading, reload: load };
+}
+
+function ListingCard({ listing, actions }: { listing: MyListing; actions?: React.ReactNode }) {
+  return (
+    <div className="bg-card rounded-lg border border-border p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Link
+              to={`/car/${listing.id}`}
+              className="font-semibold text-foreground hover:text-primary transition-colors truncate"
+            >
+              {listing.mark_id} {listing.model_id} {listing.year}
+            </Link>
+            <span className={`flex-shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${LISTING_STATUS_COLORS[listing.status] ?? 'bg-secondary text-muted-foreground'}`}>
+              {LISTING_STATUS_LABELS[listing.status] ?? listing.status}
+            </span>
+          </div>
+          <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground flex-wrap">
+            <span className="font-medium text-foreground">{formatPrice(listing.price)}</span>
+            <span>•</span>
+            <span>{formatMileage(listing.mileage)}</span>
+            <span>•</span>
+            <span>{new Date(listing.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+          </div>
+          {listing.description && (
+            <p className="text-sm text-muted-foreground mt-2 line-clamp-2">{listing.description}</p>
+          )}
+        </div>
+        <Link to={`/car/${listing.id}`} className="p-2 text-muted-foreground hover:text-primary transition-colors flex-shrink-0" title="Открыть">
+          <ExternalLink className="w-4 h-4" />
+        </Link>
+      </div>
+      {actions && <div className="flex gap-2 mt-4 pt-4 border-t border-border">{actions}</div>}
+    </div>
+  );
+}
+
+// ─── Мои объявления ────────────────────────────────────────────────
+
+function MyListingsTab() {
+  const { listings, loading } = useMyListings();
+  const active = listings.filter(l => l.status !== 'draft');
+
+  if (loading) {
+    return (
+      <div className="bg-card rounded-lg border border-border p-12 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (active.length === 0) {
+    return (
+      <div className="bg-card rounded-lg border border-border p-12 text-center">
+        <Car className="w-16 h-16 text-muted-foreground mx-auto mb-4 opacity-30" />
+        <h3 className="text-xl font-semibold text-foreground mb-2">Нет объявлений</h3>
+        <p className="text-muted-foreground mb-4">Разместите первое объявление о продаже автомобиля</p>
+        <Link to="/sell" className="inline-block px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90">
+          Подать объявление
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-semibold text-foreground">Мои объявления</h2>
+        <Link to="/sell" className="text-sm text-primary hover:underline">+ Новое</Link>
+      </div>
+      {active.map(l => <ListingCard key={l.id} listing={l} />)}
+    </div>
+  );
+}
+
+// ─── Черновики ─────────────────────────────────────────────────────
+
+function DraftsTab() {
+  const { listings, loading, reload } = useMyListings();
+  const drafts = listings.filter(l => l.status === 'draft');
+  const [publishing, setPublishing] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  const handlePublish = async (id: string) => {
+    setPublishing(id);
+    try {
+      await listingsApi.publish(id);
+      toast.success('Объявление отправлено на модерацию');
+      reload();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Ошибка публикации');
+    } finally {
+      setPublishing(null);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    setDeleting(id);
+    try {
+      await listingsApi.archive(id);
+      toast.success('Черновик удалён');
+      reload();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Ошибка удаления');
+    } finally {
+      setDeleting(null);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="bg-card rounded-lg border border-border p-12 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (drafts.length === 0) {
+    return (
+      <div className="bg-card rounded-lg border border-border p-12 text-center">
+        <PenLine className="w-16 h-16 text-muted-foreground mx-auto mb-4 opacity-30" />
+        <h3 className="text-xl font-semibold text-foreground mb-2">Нет черновиков</h3>
+        <p className="text-muted-foreground mb-4">Незавершённые объявления появятся здесь</p>
+        <Link to="/sell" className="inline-block px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90">
+          Создать объявление
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-semibold text-foreground">Черновики</h2>
+        <Link to="/sell" className="text-sm text-primary hover:underline">+ Новое</Link>
+      </div>
+      {drafts.map(l => (
+        <ListingCard
+          key={l.id}
+          listing={l}
+          actions={
+            <>
+              <button
+                onClick={() => handlePublish(l.id)}
+                disabled={publishing === l.id || deleting === l.id}
+                className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {publishing === l.id
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <Send className="w-3.5 h-3.5" />
+                }
+                Опубликовать
+              </button>
+              <button
+                onClick={() => handleDelete(l.id)}
+                disabled={publishing === l.id || deleting === l.id}
+                className="flex items-center gap-1.5 px-4 py-2 text-sm text-destructive border border-destructive/50 rounded-lg hover:bg-destructive/10 transition-colors disabled:opacity-50"
+              >
+                {deleting === l.id
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <Trash2 className="w-3.5 h-3.5" />
+                }
+                Удалить
+              </button>
+            </>
+          }
+        />
       ))}
     </div>
   );

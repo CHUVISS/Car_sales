@@ -1,5 +1,5 @@
 import { Link, useNavigate } from 'react-router';
-import { Car, Phone, User, Menu, LogOut, Bot } from 'lucide-react';
+import { Car, Phone, User, Menu, LogOut, Bot, PlusCircle } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { toast } from 'sonner';
@@ -26,7 +26,7 @@ export function Header() {
           </Link>
 
           <nav className="hidden md:flex items-center gap-8">
-            <Link to="/catalog" className="text-foreground hover:text-primary transition-colors">Каталог</Link>
+            <Link to="/catalog" className="text-foreground hover:text-primary transition-colors">Объявления</Link>
             <Link to="/ai" className="flex items-center gap-1.5 text-foreground hover:text-primary transition-colors">
               <Bot className="w-4 h-4" />AI-ассистент
             </Link>
@@ -43,6 +43,11 @@ export function Header() {
 
             {user ? (
               <div className="flex items-center gap-2">
+                <Link to="/sell"
+                  className="flex items-center gap-2 px-4 py-2 bg-accent text-accent-foreground rounded-lg hover:opacity-90 transition-opacity">
+                  <PlusCircle className="w-4 h-4" />
+                  <span>Продать авто</span>
+                </Link>
                 <Link to="/profile"
                   className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity">
                   <User className="w-5 h-5" />
@@ -77,7 +82,7 @@ export function Header() {
         {mobileMenuOpen && (
           <div className="md:hidden py-4 border-t border-border">
             <nav className="flex flex-col gap-4">
-              <Link to="/catalog" onClick={() => setMobileMenuOpen(false)} className="text-foreground hover:text-primary transition-colors">Каталог</Link>
+              <Link to="/catalog" onClick={() => setMobileMenuOpen(false)} className="text-foreground hover:text-primary transition-colors">Объявления</Link>
               <Link to="/ai" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-1.5 text-foreground hover:text-primary transition-colors">
                 <Bot className="w-4 h-4" />AI-ассистент
               </Link>
@@ -88,6 +93,10 @@ export function Header() {
               </a>
               {user ? (
                 <>
+                  <Link to="/sell" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 bg-accent text-accent-foreground rounded-lg w-fit">
+                    <PlusCircle className="w-4 h-4" />
+                    <span>Продать авто</span>
+                  </Link>
                   <Link to="/profile" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg w-fit">
                     <User className="w-5 h-5" />
                     <span>{user.full_name}</span>

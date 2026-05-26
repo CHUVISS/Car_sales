@@ -13,7 +13,7 @@ import {
   type AdminUser, type AdminCar, type AdminCarOffer,
   type AdminMessage, type DashboardStats,
   type UserCreate, type UserRole, type UserStatus,
-  type CarOfferStatus, type MessageStatus,
+  type CarOfferStatus, type MessageStatus, type CarStatus,
 } from '../api/admin';
 
 type TabType = 'stats' | 'cars' | 'offers' | 'messages' | 'users';
@@ -54,13 +54,17 @@ const OFFER_STATUS_LABELS: Record<string, string> = {
   pending: 'На рассмотрении', approved: 'Одобрена', rejected: 'Отклонена',
 };
 const MSG_STATUS_LABELS: Record<string, string> = {
-  new: 'Новое', in_progress: 'В работе', resolved: 'Решено', closed: 'Закрыто',
+  // ticket statuses
+  open: 'Открыт', in_progress: 'В работе', resolved: 'Решено', closed: 'Закрыт',
+  // legacy (kept for compat)
+  new: 'Новое',
 };
 const MSG_STATUS_COLORS: Record<string, string> = {
-  new: 'bg-accent/10 text-accent',
+  open: 'bg-accent/10 text-accent',
   in_progress: 'bg-primary/10 text-primary',
   resolved: 'bg-muted text-muted-foreground',
   closed: 'bg-secondary text-muted-foreground',
+  new: 'bg-accent/10 text-accent',
 };
 const USER_ROLE_LABELS: Record<string, string> = {
   admin: 'Администратор', manager: 'Менеджер', support: 'Поддержка', user: 'Пользователь',
@@ -298,14 +302,14 @@ function StatsTab({ stats, loading }: { stats: DashboardStats | null; loading: b
   if (loading) return <LoadingSpinner />;
   if (!stats) return <ErrorState message="Не удалось загрузить статистику" />;
   const cards = [
-    { label: 'Всего авто', value: stats.total_cars, sub: `${stats.available_cars} доступно`, icon: Car, color: 'bg-primary/10 text-primary' },
-    { label: 'Продано', value: stats.sold_cars, sub: `${stats.reserved_cars} зарезервировано`, icon: DollarSign, color: 'bg-accent/10 text-accent' },
-    { label: 'Всего сделок', value: stats.total_deals, sub: `${stats.completed_deals} завершено`, icon: BarChart3, color: 'bg-purple-500/10 text-purple-500' },
+    { label: 'Всего объявлений', value: stats.total_listings, sub: `${stats.active_listings} активных`, icon: Car, color: 'bg-primary/10 text-primary' },
+    { label: 'Продано', value: stats.sold_listings, sub: `${stats.reserved_listings} зарезервировано`, icon: DollarSign, color: 'bg-accent/10 text-accent' },
+    { label: 'Всего сделок', value: stats.total_transactions, sub: `${stats.completed_transactions} завершено`, icon: BarChart3, color: 'bg-purple-500/10 text-purple-500' },
     { label: 'Выручка', value: formatPrice(stats.total_revenue), sub: 'По завершённым сделкам', icon: DollarSign, color: 'bg-green-500/10 text-green-500' },
-    { label: 'Клиентов', value: stats.total_clients, sub: 'Всего в базе', icon: Users, color: 'bg-orange-500/10 text-orange-500' },
-    { label: 'Новых сообщений', value: stats.new_messages, sub: 'Ожидают ответа', icon: MessageSquare, color: 'bg-destructive/10 text-destructive' },
-    { label: 'Заявок на продажу', value: stats.pending_offers, sub: `Всего: ${stats.total_offers}`, icon: FileText, color: 'bg-yellow-500/10 text-yellow-500' },
-    { label: 'Просмотров', value: stats.total_viewings, sub: 'Всего записей', icon: Eye, color: 'bg-cyan-500/10 text-cyan-500' },
+    { label: 'Пользователей', value: stats.total_users, sub: 'Всего в базе', icon: Users, color: 'bg-orange-500/10 text-orange-500' },
+    { label: 'Открытых тикетов', value: stats.open_tickets, sub: 'Ожидают ответа', icon: MessageSquare, color: 'bg-destructive/10 text-destructive' },
+    { label: 'Споров', value: stats.disputed_transactions, sub: 'Требуют решения', icon: FileText, color: 'bg-yellow-500/10 text-yellow-500' },
+    { label: 'Ожидают модерации', value: stats.pending_offers, sub: 'Новых объявлений', icon: Eye, color: 'bg-cyan-500/10 text-cyan-500' },
   ];
   return (
     <div className="space-y-6">
@@ -483,34 +487,16 @@ function CarsTab() {
   };
 
   const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault(); setSaving(true);
-    try {
-      const body = { brand: form.brand, model: form.model, year: Number(form.year), price: Number(form.price), mileage: Number(form.mileage), ...(form.color && { color: form.color }), ...(form.fuel_type && { fuel_type: form.fuel_type }), ...(form.transmission && { transmission: form.transmission }), ...(form.body_type && { body_type: form.body_type }), ...(form.engine_volume && { engine_volume: Number(form.engine_volume) }), ...(form.engine_power && { engine_power: Number(form.engine_power) }), ...(form.description && { description: form.description }), ...(form.vin && { vin: form.vin }), // TODO: подключить когда бэк добавит поля осмотра
-        ...(form.viewing_days.length && { viewing_days: form.viewing_days }), ...(form.viewing_time_from && { viewing_time_from: form.viewing_time_from }), ...(form.viewing_time_to && { viewing_time_to: form.viewing_time_to }), ...(form.viewing_address && { viewing_address: form.viewing_address }) };
-      let carId = editCar?.id;
-      if (!editCar) { const c = await adminApi.createCar(body); carId = c.id; toast.success('Автомобиль добавлен'); }
-      else { await adminApi.updateCar(editCar.id, body); toast.success('Автомобиль обновлён'); }
-      if (selectedFiles.length > 0 && carId) {
-        const fd = new FormData(); selectedFiles.forEach(f => fd.append('images', f));
-        await adminApi.uploadCarImages(carId, fd); toast.success(`${selectedFiles.length} фото загружено`);
-      }
-      setShowForm(false); clearFiles(); handleReload();
-    } catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Ошибка'); }
-    finally { setSaving(false); }
+    e.preventDefault();
+    toast.error('Создание/редактирование авто недоступно: в новой системе пользователи создают объявления самостоятельно');
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Удалить "${name}"?`)) return;
-    try { await adminApi.deleteCar(id); toast.success('Удалён'); handleReload(); }
-    catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Ошибка'); }
+  const handleDelete = async (_id: string, _name: string) => {
+    toast.error('Удаление авто недоступно через панель администратора');
   };
 
-  const handleStatusChange = async (id: string, status: string) => {
-    try {
-      await adminApi.updateCar(id, { status: status as AdminCar['status'] }); toast.success('Статус обновлён');
-      const upd = (c: AdminCar) => c.id === id ? { ...c, status: status as AdminCar['status'] } : c;
-      setServerPage(p => p.map(upd)); setAllCars(p => p.map(upd));
-    } catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Ошибка'); }
+  const handleStatusChange = async (_id: string, _status: string) => {
+    toast.error('Изменение статуса недоступно через панель администратора');
   };
 
   if (isLoading) return <LoadingSpinner />;
@@ -863,7 +849,7 @@ function OffersTab() {
           return (
             <div key={offer.id} className="bg-card rounded-xl border border-border p-4">
               <div className="flex gap-4">
-                {primaryImg && <div className="w-24 rounded-lg overflow-hidden flex-shrink-0 bg-secondary"><img src={primaryImg.thumb_url} alt="" className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} /></div>}
+                {primaryImg && <div className="w-24 rounded-lg overflow-hidden flex-shrink-0 bg-secondary"><img src={primaryImg.thumbnail_url} alt="" className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} /></div>}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2 flex-wrap">
                     <div>
@@ -908,7 +894,7 @@ function OffersTab() {
 function MessagesTab() {
   const [messages, setMessages] = useState<AdminMessage[]>([]);
   const [count, setCount] = useState(0); const [skip, setSkip] = useState(0);
-  const [filterStatus, setFilterStatus] = useState<MessageStatus | ''>('new');
+  const [filterStatus, setFilterStatus] = useState<MessageStatus | ''>('open');
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [processing, setProcessing] = useState<string | null>(null);
@@ -965,7 +951,7 @@ function MessagesTab() {
           <div className="flex gap-2">
             <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value as MessageStatus | ''); setSkip(0); }}
               className="px-3 py-2 bg-card border border-border text-foreground rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary">
-              <option value="">Все</option><option value="new">Новые</option><option value="in_progress">В работе</option><option value="resolved">Решено</option><option value="closed">Закрыто</option>
+              <option value="">Все</option><option value="open">Открытые</option><option value="in_progress">В работе</option><option value="resolved">Решено</option><option value="closed">Закрыто</option>
             </select>
             <button onClick={isSearching ? clearSearch : load} className="p-2 border border-border rounded-lg hover:bg-secondary transition-colors text-foreground">
               {isSearching ? <X className="w-4 h-4" /> : <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />}
@@ -997,7 +983,7 @@ function MessagesTab() {
                 <p className="text-sm mt-3 text-muted-foreground leading-relaxed">{msg.body}</p>
                 {msg.phone && <p className="text-sm mt-2 text-foreground"><span className="font-medium">Телефон:</span> {msg.phone}</p>}
                 <div className="flex gap-2 mt-4 flex-wrap">
-                  {(['new', 'in_progress', 'resolved', 'closed'] as MessageStatus[]).map(s => (
+                  {(['open', 'in_progress', 'resolved', 'closed'] as MessageStatus[]).map(s => (
                     <button key={s} onClick={() => handleStatusChange(msg.id, s)} disabled={msg.status === s || processing === msg.id}
                       className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-40 ${msg.status === s ? `${MSG_STATUS_COLORS[s]} cursor-default` : 'bg-secondary text-foreground hover:bg-secondary/80'}`}>
                       {processing === msg.id ? <Loader2 className="w-3 h-3 animate-spin" /> : MSG_STATUS_LABELS[s]}
@@ -1257,9 +1243,9 @@ export function AdminPage() {
 
   const tabs = [
     { id: 'stats' as TabType, label: 'Статистика', icon: BarChart3 },
-    { id: 'cars' as TabType, label: 'Автомобили', icon: Car, badge: stats?.available_cars },
-    { id: 'offers' as TabType, label: 'Заявки на продажу', icon: FileText, badge: stats?.pending_offers },
-    { id: 'messages' as TabType, label: 'Сообщения', icon: MessageSquare, badge: stats?.new_messages },
+    { id: 'cars' as TabType, label: 'Объявления', icon: Car, badge: stats?.active_listings },
+    { id: 'offers' as TabType, label: 'Модерация', icon: FileText, badge: stats?.disputed_transactions },
+    { id: 'messages' as TabType, label: 'Тикеты', icon: MessageSquare, badge: stats?.open_tickets },
     ...(user?.role === 'admin' ? [{ id: 'users' as TabType, label: 'Сотрудники', icon: Users }] : []),
   ];
 

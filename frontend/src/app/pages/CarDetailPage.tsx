@@ -6,7 +6,6 @@ import { toast } from 'sonner';
 import { useCar } from '../hooks/useCars';
 import { useFavorites } from '../hooks/useFavorites';
 import { useSalonInfo } from '../hooks/useSalonInfo';
-import { messagesApi } from '../api/messages';
 import { viewingsApi } from '../api/viewings';
 
 function formatPrice(price: number): string {
@@ -27,8 +26,6 @@ const STATUS_COLORS: Record<string, string> = {
   inactive: 'bg-muted text-muted-foreground border-border',
 };
 
-const inputCls = "w-full px-4 py-2 bg-secondary text-foreground placeholder:text-muted-foreground rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary border border-border focus:border-primary";
-
 export function CarDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { car, loading, error } = useCar(id);
@@ -41,11 +38,6 @@ export function CarDetailPage() {
   const [showAppointmentForm, setShowAppointmentForm] = useState(false);
   const [activeSlide, setActiveSlide] = useState(0);
 
-  const [formName, setFormName] = useState('');
-  const [formPhone, setFormPhone] = useState('');
-  const [formDate, setFormDate] = useState('');
-  const [formTime, setFormTime] = useState('10:00');
-  const [formComment, setFormComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   if (loading) {
@@ -99,33 +91,16 @@ export function CarDetailPage() {
 
   const handleAppointmentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      toast.error('Для записи на просмотр необходимо войти в аккаунт');
+      return;
+    }
     setSubmitting(true);
     try {
-      const token = localStorage.getItem('access_token');
-      if (token && formDate && formTime) {
-        try {
-          await viewingsApi.book({ car_id: car.id, viewing_date: formDate, viewing_time: formTime, comment: formComment || undefined });
-          toast.success('Запись на просмотр успешно создана!');
-        } catch {
-          await messagesApi.send({
-            name: formName, email: 'noreply@autosalon.ru', phone: formPhone,
-            subject: `Запись на просмотр: ${car.brand} ${car.model}`,
-            body: `Клиент ${formName} (${formPhone}) хочет записаться. Дата: ${formDate} ${formTime}. ${formComment}`,
-            message_type: 'callback', car_id: car.id,
-          });
-          toast.success('Заявка на просмотр отправлена!');
-        }
-      } else {
-        await messagesApi.send({
-          name: formName, email: 'noreply@autosalon.ru', phone: formPhone,
-          subject: `Запись на просмотр: ${car.brand} ${car.model}`,
-          body: `Клиент ${formName} (${formPhone}) хочет записаться. Дата: ${formDate} ${formTime}. ${formComment}`,
-          message_type: 'callback', car_id: car.id,
-        });
-        toast.success('Заявка на просмотр отправлена!');
-      }
+      await viewingsApi.book({ car_id: car.id });
+      toast.success('Заявка на просмотр отправлена! Продавец свяжется с вами.');
       setShowAppointmentForm(false);
-      setFormName(''); setFormPhone(''); setFormDate(''); setFormComment('');
     } catch {
       toast.error('Ошибка отправки. Попробуйте позже.');
     } finally {
@@ -318,15 +293,9 @@ export function CarDetailPage() {
 
               {showAppointmentForm && (
                 <form className="space-y-3 pt-4 border-t border-border" onSubmit={handleAppointmentSubmit}>
-                  <input type="text" placeholder="Ваше имя" required value={formName} onChange={e => setFormName(e.target.value)} className={inputCls} />
-                  <input type="tel" placeholder="Телефон" required value={formPhone} onChange={e => setFormPhone(e.target.value)} className={inputCls} />
-                  <input type="date" required value={formDate} onChange={e => setFormDate(e.target.value)} className={inputCls} />
-                  <select value={formTime} onChange={e => setFormTime(e.target.value)} className={inputCls}>
-                    {['08:00','09:00','10:00','11:00','12:00','13:00','15:00','16:00','17:00','18:00','19:00'].map(t => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
-                  <textarea placeholder="Комментарий" rows={3} value={formComment} onChange={e => setFormComment(e.target.value)} className={inputCls + ' resize-none'} />
+                  <p className="text-sm text-muted-foreground">
+                    Отправьте заявку на просмотр — продавец свяжется с вами для уточнения даты и времени.
+                  </p>
                   <button type="submit" disabled={submitting}
                     className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity text-sm disabled:opacity-50">
                     {submitting ? 'Отправка...' : 'Отправить заявку'}

@@ -26,8 +26,11 @@ async function req<T>(path: string, options?: RequestInit): Promise<T> {
 export type UserRole = 'admin' | 'manager' | 'support' | 'user';
 export type UserStatus = 'active' | 'inactive' | 'banned';
 export type CarStatus = 'available' | 'reserved' | 'sold' | 'inactive';
+// Listing statuses from new backend
+export type ListingStatus = 'draft' | 'pending_review' | 'active' | 'reserved' | 'sold' | 'archived';
+export type MessageStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
+// For backward compat - maps old offer status to ticket status
 export type CarOfferStatus = 'pending' | 'approved' | 'rejected';
-export type MessageStatus = 'new' | 'in_progress' | 'resolved' | 'closed';
 export type DealStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
 
 export interface AdminUser {
@@ -40,15 +43,16 @@ export interface AdminUser {
   created_at: string;
 }
 
+// AdminCar now maps from Listing (the new backend listing model)
 export interface AdminCar {
   id: string;
-  brand: string;
-  model: string;
+  brand: string;    // mark_name from list endpoint
+  model: string;    // model_name from list endpoint
   year: number;
-  price: string;
+  price: number;    // integer in new backend
   mileage: number;
   status: CarStatus;
-  fuel_type: string | null;
+  fuel_type: string | null;   // engine_type
   transmission: string | null;
   body_type: string | null;
   engine_volume: string | null;
@@ -57,23 +61,30 @@ export interface AdminCar {
   vin: string | null;
   description: string | null;
   created_at: string;
-  images: { id: string; url: string; thumb_url: string; is_primary: boolean; sort_order: number }[];
+  images: { id: string; url: string; thumbnail_url: string; is_primary: boolean; sort_order: number }[];
+  // new fields
+  listing_status: ListingStatus;
+  mark_id?: string;
+  model_id?: string;
+  seller_id?: string;
 }
 
+// Car offer mapped from pending listing (moderation queue)
 export interface AdminCarOffer {
   id: string;
   user_id: string;
-  brand: string;
-  model: string;
+  brand: string;    // mark_id
+  model: string;    // model_id
   year: number;
-  price: string;
+  price: number;
   mileage: number;
   status: CarOfferStatus;
   rejection_reason: string | null;
   created_at: string;
-  images: { id: string; url: string; thumb_url: string; is_primary: boolean; sort_order: number }[];
+  images: { id: string; url: string; thumbnail_url: string; is_primary: boolean; sort_order: number }[];
 }
 
+// Ticket (replaces Message)
 export interface AdminMessage {
   id: string;
   name: string;
@@ -102,7 +113,20 @@ export interface AdminDeal {
   created_at: string;
 }
 
+// New backend DashboardStats
 export interface DashboardStats {
+  // New fields
+  total_listings: number;
+  active_listings: number;
+  reserved_listings: number;
+  sold_listings: number;
+  total_transactions: number;
+  completed_transactions: number;
+  disputed_transactions: number;
+  total_revenue: string;
+  total_users: number;
+  open_tickets: number;
+  // Legacy aliases (mapped from new fields for backward compat with UI)
   total_cars: number;
   available_cars: number;
   sold_cars: number;
@@ -111,7 +135,6 @@ export interface DashboardStats {
   total_deals: number;
   completed_deals: number;
   pending_deals: number;
-  total_revenue: string;
   new_messages: number;
   total_viewings: number;
   pending_offers: number;
@@ -149,11 +172,114 @@ export interface CarCreate {
   vin?: string;
 }
 
+// Helper: map listing status → CarStatus
+function mapListingStatus(status: string): CarStatus {
+  switch (status) {
+    case 'active': return 'available';
+    case 'reserved': return 'reserved';
+    case 'sold': return 'sold';
+    default: return 'inactive';
+  }
+}
+
+// Helper: map listing row (from public /listings endpoint) → AdminCar
+function mapListingRow(row: Record<string, unknown>): AdminCar {
+  return {
+    id: row.id as string,
+    brand: (row.mark_name ?? row.mark_id ?? '') as string,
+    model: (row.model_name ?? row.model_id ?? '') as string,
+    year: row.year as number,
+    price: row.price as number,
+    mileage: row.mileage as number,
+    status: mapListingStatus((row.status as string) ?? 'active'),
+    fuel_type: (row.engine_type as string | null) ?? null,
+    transmission: null,
+    body_type: (row.body_type as string | null) ?? null,
+    engine_volume: row.displacement != null ? String(row.displacement) : null,
+    engine_power: (row.power as number | null) ?? null,
+    color: null,
+    vin: null,
+    description: null,
+    created_at: row.created_at as string,
+    images: [],
+    listing_status: (row.status ?? 'active') as ListingStatus,
+    mark_id: row.mark_id as string | undefined,
+    model_id: row.model_id as string | undefined,
+    seller_id: row.seller_id as string | undefined,
+  };
+}
+
+// Helper: map Listing object (from /admin/listings) → AdminCarOffer
+function mapListingToOffer(listing: Record<string, unknown>): AdminCarOffer {
+  return {
+    id: listing.id as string,
+    user_id: (listing.seller_id as string) ?? '',
+    brand: (listing.mark_id as string) ?? '',
+    model: (listing.model_id as string) ?? '',
+    year: listing.year as number,
+    price: listing.price as number,
+    mileage: listing.mileage as number,
+    status: 'pending' as CarOfferStatus,
+    rejection_reason: null,
+    created_at: listing.created_at as string,
+    images: [],
+  };
+}
+
+// Helper: map Ticket → AdminMessage (for backward compat with UI)
+function mapTicketToMessage(ticket: Record<string, unknown>): AdminMessage {
+  return {
+    id: ticket.id as string,
+    name: 'Пользователь',
+    email: '',
+    phone: null,
+    subject: (ticket.title as string) ?? null,
+    body: (ticket.title as string) ?? '',
+    message_type: (ticket.type as string) ?? 'support_inquiry',
+    status: (ticket.status as MessageStatus) ?? 'open',
+    car_id: (ticket.listing_id as string | null) ?? null,
+    assigned_to: (ticket.assignee_id as string | null) ?? null,
+    created_at: ticket.created_at as string,
+    updated_at: ticket.updated_at as string ?? ticket.created_at as string,
+  };
+}
+
+// Helper: map new DashboardStats → augmented stats with legacy aliases
+function mapStats(raw: Record<string, unknown>): DashboardStats {
+  return {
+    // New fields
+    total_listings: (raw.total_listings as number) ?? 0,
+    active_listings: (raw.active_listings as number) ?? 0,
+    reserved_listings: (raw.reserved_listings as number) ?? 0,
+    sold_listings: (raw.sold_listings as number) ?? 0,
+    total_transactions: (raw.total_transactions as number) ?? 0,
+    completed_transactions: (raw.completed_transactions as number) ?? 0,
+    disputed_transactions: (raw.disputed_transactions as number) ?? 0,
+    total_revenue: String(raw.total_revenue ?? '0'),
+    total_users: (raw.total_users as number) ?? 0,
+    open_tickets: (raw.open_tickets as number) ?? 0,
+    // Legacy aliases for existing UI
+    total_cars: (raw.total_listings as number) ?? 0,
+    available_cars: (raw.active_listings as number) ?? 0,
+    sold_cars: (raw.sold_listings as number) ?? 0,
+    reserved_cars: (raw.reserved_listings as number) ?? 0,
+    total_clients: (raw.total_users as number) ?? 0,
+    total_deals: (raw.total_transactions as number) ?? 0,
+    completed_deals: (raw.completed_transactions as number) ?? 0,
+    pending_deals: (raw.disputed_transactions as number) ?? 0,
+    new_messages: (raw.open_tickets as number) ?? 0,
+    total_viewings: 0,
+    pending_offers: 0,
+    total_offers: 0,
+  };
+}
+
 // API calls
 
 export const adminApi = {
   // Stats
-  getStats: () => req<DashboardStats>('/admin/stats'),
+  getStats: () =>
+    req<Record<string, unknown>>('/admin/stats').then(mapStats),
 
   // Users
   getUsers: (skip = 0, limit = 20) =>
@@ -165,50 +291,82 @@ export const adminApi = {
   deleteUser: (id: string) =>
     req<void>(`/admin/users/${id}`, { method: 'DELETE' }),
 
-  // Cars
-  getCars: (skip = 0, limit = 20) =>
-    req<{ data: AdminCar[]; count: number }>(`/cars?skip=${skip}&limit=${limit}`),
-  createCar: (body: CarCreate) =>
-    req<AdminCar>('/cars', { method: 'POST', body: JSON.stringify(body) }),
-  updateCar: (id: string, body: Partial<CarCreate> & { status?: CarStatus }) =>
-    req<AdminCar>(`/cars/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
-  deleteCar: (id: string) =>
-    req<void>(`/cars/${id}`, { method: 'DELETE' }),
+  // Listings (replaces Cars)
+  getCars: async (skip = 0, limit = 20) => {
+    const res = await req<{ items: Record<string, unknown>[]; next_cursor: string | null }>(
+      `/listings?sort=newest&limit=${limit}${skip > 0 ? `&cursor=skip:${skip}` : ''}`
+    );
+    const data = res.items.map(mapListingRow);
+    return { data, count: data.length + (res.next_cursor ? 1 : 0) };
+  },
 
-  // Car offers (moderation)
-  getOffers: (status?: CarOfferStatus, skip = 0, limit = 20) =>
-    req<{ data: AdminCarOffer[]; count: number }>(
-      `/car-offers?skip=${skip}&limit=${limit}${status ? `&status=${status}` : ''}`
-    ),
-  reviewOffer: (id: string, status: 'approved' | 'rejected', rejection_reason?: string) =>
-    req<AdminCarOffer>(`/car-offers/${id}/review`, {
-      method: 'PATCH',
-      body: JSON.stringify({ status, rejection_reason }),
-    }),
+  // Admin cannot create/delete cars in the new backend
+  // These are stubs that throw a clear error
+  createCar: (_body: CarCreate): Promise<AdminCar> =>
+    Promise.reject(new Error('Создание авто недоступно: пользователи создают объявления самостоятельно')),
+  updateCar: (_id: string, _body: Partial<CarCreate> & { status?: CarStatus }): Promise<AdminCar> =>
+    Promise.reject(new Error('Изменение авто недоступно через панель администратора')),
+  deleteCar: (_id: string): Promise<void> =>
+    Promise.reject(new Error('Удаление авто недоступно через панель администратора')),
 
-  // Messages
-  getMessages: (status?: MessageStatus, skip = 0, limit = 20) =>
-    req<{ data: AdminMessage[]; count: number }>(
-      `/messages?skip=${skip}&limit=${limit}${status ? `&status=${status}` : ''}`
-    ),
+  // Moderation queue (pending listings) — replaces Car offers
+  getOffers: async (_status?: CarOfferStatus, skip = 0, limit = 20) => {
+    const listings = await req<Record<string, unknown>[]>(
+      `/admin/listings?status=pending_review&skip=${skip}&limit=${limit}`
+    );
+    const data = listings.map(mapListingToOffer);
+    return { data, count: data.length };
+  },
+  reviewOffer: async (id: string, action: 'approved' | 'rejected', rejection_reason?: string) => {
+    if (action === 'approved') {
+      const res = await req<Record<string, unknown>>(`/admin/listings/${id}/approve`, { method: 'POST' });
+      return { ...mapListingToOffer(res), status: 'approved' as CarOfferStatus };
+    } else {
+      const res = await req<Record<string, unknown>>(`/admin/listings/${id}/reject`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: rejection_reason }),
+      });
+      return { ...mapListingToOffer(res), status: 'rejected' as CarOfferStatus, rejection_reason: rejection_reason ?? null };
+    }
+  },
+
+  // Tickets (replaces Messages)
+  getMessages: async (_status?: MessageStatus, skip = 0, limit = 20) => {
+    const tickets = await req<Record<string, unknown>[]>(
+      `/tickets?skip=${skip}&limit=${limit}`
+    );
+    const data = tickets.map(mapTicketToMessage);
+    return { data, count: data.length };
+  },
   updateMessage: (id: string, body: { status?: MessageStatus; assigned_to?: string }) =>
-    req<AdminMessage>(`/messages/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    req<Record<string, unknown>>(`/tickets/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        status: body.status,
+        assignee_id: body.assigned_to,
+      }),
+    }).then(mapTicketToMessage),
 
-  // Deals
-  getDeals: (skip = 0, limit = 20) =>
-    req<{ data: AdminDeal[]; count: number }>(`/deals?skip=${skip}&limit=${limit}`),
+  // Deals (not directly supported, stub)
+  getDeals: (_skip = 0, _limit = 20): Promise<{ data: AdminDeal[]; count: number }> =>
+    Promise.resolve({ data: [], count: 0 }),
 
-  // Car images upload (multipart — без Content-Type, браузер выставит boundary сам)
+  // Car images upload — now for listings
   uploadCarImages: async (id: string, formData: FormData): Promise<void> => {
     const token = localStorage.getItem('access_token');
-    const res = await fetch(`${BASE_URL}/cars/${id}/images`, {
-      method: 'POST',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      body: formData,
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: 'Ошибка загрузки' }));
-      throw new Error(err.detail ?? 'Ошибка загрузки');
+    const files = formData.getAll('images') as File[];
+    for (const file of files) {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(`${BASE_URL}/listings/${id}/images`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: 'Ошибка загрузки' }));
+        throw new Error(err.detail ?? 'Ошибка загрузки');
+      }
     }
   },
 };
