@@ -42,7 +42,7 @@ function timeAgo(dateStr: string) {
 }
 function normalizeColor(c: string) { return c.trim().toLowerCase().replace(/ё/g, 'е'); }
 
-// ─── Filter helpers ───────────────────────────────────────────────
+// Filter helpers
 
 function SearchableMultiSelect<T extends string>({
   label, options, selected, onToggle, onClear, placeholder = 'Выберите...',
@@ -106,7 +106,7 @@ function NumberFilterInput({ placeholder, value, onChange, onConfirm, format = f
   );
 }
 
-// ─── Card components ──────────────────────────────────────────────
+// Card components
 
 function GridCard({ car }: { car: CarType }) {
   const { isFavorite, toggle } = useFavorites();
@@ -232,7 +232,7 @@ function ListRow({ car }: { car: CarType }) {
   );
 }
 
-// ─── Inline search ────────────────────────────────────────────────
+// Inline search
 
 function BoardSearch({ cars, onSelect }: { cars: CarType[]; onSelect: (car: CarType | null) => void }) {
   const [query, setQuery] = useState('');
@@ -252,7 +252,7 @@ function BoardSearch({ cars, onSelect }: { cars: CarType[]; onSelect: (car: CarT
   }, [cars, query]);
   const handleSelect = (car: CarType) => { onSelect(car); setQuery(''); setIsOpen(false); setHi(-1); };
   return (
-    <div className="relative w-full max-w-2xl" ref={ref}>
+    <div className="relative w-full" ref={ref}>
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         <input ref={inputRef} type="text" value={query}
@@ -292,7 +292,7 @@ function BoardSearch({ cars, onSelect }: { cars: CarType[]; onSelect: (car: CarT
   );
 }
 
-// ─── Page ─────────────────────────────────────────────────────────
+// Page
 
 export function CatalogPage() {
   useEffect(() => { window.scrollTo(0, 0); }, []);
@@ -609,55 +609,23 @@ export function CatalogPage() {
     <div className="min-h-screen bg-background">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
-        {/* Header */}
-        <div className="flex flex-col gap-4 mb-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h1 className="text-3xl font-semibold text-foreground">Доска объявлений</h1>
-              <p className="text-muted-foreground mt-0.5">
-                {loading ? 'Загрузка...' : `${filteredCars.length} объявлений${hasMore ? '+' : ''}`}
-              </p>
-            </div>
-            <Link to="/sell"
-              className="hidden sm:flex items-center gap-2 px-4 py-2.5 bg-accent text-accent-foreground rounded-xl hover:opacity-90 transition-opacity text-sm font-medium self-start">
-              <Plus className="w-4 h-4" />
-              Создать объявление
-            </Link>
+        {/* Title row */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+          <div>
+            <h1 className="text-3xl font-semibold text-foreground">Доска объявлений</h1>
+            <p className="text-muted-foreground mt-0.5">
+              {loading ? 'Загрузка...' : `${filteredCars.length} объявлений${hasMore ? '+' : ''}`}
+            </p>
           </div>
-
-          {/* Search + controls row */}
-          <div className="flex items-center gap-2">
-            <BoardSearch cars={allCars} onSelect={car => { if (car) navigate(`/car/${car.id}`); }} />
-            <button onClick={() => setMobileFiltersOpen(true)}
-              className="md:hidden flex items-center gap-2 px-3 py-3 bg-secondary rounded-xl border border-border hover:bg-secondary/80 transition-colors flex-shrink-0">
-              <SlidersHorizontal className="w-4 h-4 text-foreground" />
-              {hasActiveFilters && <span className="w-1.5 h-1.5 bg-primary rounded-full" />}
-            </button>
-            <select value={sortBy} onChange={e => setSortBy(e.target.value as CarFilters['sort_by'])}
-              className={selectCls + ' hidden sm:block max-w-[190px] flex-shrink-0'}>
-              <option value="date_desc">Сначала новые</option>
-              <option value="price_asc">Дешевле</option>
-              <option value="price_desc">Дороже</option>
-            </select>
-            {/* View toggle */}
-            <div className="hidden sm:flex items-center border border-border rounded-lg overflow-hidden flex-shrink-0">
-              <button onClick={() => setViewMode('grid')}
-                className={`p-2.5 transition-colors ${viewMode === 'grid' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground hover:text-foreground'}`}
-                title="Сетка">
-                <LayoutGrid className="w-4 h-4" />
-              </button>
-              <button onClick={() => setViewMode('list')}
-                className={`p-2.5 transition-colors ${viewMode === 'list' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground hover:text-foreground'}`}
-                title="Список">
-                <List className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
+          <Link to="/sell"
+            className="hidden sm:flex items-center gap-2 px-4 py-2.5 bg-accent text-accent-foreground rounded-xl hover:opacity-90 transition-opacity text-sm font-medium self-start">
+            <Plus className="w-4 h-4" /> Создать объявление
+          </Link>
         </div>
 
         <div className="flex gap-6">
-          {/* Desktop sidebar */}
-          <aside className="hidden md:block w-60 flex-shrink-0">
+          {/* Desktop sidebar — старая боковая панель */}
+          <aside className="hidden md:block w-64 flex-shrink-0">
             <div className="sticky top-20">{filtersPanel}</div>
           </aside>
 
@@ -686,6 +654,34 @@ export function CatalogPage() {
 
           {/* Listings */}
           <div className="flex-1 min-w-0">
+            {/* Search + sort + view — на уровне верхнего края фильтра */}
+            <div className="flex items-center gap-2 mb-4">
+              <div className="flex-1">
+                <BoardSearch cars={allCars} onSelect={car => { if (car) navigate(`/car/${car.id}`); }} />
+              </div>
+              <button onClick={() => setMobileFiltersOpen(true)}
+                className="md:hidden flex items-center gap-2 px-3 py-2.5 bg-secondary rounded-xl border border-border hover:bg-secondary/80 transition-colors flex-shrink-0">
+                <SlidersHorizontal className="w-4 h-4 text-foreground" />
+                {hasActiveFilters && <span className="w-1.5 h-1.5 bg-primary rounded-full" />}
+              </button>
+              <select value={sortBy} onChange={e => setSortBy(e.target.value as CarFilters['sort_by'])}
+                className={selectCls + ' w-32 flex-shrink-0 text-xs'}>
+                <option value="date_desc">Новые</option>
+                <option value="price_asc">Дешевле</option>
+                <option value="price_desc">Дороже</option>
+              </select>
+              <div className="flex items-center border border-border rounded-lg overflow-hidden flex-shrink-0">
+                <button onClick={() => setViewMode('grid')} title="Сетка"
+                  className={`p-2.5 transition-colors ${viewMode === 'grid' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground hover:text-foreground'}`}>
+                  <LayoutGrid className="w-4 h-4" />
+                </button>
+                <button onClick={() => setViewMode('list')} title="Список"
+                  className={`p-2.5 transition-colors ${viewMode === 'list' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground hover:text-foreground'}`}>
+                  <List className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
             {error && (
               <div className="text-center py-16">
                 <p className="text-destructive mb-4">Ошибка загрузки: {error}</p>
@@ -749,6 +745,7 @@ export function CatalogPage() {
             )}
           </div>
         </div>
+
       </div>
     </div>
   );
