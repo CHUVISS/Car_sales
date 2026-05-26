@@ -371,21 +371,21 @@ function StatsTab({ stats, loading }: { stats: DashboardStats | null; loading: b
   if (loading) return <LoadingSpinner />;
   if (!stats) return <ErrorState message="Не удалось загрузить статистику" />;
   const cards = [
-    { label: 'Всего объявлений', value: stats.active_listings + stats.reserved_listings + stats.sold_listings, sub: `${stats.active_listings} активных`, icon: Car, color: 'bg-primary/10 text-primary' },
-    { label: 'Продано', value: stats.sold_listings, sub: `${stats.reserved_listings} зарезервировано`, icon: DollarSign, color: 'bg-accent/10 text-accent' },
-    { label: 'Всего сделок', value: stats.total_transactions, sub: `${stats.completed_transactions} завершено`, icon: BarChart3, color: 'bg-purple-500/10 text-purple-500' },
-    { label: 'Выручка', value: formatPrice(stats.total_revenue), sub: 'По завершённым сделкам', icon: DollarSign, color: 'bg-green-500/10 text-green-500' },
-    { label: 'Пользователей', value: stats.total_users, sub: 'Всего в базе', icon: Users, color: 'bg-orange-500/10 text-orange-500' },
-    { label: 'Открытых тикетов', value: stats.open_tickets, sub: 'Ожидают ответа', icon: MessageSquare, color: 'bg-destructive/10 text-destructive' },
-    { label: 'Споров', value: stats.disputed_transactions, sub: 'Требуют решения', icon: FileText, color: 'bg-yellow-500/10 text-yellow-500' },
-    { label: 'Ожидают модерации', value: stats.pending_offers, sub: 'Новых объявлений', icon: Eye, color: 'bg-cyan-500/10 text-cyan-500' },
+    { label: 'Всего объявлений', value: stats.active_listings + stats.reserved_listings + stats.sold_listings, sub: `${stats.active_listings} активных`, icon: Car, color: 'bg-primary/10 text-primary', glow: 'hover:shadow-primary/25' },
+    { label: 'Продано', value: stats.sold_listings, sub: `${stats.reserved_listings} зарезервировано`, icon: DollarSign, color: 'bg-accent/10 text-accent', glow: 'hover:shadow-accent/25' },
+    { label: 'Всего сделок', value: stats.total_transactions, sub: `${stats.completed_transactions} завершено`, icon: BarChart3, color: 'bg-purple-500/10 text-purple-500', glow: 'hover:shadow-purple-500/25' },
+    { label: 'Выручка', value: formatPrice(stats.total_revenue), sub: 'По завершённым сделкам', icon: DollarSign, color: 'bg-green-500/10 text-green-500', glow: 'hover:shadow-green-500/25' },
+    { label: 'Пользователей', value: stats.total_users, sub: 'Всего в базе', icon: Users, color: 'bg-orange-500/10 text-orange-500', glow: 'hover:shadow-orange-500/25' },
+    { label: 'Открытых тикетов', value: stats.open_tickets, sub: 'Ожидают ответа', icon: MessageSquare, color: 'bg-destructive/10 text-destructive', glow: 'hover:shadow-destructive/25' },
+    { label: 'Споров', value: stats.disputed_transactions, sub: 'Требуют решения', icon: FileText, color: 'bg-yellow-500/10 text-yellow-500', glow: 'hover:shadow-yellow-500/25' },
+    { label: 'Ожидают модерации', value: stats.pending_offers, sub: 'Новых объявлений', icon: Eye, color: 'bg-cyan-500/10 text-cyan-500', glow: 'hover:shadow-cyan-500/25' },
   ];
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-semibold text-foreground">Статистика</h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {cards.map(({ label, value, sub, icon: Icon, color }) => (
-          <div key={label} className="bg-card rounded-xl border border-border p-5">
+        {cards.map(({ label, value, sub, icon: Icon, color, glow }) => (
+          <div key={label} className={`bg-card rounded-xl border border-border p-5 transition-all duration-200 hover:scale-[1.02] hover:shadow-lg ${glow}`}>
             <div className="flex items-start justify-between mb-3">
               <p className="text-sm text-muted-foreground">{label}</p>
               <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${color}`}>

@@ -9,7 +9,7 @@ export function Footer() {
           <div>
             <div className="flex items-center gap-2 mb-4">
               <Car className="w-8 h-8" />
-              <span className="text-xl font-semibold">АвтоСалон</span>
+              <span className="text-xl font-semibold">FastAuto</span>
             </div>
             <p className="text-sm opacity-70">
               Ваш надежный партнер в мире автомобилей. Широкий выбор новых и подержанных автомобилей.
@@ -54,7 +54,7 @@ export function Footer() {
         </div>
 
         <div className="border-t border-current/20 mt-8 pt-8 text-center text-sm opacity-70">
-          <p>© 2026 АвтоСалон. Все права защищены.</p>
+          <p>© 2026 FastAuto. Все права защищены.</p>
         </div>
       </div>
     </footer>
