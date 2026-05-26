@@ -26,7 +26,9 @@ export function ProfilePage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
 
   // Форма профиля
@@ -39,6 +41,11 @@ export function ProfilePage() {
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthLoading(true);
+    if (isRegister && password !== confirmPassword) {
+      toast.error('Пароли не совпадают');
+      setAuthLoading(false);
+      return;
+    }
     try {
       if (isRegister) {
         await register(email, password, fullName);
@@ -87,7 +94,7 @@ export function ProfilePage() {
     );
   }
 
-  // ─── Страница входа / регистрации ────────────────────────
+  // Страница входа / регистрации
   if (!user) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center px-4">
@@ -107,7 +114,7 @@ export function ProfilePage() {
             {/* Переключатель вход / регистрация */}
             <div className="flex border-b border-border">
               <button
-                onClick={() => setIsRegister(false)}
+                onClick={() => { setIsRegister(false); setPassword(''); setConfirmPassword(''); setShowPassword(false); setShowConfirmPassword(false); }}
                 className={`flex-1 py-4 text-sm font-medium transition-colors ${
                   !isRegister
                     ? 'text-foreground border-b-2 border-primary'
@@ -117,7 +124,7 @@ export function ProfilePage() {
                 Войти
               </button>
               <button
-                onClick={() => setIsRegister(true)}
+                onClick={() => { setIsRegister(true); setPassword(''); setConfirmPassword(''); setShowPassword(false); setShowConfirmPassword(false); }}
                 className={`flex-1 py-4 text-sm font-medium transition-colors ${
                   isRegister
                     ? 'text-foreground border-b-2 border-primary'
@@ -215,6 +222,39 @@ export function ProfilePage() {
                   )}
                 </div>
 
+                {isRegister && (
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1.5">
+                      Подтверждение пароля
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showConfirmPassword ? 'text' : 'password'}
+                        placeholder="Повторите пароль"
+                        required
+                        value={confirmPassword}
+                        onChange={e => setConfirmPassword(e.target.value)}
+                        className={inputCls + ' pr-12' + (confirmPassword.length > 0 && confirmPassword !== password ? ' border-destructive focus:ring-destructive' : '')}
+                        autoComplete="new-password"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(p => !p)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground transition-colors"
+                        tabIndex={-1}
+                      >
+                        {showConfirmPassword
+                          ? <EyeOff className="w-4 h-4" />
+                          : <Eye className="w-4 h-4" />
+                        }
+                      </button>
+                    </div>
+                    {confirmPassword.length > 0 && confirmPassword !== password && (
+                      <p className="mt-1 text-xs text-destructive">Пароли не совпадают</p>
+                    )}
+                  </div>
+                )}
+
                 <button
                   type="submit"
                   disabled={authLoading}
@@ -243,7 +283,7 @@ export function ProfilePage() {
               </div>
 
               <button
-                onClick={() => { setIsRegister(!isRegister); setPassword(''); setShowPassword(false); }}
+                onClick={() => { setIsRegister(!isRegister); setPassword(''); setConfirmPassword(''); setShowPassword(false); setShowConfirmPassword(false); }}
                 className="w-full px-6 py-3 bg-secondary text-foreground rounded-lg hover:bg-secondary/80 transition-colors border border-border text-sm font-medium"
               >
                 {isRegister ? 'Войти в существующий аккаунт' : 'Создать новый аккаунт'}
@@ -260,7 +300,7 @@ export function ProfilePage() {
     );
   }
 
-  // ─── Личный кабинет ──────────────────────────────────────
+  // Личный кабинет
 
   const tabs: { id: TabType; label: string; icon: React.ElementType; badge?: number }[] = [
     { id: 'profile', label: 'Профиль', icon: User },
@@ -357,7 +397,7 @@ export function ProfilePage() {
   );
 }
 
-// ─── PasswordStrength ──────────────────────────────────────
+// PasswordStrength
 
 function PasswordStrength({ password }: { password: string }) {
   const checks = [
@@ -385,7 +425,7 @@ function PasswordStrength({ password }: { password: string }) {
   );
 }
 
-// ─── ViewingsList ──────────────────────────────────────────
+// ViewingsList
 
 const RESULT_LABELS: Record<string, string> = {
   scheduled: 'Запланирован', confirmed: 'Подтверждён', completed: 'Завершён',

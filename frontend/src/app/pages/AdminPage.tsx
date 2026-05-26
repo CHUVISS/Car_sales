@@ -18,7 +18,7 @@ import {
 
 type TabType = 'stats' | 'cars' | 'offers' | 'messages' | 'users';
 
-// ─── Helpers ───────────────────────────────────────────────
+// Helpers
 
 const inputCls = "w-full px-3 py-2 bg-secondary text-foreground placeholder:text-muted-foreground rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary border border-border focus:border-primary transition-colors";
 const selectCls = "w-full px-3 py-2 bg-secondary text-foreground rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary border border-border focus:border-primary transition-colors";
@@ -93,7 +93,7 @@ function useDebounce<T>(value: T, delay: number): T {
   return dv;
 }
 
-// ─── Pagination ────────────────────────────────────────────
+// Pagination
 
 function Pagination({ skip, limit, count, onChange }: {
   skip: number; limit: number; count: number; onChange: (skip: number) => void;
@@ -119,7 +119,7 @@ function Pagination({ skip, limit, count, onChange }: {
   );
 }
 
-// ─── Car Filters ───────────────────────────────────────────
+// Car Filters
 
 interface CarFiltersState {
   status: string; priceMin: string; priceMax: string;
@@ -292,7 +292,7 @@ function CarFilterPanel({ filters, onChange, onReset, availableBrands, brandsLoa
   );
 }
 
-// ─── StatsTab ──────────────────────────────────────────────
+// StatsTab
 
 function StatsTab({ stats, loading }: { stats: DashboardStats | null; loading: boolean }) {
   if (loading) return <LoadingSpinner />;
@@ -328,7 +328,7 @@ function StatsTab({ stats, loading }: { stats: DashboardStats | null; loading: b
   );
 }
 
-// ─── CarTableRow ───────────────────────────────────────────
+// CarTableRow
 
 function CarTableRow({ car, onEdit, onDelete, onStatusChange, onRowClick }: {
   car: AdminCar; onEdit: (car: AdminCar) => void;
@@ -368,7 +368,7 @@ function CarTableRow({ car, onEdit, onDelete, onStatusChange, onRowClick }: {
   );
 }
 
-// ─── fetchAllCars ──────────────────────────────────────────
+// fetchAllCars
 
 const PAGE_SIZE = 20;
 
@@ -388,7 +388,7 @@ async function fetchAllCars(signal?: AbortSignal): Promise<AdminCar[]> {
   return result;
 }
 
-// ─── CarsTab ───────────────────────────────────────────────
+// CarsTab
 
 function CarsTab() {
   const navigate = useNavigate();
@@ -774,7 +774,7 @@ function CarsTab() {
   );
 }
 
-// ─── OffersTab ─────────────────────────────────────────────
+// OffersTab
 
 function OffersTab() {
   const [offers, setOffers] = useState<AdminCarOffer[]>([]);
@@ -903,7 +903,7 @@ function OffersTab() {
   );
 }
 
-// ─── MessagesTab ───────────────────────────────────────────
+// MessagesTab
 
 function MessagesTab() {
   const [messages, setMessages] = useState<AdminMessage[]>([]);
@@ -1014,7 +1014,7 @@ function MessagesTab() {
   );
 }
 
-// ─── UsersTab ──────────────────────────────────────────────
+// UsersTab
 
 function UsersTab() {
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -1199,7 +1199,7 @@ function UsersTab() {
   );
 }
 
-// ─── Shared UI ─────────────────────────────────────────────
+// Shared UI
 
 function LoadingSpinner() {
   return <div className="flex items-center justify-center py-16"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>;
@@ -1227,7 +1227,7 @@ function Modal({ title, children, onClose, size = 'md' }: { title: string; child
   );
 }
 
-// ─── Main Page ─────────────────────────────────────────────
+// Main Page
 
 export function AdminPage() {
   useEffect(() => { window.scrollTo(0, 0); }, []);

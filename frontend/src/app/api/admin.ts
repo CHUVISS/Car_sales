@@ -21,7 +21,7 @@ async function req<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
-// ─── Types ───────────────────────────────────────────────
+// Types
 
 export type UserRole = 'admin' | 'manager' | 'support' | 'user';
 export type UserStatus = 'active' | 'inactive' | 'banned';
@@ -149,7 +149,7 @@ export interface CarCreate {
   vin?: string;
 }
 
-// ─── API calls ────────────────────────────────────────────
+// API calls
 
 export const adminApi = {
   // Stats
