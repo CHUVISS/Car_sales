@@ -373,7 +373,7 @@ function StatsTab({ stats, loading }: { stats: DashboardStats | null; loading: b
   const cards = [
     { label: 'Всего объявлений', value: stats.active_listings + stats.reserved_listings + stats.sold_listings, sub: `${stats.active_listings} активных`, icon: Car, color: 'bg-primary/10 text-primary', glow: 'hover:shadow-primary/25' },
     { label: 'Продано', value: stats.sold_listings, sub: `${stats.reserved_listings} зарезервировано`, icon: DollarSign, color: 'bg-accent/10 text-accent', glow: 'hover:shadow-accent/25' },
-    { label: 'Всего резерваций', value: stats.total_deals, sub: `${stats.completed_deals} завершено`, icon: BarChart3, color: 'bg-purple-500/10 text-purple-500', glow: 'hover:shadow-purple-500/25' },
+    { label: 'Всего резерваций', value: stats.active_reservations + stats.pending_deals + stats.completed_deals, sub: `${stats.completed_deals} завершено`, icon: BarChart3, color: 'bg-purple-500/10 text-purple-500', glow: 'hover:shadow-purple-500/25' },
     { label: 'Активных резерваций', value: stats.active_reservations, sub: `${stats.pending_deals} в расчёте`, icon: DollarSign, color: 'bg-green-500/10 text-green-500', glow: 'hover:shadow-green-500/25' },
     { label: 'Пользователей', value: stats.total_users, sub: 'Всего в базе', icon: Users, color: 'bg-orange-500/10 text-orange-500', glow: 'hover:shadow-orange-500/25' },
     { label: 'Открытых тикетов', value: stats.open_tickets, sub: 'Ожидают ответа', icon: MessageSquare, color: 'bg-destructive/10 text-destructive', glow: 'hover:shadow-destructive/25' },
@@ -989,7 +989,7 @@ function CarsTab() {
 
 // OffersTab
 
-function OffersTab() {
+function OffersTab({ onPendingCountChange }: { onPendingCountChange?: (n: number) => void }) {
   const [offers, setOffers] = useState<AdminCarOffer[]>([]);
   const [count, setCount] = useState(0); const [skip, setSkip] = useState(0);
   const [filterStatus, setFilterStatus] = useState<CarOfferStatus | ''>('');
@@ -1007,7 +1007,15 @@ function OffersTab() {
   const load = useCallback(async () => {
     if (searchQuery.trim()) return;
     setLoading(true);
-    try { const data = await adminApi.getOffers(filterStatus || undefined, skip); setOffers(data.data); setCount(data.count); }
+    try {
+      const data = await adminApi.getOffers(filterStatus || undefined, skip);
+      setOffers(data.data); setCount(data.count);
+      // Обновляем счётчик бейджа — берём pending отдельно если фильтр не выставлен
+      if (!filterStatus || filterStatus === 'pending') {
+        const pendingCount = filterStatus === 'pending' ? data.count : data.data.filter((o: AdminCarOffer) => o.status === 'pending').length;
+        onPendingCountChange?.(pendingCount);
+      }
+    }
     catch { toast.error('Ошибка загрузки заявок'); } finally { setLoading(false); }
   }, [skip, filterStatus, searchQuery]);
 
@@ -1033,14 +1041,42 @@ function OffersTab() {
 
   const handleApprove = async () => {
     if (!approveModal) return;
-    setProcessing(approveModal.id);
-    try { await adminApi.reviewOffer(approveModal.id, 'approved'); toast.success('Объявление опубликовано'); setApproveModal(null); if (searchQuery.trim()) performSearch(searchQuery); else load(); }
-    catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Ошибка'); } finally { setProcessing(null); }
+    const id = approveModal.id;
+    setProcessing(id);
+    try {
+      await adminApi.reviewOffer(id, 'approved');
+      toast.success('Объявление опубликовано');
+      setApproveModal(null);
+      setOffers(prev => {
+        const next = prev.map(o => o.id === id ? { ...o, status: 'approved' as CarOfferStatus } : o);
+        onPendingCountChange?.(next.filter(o => o.status === 'pending').length);
+        return next;
+      });
+      setSearchResults(prev => prev.map(o => o.id === id ? { ...o, status: 'approved' as CarOfferStatus } : o));
+    }
+    catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Ошибка'); }
+    finally { setProcessing(null); }
   };
   const handleReject = async () => {
-    if (!rejectModal) return; setProcessing(rejectModal.id);
-    try { await adminApi.reviewOffer(rejectModal.id, 'rejected', rejectReason || undefined); toast.success('Заявка отклонена'); setRejectModal(null); setRejectReason(''); if (searchQuery.trim()) performSearch(searchQuery); else load(); }
-    catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Ошибка'); } finally { setProcessing(null); }
+    if (!rejectModal) return;
+    const id = rejectModal.id;
+    const reason = rejectReason || undefined;
+    const reasonOrNull = rejectReason || null;
+    setProcessing(id);
+    try {
+      await adminApi.reviewOffer(id, 'rejected', reason);
+      toast.success('Заявка отклонена');
+      setRejectModal(null);
+      setRejectReason('');
+      setOffers(prev => {
+        const next = prev.map(o => o.id === id ? { ...o, status: 'rejected' as CarOfferStatus, rejection_reason: reasonOrNull } : o);
+        onPendingCountChange?.(next.filter(o => o.status === 'pending').length);
+        return next;
+      });
+      setSearchResults(prev => prev.map(o => o.id === id ? { ...o, status: 'rejected' as CarOfferStatus, rejection_reason: reasonOrNull } : o));
+    }
+    catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Ошибка'); }
+    finally { setProcessing(null); }
   };
 
   const isSearching = searchQuery.trim().length > 0;
@@ -1519,6 +1555,7 @@ export function AdminPage() {
   const setActiveTab = (tab: TabType) => setSearchParams({ tab }, { replace: true });
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
+  const [pendingOffersCount, setPendingOffersCount] = useState(0);
 
   useEffect(() => {
     if (!authLoading && (!user || (user.role !== 'admin' && user.role !== 'manager'))) {
@@ -1528,6 +1565,7 @@ export function AdminPage() {
 
   useEffect(() => {
     adminApi.getStats().then(setStats).catch(() => toast.error('Не удалось загрузить статистику')).finally(() => setStatsLoading(false));
+    adminApi.getOffers('pending', 0).then(data => setPendingOffersCount(data.count)).catch(() => {});
   }, []);
 
   if (authLoading) return (
@@ -1539,7 +1577,7 @@ export function AdminPage() {
   const tabs = [
     { id: 'stats' as TabType, label: 'Статистика', icon: BarChart3 },
     { id: 'cars' as TabType, label: 'Объявления', icon: Car, badge: stats?.active_listings },
-    { id: 'offers' as TabType, label: 'Модерация', icon: FileText, badge: stats?.open_tickets },
+    { id: 'offers' as TabType, label: 'Модерация', icon: FileText, badge: pendingOffersCount },
     { id: 'messages' as TabType, label: 'Тикеты', icon: MessageSquare, badge: stats?.open_tickets },
     ...(user?.role === 'admin' ? [{ id: 'users' as TabType, label: 'Сотрудники', icon: Users }] : []),
   ];
@@ -1568,7 +1606,7 @@ export function AdminPage() {
         </div>
         {activeTab === 'stats' && <StatsTab stats={stats} loading={statsLoading} />}
         {activeTab === 'cars' && <CarsTab />}
-        {activeTab === 'offers' && <OffersTab />}
+        {activeTab === 'offers' && <OffersTab onPendingCountChange={setPendingOffersCount} />}
         {activeTab === 'messages' && <MessagesTab />}
         {activeTab === 'users' && user?.role === 'admin' && <UsersTab />}
       </div>

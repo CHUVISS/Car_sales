@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
   User, Eye, FileText, LogOut, Heart, EyeOff, Car, PenLine, Loader2,
   ExternalLink, Trash2, Send, Pencil, Archive, Lock, Phone, CheckCircle,
-  MessageSquare, Plus, ChevronRight, AlertCircle,
+  MessageSquare, Plus, ChevronRight, AlertCircle, X, MapPin,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../hooks/useAuth';
@@ -215,7 +215,7 @@ export function ProfilePage() {
                   </div>
                 )}
                 <button type="submit" disabled={authLoading}
-                  className="w-full px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 font-medium mt-2">
+                  className="w-full px-6 py-3 bg-primary text-primary-foreground rounded-lg transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25 disabled:opacity-50 disabled:scale-100 disabled:shadow-none font-medium mt-2">
                   {authLoading
                     ? <span className="flex items-center justify-center gap-2">
                         <div className="w-4 h-4 border-2 border-primary-foreground/40 border-t-primary-foreground rounded-full animate-spin" />
@@ -237,7 +237,7 @@ export function ProfilePage() {
 
               <button
                 onClick={() => { setIsRegister(!isRegister); setPassword(''); setConfirmPassword(''); setShowPassword(false); setShowConfirmPassword(false); }}
-                className="w-full px-6 py-3 bg-secondary text-foreground rounded-lg hover:bg-secondary/80 transition-colors border border-border text-sm font-medium">
+                className="w-full px-6 py-3 bg-secondary text-foreground rounded-lg hover:bg-secondary/80 transition-all duration-200 hover:scale-[1.02] border border-border text-sm font-medium">
                 {isRegister ? 'Войти в существующий аккаунт' : 'Создать новый аккаунт'}
               </button>
             </div>
@@ -324,7 +324,7 @@ export function ProfilePage() {
                         onChange={e => setEditName(e.target.value)} className={inputCls} />
                     </div>
                     <button type="submit" disabled={saving}
-                      className="px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50">
+                      className="px-6 py-3 bg-primary text-primary-foreground rounded-lg transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25 disabled:opacity-50 disabled:scale-100 disabled:shadow-none">
                       {saving ? 'Сохранение...' : 'Сохранить изменения'}
                     </button>
                   </form>
@@ -456,7 +456,7 @@ function SecurityTab() {
           )}
         </div>
         <button type="submit" disabled={saving || (confirmPwd.length > 0 && confirmPwd !== newPwd)}
-          className="flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50">
+          className="flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-lg transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25 disabled:opacity-50 disabled:scale-100 disabled:shadow-none">
           {saving && <Loader2 className="w-4 h-4 animate-spin" />}
           {saving ? 'Сохранение...' : 'Изменить пароль'}
         </button>
@@ -572,7 +572,7 @@ function PhoneVerification({ phone, userId }: { phone: string | null; userId: st
           <button
             onClick={handleSendOtp}
             disabled={sending || cooldown > 0 || stage === 'sent'}
-            className="w-[120px] flex-shrink-0 flex items-center justify-center gap-1.5 px-3 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 text-sm font-medium">
+            className="w-[120px] flex-shrink-0 flex items-center justify-center gap-1.5 px-3 py-3 bg-primary text-primary-foreground rounded-lg transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25 disabled:opacity-50 disabled:scale-100 disabled:shadow-none text-sm font-medium">
             {sending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
             {cooldown > 0 ? `${cooldown}с` : stage === 'sent' ? 'Отправлено' : 'Получить код'}
           </button>
@@ -591,7 +591,7 @@ function PhoneVerification({ phone, userId }: { phone: string | null; userId: st
             <button
               onClick={handleVerify}
               disabled={verifying}
-              className="w-[120px] flex-shrink-0 flex items-center justify-center gap-1.5 px-3 py-3 bg-accent text-accent-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 text-sm font-medium">
+              className="w-[120px] flex-shrink-0 flex items-center justify-center gap-1.5 px-3 py-3 bg-accent text-accent-foreground rounded-lg transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-accent/25 disabled:opacity-50 disabled:scale-100 disabled:shadow-none text-sm font-medium">
               {verifying && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               Проверить
             </button>
@@ -614,18 +614,50 @@ function PhoneVerification({ phone, userId }: { phone: string | null; userId: st
 
 const RES_STATUS_LABELS: Record<string, string> = {
   pending_payment: 'Ожидает оплаты',
-  active: 'Активна',
-  settling: 'Завершается',
-  completed: 'Завершена',
-  cancelled: 'Отменена',
+  active: 'Оплачено',
+  settling: 'Оплачено',
+  completed: 'Завершено',
+  cancelled: 'Отменено',
 };
 const RES_STATUS_COLORS: Record<string, string> = {
-  pending_payment: 'bg-yellow-500/10 text-yellow-600',
-  active: 'bg-primary/10 text-primary',
+  pending_payment: 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400',
+  active: 'bg-accent/10 text-accent',
   settling: 'bg-accent/10 text-accent',
   completed: 'bg-muted text-muted-foreground',
   cancelled: 'bg-destructive/10 text-destructive',
 };
+
+// Опции фильтра — 4 пользовательских группы
+const RES_FILTER_OPTIONS: { value: string; label: string }[] = [
+  { value: 'pending_payment', label: 'Ожидает оплаты' },
+  { value: 'active',          label: 'Оплачено' },
+  { value: 'completed',       label: 'Завершено' },
+  { value: 'cancelled',       label: 'Отменено' },
+];
+
+/** Оплата считается подтверждённой, если статус active/settling/completed,
+ *  либо статус ещё pending_payment но платёж уже захвачен (yk_payment_id выставлен). */
+function isPaid(r: { status: string; yk_payment_id: string | null }): boolean {
+  return r.status === 'active' || r.status === 'settling' || r.status === 'completed'
+    || (r.status === 'pending_payment' && r.yk_payment_id !== null);
+}
+
+function getResDisplay(r: { status: string; yk_payment_id: string | null }): { label: string; color: string } {
+  if (r.status === 'pending_payment' && r.yk_payment_id !== null) {
+    return { label: 'Оплачено', color: RES_STATUS_COLORS.active };
+  }
+  return {
+    label: RES_STATUS_LABELS[r.status] ?? r.status,
+    color: RES_STATUS_COLORS[r.status] ?? 'bg-secondary text-muted-foreground',
+  };
+}
+
+function matchesFilter(r: { status: string; yk_payment_id: string | null }, filter: string): boolean {
+  if (!filter) return true;
+  if (filter === 'active') return isPaid(r) && r.status !== 'completed';
+  if (filter === 'pending_payment') return r.status === 'pending_payment' && !r.yk_payment_id;
+  return r.status === filter;
+}
 
 function ReservationsTab({ userId }: { userId: string }) {
   const [reservations, setReservations] = useState<Reservation[]>([]);
@@ -636,6 +668,7 @@ function ReservationsTab({ userId }: { userId: string }) {
   const [declining, setDeclining] = useState<string | null>(null);
   const [declineConfirm, setDeclineConfirm] = useState<string | null>(null);
   const [declineReason, setDeclineReason] = useState('');
+  const [filterStatus, setFilterStatus] = useState<string>('');
 
   const load = async () => {
     setLoading(true);
@@ -729,16 +762,58 @@ function ReservationsTab({ userId }: { userId: string }) {
     );
   }
 
+  const filtered = reservations.filter(r => matchesFilter(r, filterStatus));
+
   return (
     <>
       <div className="space-y-4">
-        <h2 className="text-2xl font-semibold text-foreground">Мои брони</h2>
-        {reservations.map(r => {
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <h2 className="text-2xl font-semibold text-foreground">
+            Мои брони{' '}
+            <span className="text-muted-foreground text-lg font-normal">({filtered.length})</span>
+          </h2>
+          {filterStatus && (
+            <button
+              onClick={() => setFilterStatus('')}
+              className="flex items-center gap-1.5 px-3 py-2 bg-destructive/10 text-destructive rounded-lg text-sm hover:bg-destructive/20 transition-colors">
+              <X className="w-4 h-4" /> Сбросить
+            </button>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-3">
+          <div className="flex items-center gap-1.5 bg-secondary/50 rounded-lg px-2 py-1.5 flex-wrap">
+            <span className="text-xs font-medium text-muted-foreground">Статус:</span>
+            <button
+              onClick={() => setFilterStatus('')}
+              className={`text-xs px-2 py-0.5 rounded-full transition-colors ${!filterStatus ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'}`}>
+              Все
+            </button>
+            {RES_FILTER_OPTIONS.map(({ value, label }) => (
+              <button key={value} onClick={() => setFilterStatus(filterStatus === value ? '' : value)}
+                className={`text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${
+                  filterStatus === value
+                    ? `${RES_STATUS_COLORS[value]} ring-2 ring-offset-1 ring-primary/20`
+                    : 'text-muted-foreground bg-secondary hover:bg-secondary/80'
+                }`}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {filtered.length === 0 && (
+          <div className="bg-card rounded-lg border border-border p-8 text-center">
+            <p className="text-muted-foreground text-sm">Нет броней с таким статусом</p>
+          </div>
+        )}
+
+        {filtered.map(r => {
           const isBuyer = r.buyer_id === userId;
           const isSeller = r.seller_id === userId;
 
           return (
-            <div key={r.id} className="bg-card rounded-lg border border-border p-6">
+            <div key={r.id} className="bg-card rounded-lg border border-border p-6 transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25 cursor-default">
               <div className="flex items-start justify-between gap-3 mb-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
@@ -757,24 +832,48 @@ function ReservationsTab({ userId }: { userId: string }) {
                     Депозит: {new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0 }).format(r.deposit_amount)}
                   </p>
                 </div>
-                <span className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium ${RES_STATUS_COLORS[r.status] ?? 'bg-secondary text-muted-foreground'}`}>
-                  {RES_STATUS_LABELS[r.status] ?? r.status}
-                </span>
+                {(() => { const { label: rLabel, color: rColor } = getResDisplay(r); return (
+                  <span className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium ${rColor}`}>
+                    {rLabel}
+                  </span>
+                ); })()}
               </div>
 
-              {/* Раскрытые данные продавца (для покупателя) */}
-              {isBuyer && r.seller_phone && (
-                <div className="flex items-center gap-2 mb-2 text-sm">
-                  <Phone className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-foreground">{r.seller_phone}</span>
+              {/* Раскрытые данные — видны покупателю после оплаты */}
+              {isBuyer && isPaid(r) && (
+                <div className="mt-3 p-3 rounded-lg bg-accent/5 border border-accent/20 space-y-2">
+                  <p className="text-xs font-semibold text-accent uppercase tracking-wide">Контакты продавца</p>
+                  {r.seller_phone ? (
+                    <a href={`tel:${r.seller_phone}`}
+                      className="flex items-center gap-2 text-sm text-foreground hover:text-primary transition-colors">
+                      <Phone className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      {r.seller_phone}
+                    </a>
+                  ) : (
+                    <p className="text-sm text-muted-foreground flex items-center gap-2">
+                      <Phone className="w-4 h-4 flex-shrink-0" /> Телефон не указан
+                    </p>
+                  )}
+                  {r.sale_address ? (
+                    <p className="flex items-start gap-2 text-sm text-foreground">
+                      <MapPin className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+                      {r.sale_address}
+                    </p>
+                  ) : (
+                    <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <MapPin className="w-4 h-4 flex-shrink-0" /> Адрес не указан
+                    </p>
+                  )}
+                  <Link
+                    to={`/car/${r.listing_id}`}
+                    className="flex items-center gap-1.5 text-sm text-primary hover:underline font-medium mt-1">
+                    <ExternalLink className="w-3.5 h-3.5" /> Открыть объявление
+                  </Link>
                 </div>
-              )}
-              {isBuyer && r.sale_address && (
-                <p className="text-sm text-muted-foreground mb-2">📍 {r.sale_address}</p>
               )}
 
               {/* Предупреждение об оплате */}
-              {isBuyer && r.status === 'pending_payment' && (
+              {isBuyer && r.status === 'pending_payment' && !r.yk_payment_id && (
                 <div className="mt-3 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-sm text-yellow-700 dark:text-yellow-400 flex items-start gap-2">
                   <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                   <span>
@@ -788,11 +887,11 @@ function ReservationsTab({ userId }: { userId: string }) {
               {/* Действия */}
               <div className="flex flex-wrap gap-2 mt-4">
                 {/* Покупатель: оплатить */}
-                {isBuyer && r.status === 'pending_payment' && (
+                {isBuyer && r.status === 'pending_payment' && !r.yk_payment_id && (
                   <button
                     onClick={() => handlePayNow(r.id, r.listing_id)}
                     disabled={payingNow === r.id}
-                    className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50">
+                    className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25 disabled:opacity-50 disabled:scale-100 disabled:shadow-none">
                     {payingNow === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
                     Перейти к оплате
                   </button>
@@ -893,7 +992,7 @@ function ReservationOutcomeButtons({ reservationId, onDone }: { reservationId: s
   return (
     <>
       <button onClick={() => mark('sold')} disabled={saving}
-        className="flex items-center gap-1.5 px-4 py-2 text-sm bg-accent text-accent-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50">
+        className="flex items-center gap-1.5 px-4 py-2 text-sm bg-accent text-accent-foreground rounded-lg transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-accent/25 disabled:opacity-50 disabled:scale-100 disabled:shadow-none">
         {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
         ✓ Куплено
       </button>
@@ -981,7 +1080,7 @@ function TicketsTab({ userId }: { userId: string }) {
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-semibold text-foreground">Поддержка</h2>
           <button onClick={() => setView('create')}
-            className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity">
+            className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25">
             <Plus className="w-4 h-4" /> Новое обращение
           </button>
         </div>
@@ -1004,7 +1103,7 @@ function TicketsTab({ userId }: { userId: string }) {
           <div className="space-y-3">
             {tickets.map(t => (
               <button key={t.id} onClick={() => openTicket(t.id)}
-                className="w-full bg-card rounded-lg border border-border p-4 text-left hover:shadow-md transition-shadow">
+                className="w-full bg-card rounded-lg border border-border p-4 text-left transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-foreground truncate">{t.title}</p>
@@ -1062,7 +1161,7 @@ function TicketsTab({ userId }: { userId: string }) {
               Отмена
             </button>
             <button type="submit" disabled={creating}
-              className="flex items-center gap-2 px-6 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50">
+              className="flex items-center gap-2 px-6 py-2 text-sm bg-primary text-primary-foreground rounded-lg transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25 disabled:opacity-50 disabled:scale-100 disabled:shadow-none">
               {creating && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               Создать обращение
             </button>
@@ -1138,7 +1237,7 @@ function TicketsTab({ userId }: { userId: string }) {
                 placeholder="Введите сообщение..."
                 className="flex-1 px-4 py-2.5 bg-secondary text-foreground placeholder:text-muted-foreground rounded-lg outline-none focus:ring-2 focus:ring-primary border border-border focus:border-primary transition-colors text-sm" />
               <button type="submit" disabled={sending || !msgText.trim()}
-                className="px-4 py-2.5 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50">
+                className="px-4 py-2.5 bg-primary text-primary-foreground rounded-lg transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25 disabled:opacity-50 disabled:scale-100 disabled:shadow-none">
                 {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               </button>
             </div>
@@ -1198,7 +1297,7 @@ function useMyListings() {
 
 function ListingCard({ listing, actions }: { listing: MyListing; actions?: React.ReactNode }) {
   return (
-    <div className="bg-card rounded-lg border border-border p-5">
+    <div className="bg-card rounded-lg border border-border p-5 transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25">
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
@@ -1249,7 +1348,7 @@ function MyListingsTab() {
         <Car className="w-16 h-16 text-muted-foreground mx-auto mb-4 opacity-30" />
         <h3 className="text-xl font-semibold text-foreground mb-2">Нет объявлений</h3>
         <p className="text-muted-foreground mb-4">Разместите первое объявление о продаже автомобиля</p>
-        <Link to="/sell" className="inline-block px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90">
+        <Link to="/sell" className="inline-block px-6 py-3 bg-primary text-primary-foreground rounded-lg transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25">
           Подать объявление
         </Link>
       </div>
@@ -1349,7 +1448,7 @@ function DraftsTab() {
         <PenLine className="w-16 h-16 text-muted-foreground mx-auto mb-4 opacity-30" />
         <h3 className="text-xl font-semibold text-foreground mb-2">Нет черновиков</h3>
         <p className="text-muted-foreground mb-4">Незавершённые объявления появятся здесь</p>
-        <Link to="/sell" className="inline-block px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90">
+        <Link to="/sell" className="inline-block px-6 py-3 bg-primary text-primary-foreground rounded-lg transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25">
           Создать объявление
         </Link>
       </div>
@@ -1375,7 +1474,7 @@ function DraftsTab() {
                   <button
                     onClick={() => setPublishConfirm({ id: l.id, label: `${formatCatalogId(l.mark_id)} ${formatModelId(l.mark_id, l.model_id)} ${l.year}` })}
                     disabled={publishing === l.id || deleting === l.id}
-                    className="flex flex-1 justify-center items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50">
+                    className="flex flex-1 justify-center items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25 disabled:opacity-50 disabled:scale-100 disabled:shadow-none">
                     {publishing === l.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
                     Опубликовать
                   </button>
