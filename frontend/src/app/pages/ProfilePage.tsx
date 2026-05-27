@@ -11,6 +11,13 @@ import { useFavorites } from '../hooks/useFavorites';
 import { listingsApi, type MyListing } from '../api/catalog';
 import { formatCatalogId } from '../api/cars';
 
+/** Форматирует model_id, срезая префикс марки, чтобы не было "Audi Audi 200" */
+function formatModelId(markId: string, modelId: string): string {
+  const prefix = markId.toLowerCase().replace(/-/g, '_') + '_';
+  const cleaned = modelId.toLowerCase().startsWith(prefix) ? modelId.slice(prefix.length) : modelId;
+  return formatCatalogId(cleaned);
+}
+
 type TabType = 'profile' | 'viewings' | 'favorites' | 'listings' | 'drafts' | 'archive';
 
 const inputCls = "w-full px-4 py-3 bg-secondary text-foreground placeholder:text-muted-foreground rounded-lg outline-none focus:ring-2 focus:ring-primary border border-border focus:border-primary transition-colors";
@@ -557,7 +564,7 @@ function ViewingsList() {
   );
 }
 
-// ─── Shared helpers ────────────────────────────────────────────────
+// Shared helpers
 
 function formatPrice(p: number) {
   return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(p);
@@ -614,7 +621,7 @@ function ListingCard({ listing, actions }: { listing: MyListing; actions?: React
               to={`/car/${listing.id}`}
               className="font-semibold text-foreground hover:text-primary transition-colors truncate"
             >
-              {formatCatalogId(listing.mark_id)} {formatCatalogId(listing.model_id)} {listing.year}
+              {formatCatalogId(listing.mark_id)} {formatModelId(listing.mark_id, listing.model_id)} {listing.year}
             </Link>
             <span className={`flex-shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${LISTING_STATUS_COLORS[listing.status] ?? 'bg-secondary text-muted-foreground'}`}>
               {LISTING_STATUS_LABELS[listing.status] ?? listing.status}
@@ -640,7 +647,7 @@ function ListingCard({ listing, actions }: { listing: MyListing; actions?: React
   );
 }
 
-// ─── Мои объявления ────────────────────────────────────────────────
+// Мои объявления
 
 function MyListingsTab() {
   const { listings, loading } = useMyListings();
@@ -678,7 +685,7 @@ function MyListingsTab() {
   );
 }
 
-// ─── Архив ─────────────────────────────────────────────────────────
+// Архив
 
 function ArchiveTab() {
   const { listings, loading } = useMyListings();
@@ -710,7 +717,7 @@ function ArchiveTab() {
   );
 }
 
-// ─── Черновики ─────────────────────────────────────────────────────
+// Черновики
 
 function DraftsTab() {
   const { listings, loading, reload } = useMyListings();
@@ -785,7 +792,7 @@ function DraftsTab() {
           actions={
             <>
               <button
-                onClick={() => setPublishConfirm({ id: l.id, label: `${formatCatalogId(l.mark_id)} ${formatCatalogId(l.model_id)} ${l.year}` })}
+                onClick={() => setPublishConfirm({ id: l.id, label: `${formatCatalogId(l.mark_id)} ${formatModelId(l.mark_id, l.model_id)} ${l.year}` })}
                 disabled={publishing === l.id || deleting === l.id}
                 className="flex flex-1 justify-center items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
               >
@@ -803,7 +810,7 @@ function DraftsTab() {
                 Редактировать
               </Link>
               <button
-                onClick={() => setDeleteConfirm({ id: l.id, label: `${formatCatalogId(l.mark_id)} ${formatCatalogId(l.model_id)} ${l.year}` })}
+                onClick={() => setDeleteConfirm({ id: l.id, label: `${formatCatalogId(l.mark_id)} ${formatModelId(l.mark_id, l.model_id)} ${l.year}` })}
                 disabled={publishing === l.id || deleting === l.id}
                 className="flex flex-1 justify-center items-center gap-1.5 px-4 py-2 text-sm text-destructive border border-destructive/50 rounded-lg hover:bg-destructive/10 transition-colors disabled:opacity-50"
               >
