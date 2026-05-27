@@ -2,7 +2,7 @@ import { api } from './client';
 
 export interface Token {
   access_token: string;
-  refresh_token: string;
+  refresh_token?: string | null;
   token_type: string;
 }
 
@@ -25,8 +25,8 @@ export const authApi = {
 
   me: () => api.get<UserPublic>('/auth/me'),
 
-  logout: (refresh_token: string) =>
-    api.post<{ message: string }>('/auth/logout', { refresh_token }),
+  logout: (refresh_token?: string) =>
+    api.post<{ message: string }>('/auth/logout', refresh_token ? { refresh_token } : {}),
 
   refresh: (refresh_token: string) =>
     api.post<Token>('/auth/refresh', { refresh_token }),

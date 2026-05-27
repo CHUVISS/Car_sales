@@ -1,7 +1,9 @@
+import { useEffect } from 'react';
 import { Link } from 'react-router';
 import { Home } from 'lucide-react';
 
 export function NotFoundPage() {
+  useEffect(() => { window.scrollTo(0, 0); }, []);
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-4">
       <div className="text-center">

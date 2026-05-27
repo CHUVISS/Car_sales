@@ -1,44 +1,38 @@
 import { api } from './client';
 
-export interface UserViewingCreate {
-  car_id: string;
-  viewing_date: string;
-  viewing_time: string;
-  comment?: string;
-}
-
-export interface ViewingPublic {
+export interface ViewingWindow {
   id: string;
-  viewing_date: string;
-  viewing_time: string | null;
-  result: string;
-  comment: string | null;
-  client_id: string;
-  car_id: string;
+  listing_id: string;
+  window_date: string;
+  time_from: string;
+  time_to: string;
+  is_available: boolean;
   created_at: string;
 }
 
-export interface TimeSlot {
-  time: string;
-  available: boolean;
-}
-
-export interface AvailableSlotsResponse {
-  date: string;
-  car_id: string;
-  slots: TimeSlot[];
-}
-
 export const viewingsApi = {
-  getAvailableSlots: (carId: string, date: string) =>
-    api.get<AvailableSlotsResponse>(`/cars/${carId}/available-slots?date=${date}`),
+  /** Получить окна просмотра для объявления */
+  getAvailableSlots: (listingId: string) =>
+    api.get<ViewingWindow[]>(`/listings/${listingId}/viewing-windows`),
 
-  book: (data: UserViewingCreate) =>
-    api.post<ViewingPublic>('/user/viewings', data),
+  /** Создать окно просмотра (для продавца при создании объявления) */
+  createWindow: (
+    listingId: string,
+    body: { window_date: string; time_from: string; time_to: string }
+  ) => api.post<ViewingWindow>(`/listings/${listingId}/viewing-windows`, body),
 
-  list: () =>
-    api.get<{ data: ViewingPublic[]; count: number }>('/user/viewings'),
+  /** Удалить окно просмотра */
+  deleteWindow: (listingId: string, windowId: string) =>
+    api.delete<{ deleted: boolean }>(
+      `/listings/${listingId}/viewing-windows/${windowId}`
+    ),
 
-  cancel: (viewingId: string) =>
-    api.patch<ViewingPublic>(`/user/viewings/${viewingId}/cancel`, {}),
+  /** Установить расписание просмотров (template-based) */
+  setSchedule: (
+    listingId: string,
+    body: {
+      template: { weekday: number; time_from: string; time_to: string }[];
+      repeat_weekly: boolean;
+    }
+  ) => api.put<{ generated: number }>(`/listings/${listingId}/viewing-schedule`, body),
 };

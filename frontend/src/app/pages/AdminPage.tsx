@@ -3,22 +3,29 @@ import {
   Car, Users, FileText, BarChart3, Plus, Edit, Trash2,
   Check, X, RefreshCw, Loader2, ChevronLeft, ChevronRight,
   MessageSquare, DollarSign, AlertCircle, Eye, Search, Upload,
-  SlidersHorizontal, ChevronDown,
+  SlidersHorizontal, ChevronDown, RotateCcw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../hooks/useAuth';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import {
   adminApi,
   type AdminUser, type AdminCar, type AdminCarOffer,
   type AdminMessage, type DashboardStats,
   type UserCreate, type UserRole, type UserStatus,
-  type CarOfferStatus, type MessageStatus,
+  type CarOfferStatus, type MessageStatus, type CarStatus,
+  type AdminListingFilters,
 } from '../api/admin';
+import { catalogApi } from '../api/catalog';
+import type { CatalogMark, CatalogModel, CatalogGeneration, CatalogConfiguration, CatalogModification } from '../api/catalog';
+import { formatCatalogId } from '../api/cars';
 
 type TabType = 'stats' | 'cars' | 'offers' | 'messages' | 'users';
 
-// ─── Helpers ───────────────────────────────────────────────
+function markLabel(m: CatalogMark) { return m.name ?? m.cyrillic_name ?? formatCatalogId(m.id); }
+function modelLabel(m: CatalogModel) { return m.name ?? formatCatalogId(m.id); }
+
+// Helpers
 
 const inputCls = "w-full px-3 py-2 bg-secondary text-foreground placeholder:text-muted-foreground rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary border border-border focus:border-primary transition-colors";
 const selectCls = "w-full px-3 py-2 bg-secondary text-foreground rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary border border-border focus:border-primary transition-colors";
@@ -54,13 +61,17 @@ const OFFER_STATUS_LABELS: Record<string, string> = {
   pending: 'На рассмотрении', approved: 'Одобрена', rejected: 'Отклонена',
 };
 const MSG_STATUS_LABELS: Record<string, string> = {
-  new: 'Новое', in_progress: 'В работе', resolved: 'Решено', closed: 'Закрыто',
+  // ticket statuses
+  open: 'Открыт', in_progress: 'В работе', resolved: 'Решено', closed: 'Закрыт',
+  // legacy (kept for compat)
+  new: 'Новое',
 };
 const MSG_STATUS_COLORS: Record<string, string> = {
-  new: 'bg-accent/10 text-accent',
+  open: 'bg-accent/10 text-accent',
   in_progress: 'bg-primary/10 text-primary',
-  resolved: 'bg-muted text-muted-foreground',
-  closed: 'bg-secondary text-muted-foreground',
+  resolved: 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400',
+  closed: 'bg-destructive/10 text-destructive',
+  new: 'bg-accent/10 text-accent',
 };
 const USER_ROLE_LABELS: Record<string, string> = {
   admin: 'Администратор', manager: 'Менеджер', support: 'Поддержка', user: 'Пользователь',
@@ -93,7 +104,7 @@ function useDebounce<T>(value: T, delay: number): T {
   return dv;
 }
 
-// ─── Pagination ────────────────────────────────────────────
+// Pagination
 
 function Pagination({ skip, limit, count, onChange }: {
   skip: number; limit: number; count: number; onChange: (skip: number) => void;
@@ -119,25 +130,30 @@ function Pagination({ skip, limit, count, onChange }: {
   );
 }
 
-// ─── Car Filters ───────────────────────────────────────────
+// Car Filters
 
 interface CarFiltersState {
   status: string; priceMin: string; priceMax: string;
   mileageMin: string; mileageMax: string; yearMin: string; yearMax: string;
-  brands: string[]; transmissions: string[]; fuelTypes: string[]; bodyTypes: string[];
+  brands: string[]; models: string[]; transmissions: string[]; fuelTypes: string[]; bodyTypes: string[];
+  selectedGenIds: string[]; selectedConfIds: string[]; selectedModifIds: string[];
 }
 const EMPTY_FILTERS: CarFiltersState = {
   status: '', priceMin: '', priceMax: '', mileageMin: '', mileageMax: '',
-  yearMin: '', yearMax: '', brands: [], transmissions: [], fuelTypes: [], bodyTypes: [],
+  yearMin: '', yearMax: '', brands: [], models: [], transmissions: [], fuelTypes: [], bodyTypes: [],
+  selectedGenIds: [], selectedConfIds: [], selectedModifIds: [],
 };
 
 function hasActiveFilters(f: CarFiltersState): boolean {
   return !!(f.status || f.priceMin || f.priceMax || f.mileageMin || f.mileageMax ||
-    f.yearMin || f.yearMax || f.brands.length || f.transmissions.length ||
-    f.fuelTypes.length || f.bodyTypes.length);
+    f.yearMin || f.yearMax || f.brands.length || f.models.length || f.transmissions.length ||
+    f.fuelTypes.length || f.bodyTypes.length || f.selectedGenIds.length || f.selectedConfIds.length || f.selectedModifIds.length);
 }
 
-function applyFilters(cars: AdminCar[], f: CarFiltersState, search: string): AdminCar[] {
+function applyFilters(
+  cars: AdminCar[], f: CarFiltersState, search: string,
+  availableGens: CatalogGeneration[] = [], availableConfs: CatalogConfiguration[] = [],
+): AdminCar[] {
   return cars.filter(car => {
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -153,9 +169,24 @@ function applyFilters(cars: AdminCar[], f: CarFiltersState, search: string): Adm
     if (f.yearMin && car.year < Number(f.yearMin)) return false;
     if (f.yearMax && car.year > Number(f.yearMax)) return false;
     if (f.brands.length && !f.brands.includes(car.brand)) return false;
+    if (f.models.length && !f.models.includes(car.model)) return false;
     if (f.transmissions.length && (!car.transmission || !f.transmissions.includes(car.transmission))) return false;
     if (f.fuelTypes.length && (!car.fuel_type || !f.fuelTypes.includes(car.fuel_type))) return false;
     if (f.bodyTypes.length && (!car.body_type || !f.bodyTypes.includes(car.body_type))) return false;
+    if (f.selectedGenIds.length) {
+      const matched = f.selectedGenIds.some(genId => {
+        const gen = availableGens.find(g => g.id === genId);
+        if (!gen || (!gen.year_from && !gen.year_to)) return true;
+        return (!gen.year_from || car.year >= gen.year_from) && (!gen.year_to || car.year <= gen.year_to);
+      });
+      if (!matched) return false;
+    }
+    if (f.selectedConfIds.length) {
+      const bodyTypes = f.selectedConfIds
+        .map(id => availableConfs.find(c => c.id === id)?.body_type)
+        .filter(Boolean) as string[];
+      if (bodyTypes.length > 0 && (!car.body_type || !bodyTypes.includes(car.body_type))) return false;
+    }
     return true;
   });
 }
@@ -207,9 +238,13 @@ function MultiSelectDropdown({ label, options, selected, onToggle, onClear }: {
   );
 }
 
-function CarFilterPanel({ filters, onChange, onReset, availableBrands, brandsLoading }: {
+function CarFilterPanel({ filters, onChange, onReset, availableBrands, brandsLoading,
+  availableModels, modelsLoading, availableGens, availableConfs, availableModifs,
+}: {
   filters: CarFiltersState; onChange: (f: CarFiltersState) => void;
   onReset: () => void; availableBrands: string[]; brandsLoading: boolean;
+  availableModels: CatalogModel[]; modelsLoading: boolean;
+  availableGens: CatalogGeneration[]; availableConfs: CatalogConfiguration[]; availableModifs: CatalogModification[];
 }) {
   const set = (patch: Partial<CarFiltersState>) => onChange({ ...filters, ...patch });
   const toggleArr = (key: keyof CarFiltersState, val: string) => {
@@ -276,9 +311,47 @@ function CarFilterPanel({ filters, onChange, onReset, availableBrands, brandsLoa
           </div>
         ) : (
           <MultiSelectDropdown label="" options={availableBrands.map(b => ({ value: b, label: b }))}
-            selected={filters.brands} onToggle={v => toggleArr('brands', v)} onClear={() => set({ brands: [] })} />
+            selected={filters.brands} onToggle={v => toggleArr('brands', v)}
+            onClear={() => set({ brands: [], models: [], selectedGenIds: [], selectedConfIds: [], selectedModifIds: [] })} />
         )}
       </div>
+      {filters.brands.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground mb-1">Модель</p>
+          {modelsLoading ? (
+            <div className="flex items-center gap-2 px-3 py-2 bg-secondary rounded-lg text-sm text-muted-foreground border border-border">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Загрузка...
+            </div>
+          ) : availableModels.length > 0 ? (
+            <MultiSelectDropdown label="" options={availableModels.map(m => ({ value: modelLabel(m), label: modelLabel(m) }))}
+              selected={filters.models} onToggle={v => toggleArr('models', v)}
+              onClear={() => set({ models: [], selectedGenIds: [], selectedConfIds: [], selectedModifIds: [] })} />
+          ) : (
+            <p className="text-xs text-muted-foreground px-1">Нет моделей</p>
+          )}
+        </div>
+      )}
+      {filters.models.length === 1 && availableGens.length > 0 && (
+        <MultiSelectDropdown label="Поколение"
+          options={availableGens.map(g => ({ value: g.id, label: g.name ?? `${g.year_from ?? ''}–${g.year_to ?? '...'}` }))}
+          selected={filters.selectedGenIds}
+          onToggle={v => { const next = filters.selectedGenIds.includes(v) ? filters.selectedGenIds.filter(x => x !== v) : [...filters.selectedGenIds, v]; set({ selectedGenIds: next, selectedConfIds: [], selectedModifIds: [] }); }}
+          onClear={() => set({ selectedGenIds: [], selectedConfIds: [], selectedModifIds: [] })} />
+      )}
+      {filters.selectedGenIds.length > 0 && availableConfs.length > 0 && (
+        <MultiSelectDropdown label="Комплектация"
+          options={availableConfs.map(c => ({ value: c.id, label: c.name ?? c.id }))}
+          selected={filters.selectedConfIds}
+          onToggle={v => { const next = filters.selectedConfIds.includes(v) ? filters.selectedConfIds.filter(x => x !== v) : [...filters.selectedConfIds, v]; set({ selectedConfIds: next, selectedModifIds: [] }); }}
+          onClear={() => set({ selectedConfIds: [], selectedModifIds: [] })} />
+      )}
+      {filters.selectedConfIds.length > 0 && availableModifs.length > 0 && (
+        <MultiSelectDropdown label="Модификация"
+          options={availableModifs.map(m => ({ value: m.id, label: m.name ?? m.group_name ?? m.id }))}
+          selected={filters.selectedModifIds}
+          onToggle={v => { const next = filters.selectedModifIds.includes(v) ? filters.selectedModifIds.filter(x => x !== v) : [...filters.selectedModifIds, v]; set({ selectedModifIds: next }); }}
+          onClear={() => set({ selectedModifIds: [] })} />
+      )}
       <MultiSelectDropdown label="Коробка передач"
         options={Object.entries(TRANSMISSION_LABELS).map(([v, l]) => ({ value: v, label: l }))}
         selected={filters.transmissions} onToggle={v => toggleArr('transmissions', v)} onClear={() => set({ transmissions: [] })} />
@@ -292,27 +365,27 @@ function CarFilterPanel({ filters, onChange, onReset, availableBrands, brandsLoa
   );
 }
 
-// ─── StatsTab ──────────────────────────────────────────────
+// StatsTab
 
 function StatsTab({ stats, loading }: { stats: DashboardStats | null; loading: boolean }) {
   if (loading) return <LoadingSpinner />;
   if (!stats) return <ErrorState message="Не удалось загрузить статистику" />;
   const cards = [
-    { label: 'Всего авто', value: stats.total_cars, sub: `${stats.available_cars} доступно`, icon: Car, color: 'bg-primary/10 text-primary' },
-    { label: 'Продано', value: stats.sold_cars, sub: `${stats.reserved_cars} зарезервировано`, icon: DollarSign, color: 'bg-accent/10 text-accent' },
-    { label: 'Всего сделок', value: stats.total_deals, sub: `${stats.completed_deals} завершено`, icon: BarChart3, color: 'bg-purple-500/10 text-purple-500' },
-    { label: 'Выручка', value: formatPrice(stats.total_revenue), sub: 'По завершённым сделкам', icon: DollarSign, color: 'bg-green-500/10 text-green-500' },
-    { label: 'Клиентов', value: stats.total_clients, sub: 'Всего в базе', icon: Users, color: 'bg-orange-500/10 text-orange-500' },
-    { label: 'Новых сообщений', value: stats.new_messages, sub: 'Ожидают ответа', icon: MessageSquare, color: 'bg-destructive/10 text-destructive' },
-    { label: 'Заявок на продажу', value: stats.pending_offers, sub: `Всего: ${stats.total_offers}`, icon: FileText, color: 'bg-yellow-500/10 text-yellow-500' },
-    { label: 'Просмотров', value: stats.total_viewings, sub: 'Всего записей', icon: Eye, color: 'bg-cyan-500/10 text-cyan-500' },
+    { label: 'Всего объявлений', value: stats.active_listings + stats.reserved_listings + stats.sold_listings, sub: `${stats.active_listings} активных`, icon: Car, color: 'bg-primary/10 text-primary', glow: 'hover:shadow-primary/25' },
+    { label: 'Продано', value: stats.sold_listings, sub: `${stats.reserved_listings} зарезервировано`, icon: DollarSign, color: 'bg-accent/10 text-accent', glow: 'hover:shadow-accent/25' },
+    { label: 'Всего резерваций', value: stats.active_reservations + stats.pending_deals + stats.completed_deals, sub: `${stats.completed_deals} завершено`, icon: BarChart3, color: 'bg-purple-500/10 text-purple-500', glow: 'hover:shadow-purple-500/25' },
+    { label: 'Активных резерваций', value: stats.active_reservations, sub: `${stats.pending_deals} в расчёте`, icon: DollarSign, color: 'bg-green-500/10 text-green-500', glow: 'hover:shadow-green-500/25' },
+    { label: 'Пользователей', value: stats.total_users, sub: 'Всего в базе', icon: Users, color: 'bg-orange-500/10 text-orange-500', glow: 'hover:shadow-orange-500/25' },
+    { label: 'Открытых тикетов', value: stats.open_tickets, sub: 'Ожидают ответа', icon: MessageSquare, color: 'bg-destructive/10 text-destructive', glow: 'hover:shadow-destructive/25' },
+    { label: 'В расчёте', value: stats.pending_deals, sub: 'Сделки на завершении', icon: FileText, color: 'bg-yellow-500/10 text-yellow-500', glow: 'hover:shadow-yellow-500/25' },
+    { label: 'Ожидают модерации', value: stats.pending_offers, sub: 'Новых объявлений', icon: Eye, color: 'bg-cyan-500/10 text-cyan-500', glow: 'hover:shadow-cyan-500/25' },
   ];
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-semibold text-foreground">Статистика</h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {cards.map(({ label, value, sub, icon: Icon, color }) => (
-          <div key={label} className="bg-card rounded-xl border border-border p-5">
+        {cards.map(({ label, value, sub, icon: Icon, color, glow }) => (
+          <div key={label} className={`bg-card rounded-xl border border-border p-5 transition-all duration-200 hover:scale-[1.02] hover:shadow-lg ${glow}`}>
             <div className="flex items-start justify-between mb-3">
               <p className="text-sm text-muted-foreground">{label}</p>
               <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${color}`}>
@@ -328,7 +401,7 @@ function StatsTab({ stats, loading }: { stats: DashboardStats | null; loading: b
   );
 }
 
-// ─── CarTableRow ───────────────────────────────────────────
+// CarTableRow
 
 function CarTableRow({ car, onEdit, onDelete, onStatusChange, onRowClick }: {
   car: AdminCar; onEdit: (car: AdminCar) => void;
@@ -368,90 +441,185 @@ function CarTableRow({ car, onEdit, onDelete, onStatusChange, onRowClick }: {
   );
 }
 
-// ─── fetchAllCars ──────────────────────────────────────────
+// CarsTab
 
-const PAGE_SIZE = 20;
-
-async function fetchAllCars(signal?: AbortSignal): Promise<AdminCar[]> {
-  const result: AdminCar[] = [];
-  const first = await adminApi.getCars(0, PAGE_SIZE);
-  result.push(...first.data);
-  const total: number = first.count;
-  let skip = PAGE_SIZE;
-  while (result.length < total) {
-    if (signal?.aborted) break;
-    const page = await adminApi.getCars(skip, PAGE_SIZE);
-    result.push(...page.data);
-    skip += PAGE_SIZE;
-    if (page.data.length === 0) break;
-  }
-  return result;
-}
-
-// ─── CarsTab ───────────────────────────────────────────────
+const ADMIN_PAGE_SIZE = 20;
 
 function CarsTab() {
   const navigate = useNavigate();
-  const [serverPage, setServerPage] = useState<AdminCar[]>([]);
-  const [serverCount, setServerCount] = useState(0);
-  const [serverSkip, setServerSkip] = useState(0);
-  const [pageLoading, setPageLoading] = useState(true);
-  const [allCars, setAllCars] = useState<AdminCar[]>([]);
-  const [allCarsReady, setAllCarsReady] = useState(false);
-  const allCarsAbort = useRef<AbortController | null>(null);
+
+  // Catalog cascade state
+  const [marks, setMarks] = useState<CatalogMark[]>([]);
+  const [availableModels, setAvailableModels] = useState<CatalogModel[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [availableGens, setAvailableGens] = useState<CatalogGeneration[]>([]);
+  const [availableConfs, setAvailableConfs] = useState<CatalogConfiguration[]>([]);
+  const [availableModifs, setAvailableModifs] = useState<CatalogModification[]>([]);
+
+  // Filters & search
   const [filters, setFilters] = useState<CarFiltersState>(EMPTY_FILTERS);
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearch = useDebounce(searchQuery, 300);
   const [filtersOpen, setFiltersOpen] = useState(false);
+
+  // Server data
+  const [allCars, setAllCars] = useState<AdminCar[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // Form state
   const [showForm, setShowForm] = useState(false);
   const [editCar, setEditCar] = useState<AdminCar | null>(null);
-  const emptyForm = { brand: '', model: '', year: '', price: '', mileage: '0', color: '', fuel_type: '', transmission: '', body_type: '', engine_volume: '', engine_power: '', description: '', vin: '' };
+  const [deleteModal, setDeleteModal] = useState<{ id: string; name: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const emptyForm = { brand: '', model: '', year: '', price: '', mileage: '0', color: '', fuel_type: '', transmission: '', body_type: '', engine_volume: '', engine_power: '', description: '', vin: '', viewing_days: [] as string[], viewing_time_from: '09:00', viewing_time_to: '20:00', viewing_address: '' };
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
 
-  const isFilteringActive = debouncedSearch.trim().length > 0 || hasActiveFilters(filters);
+  // Load marks from catalog
+  useEffect(() => { catalogApi.searchMarks('').then(setMarks).catch(() => {}); }, []);
 
-  const loadPage = useCallback(async (skip: number) => {
-    setPageLoading(true);
-    try {
-      const data = await adminApi.getCars(skip, PAGE_SIZE);
-      setServerPage(data.data); setServerCount(data.count); setServerSkip(skip);
-    } catch { toast.error('Ошибка загрузки автомобилей'); }
-    finally { setPageLoading(false); }
-  }, []);
+  // Cascade: brands → models
+  useEffect(() => {
+    if (filters.brands.length === 0) { setAvailableModels([]); return; }
+    const ids = filters.brands.map(name => marks.find(m => markLabel(m) === name)?.id).filter(Boolean) as string[];
+    if (ids.length === 0) return;
+    setModelsLoading(true);
+    Promise.all(ids.map(id => catalogApi.getModels(id)))
+      .then(results => setAvailableModels(results.flat()))
+      .catch(() => {})
+      .finally(() => setModelsLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.brands, marks]);
 
-  const loadAllInBackground = useCallback(async () => {
-    if (allCarsAbort.current) allCarsAbort.current.abort();
-    const ctrl = new AbortController();
-    allCarsAbort.current = ctrl;
-    setAllCarsReady(false);
-    try {
-      const all = await fetchAllCars(ctrl.signal);
-      if (!ctrl.signal.aborted) { setAllCars(all); setAllCarsReady(true); }
-    } catch { /* тихо */ }
-  }, []);
+  // Cascade: model → generations
+  useEffect(() => {
+    setAvailableGens([]); setAvailableConfs([]); setAvailableModifs([]);
+    if (filters.models.length !== 1) return;
+    const modelId = availableModels.find(m => modelLabel(m) === filters.models[0])?.id;
+    if (!modelId) return;
+    catalogApi.getGenerations(modelId).then(setAvailableGens).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.models, availableModels]);
 
-  useEffect(() => { loadPage(0); loadAllInBackground(); return () => { allCarsAbort.current?.abort(); }; }, []);
+  // Cascade: selectedGenIds → configurations (load for all selected gens, deduplicate)
+  useEffect(() => {
+    setAvailableConfs([]); setAvailableModifs([]);
+    if (filters.selectedGenIds.length === 0) return;
+    Promise.all(filters.selectedGenIds.map(id => catalogApi.getConfigurations(id)))
+      .then(results => {
+        const seen = new Set<string>();
+        const unique = results.flat().filter(c => { if (seen.has(c.id)) return false; seen.add(c.id); return true; });
+        setAvailableConfs(unique);
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(filters.selectedGenIds)]);
+
+  // Cascade: selectedConfIds → modifications (load for all selected confs, deduplicate)
+  useEffect(() => {
+    setAvailableModifs([]);
+    if (filters.selectedConfIds.length === 0) return;
+    Promise.all(filters.selectedConfIds.map(id => catalogApi.getModifications(id)))
+      .then(results => {
+        const seen = new Set<string>();
+        const unique = results.flat().filter(m => { if (seen.has(m.id)) return false; seen.add(m.id); return true; });
+        setAvailableModifs(unique);
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(filters.selectedConfIds)]);
+
+  // Build server-side filters (params supported by /listings)
+  const serverFilters = useMemo((): AdminListingFilters => {
+    const f: AdminListingFilters = { sort: 'newest', limit: ADMIN_PAGE_SIZE };
+    if (filters.priceMin) f.price_min = Number(filters.priceMin);
+    if (filters.priceMax) f.price_max = Number(filters.priceMax);
+    if (filters.yearMin) f.year_min = Number(filters.yearMin);
+    if (filters.yearMax) f.year_max = Number(filters.yearMax);
+    if (filters.fuelTypes.length === 1) f.engine_type = filters.fuelTypes[0];
+    if (filters.bodyTypes.length === 1) f.body_type = filters.bodyTypes[0];
+    if (filters.brands.length === 1) {
+      const mark = marks.find(m => markLabel(m) === filters.brands[0]);
+      if (mark) f.mark_id = mark.id;
+    }
+    if (filters.models.length === 1) {
+      const model = availableModels.find(m => modelLabel(m) === filters.models[0]);
+      if (model) f.model_id = model.id;
+    }
+    return f;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.priceMin, filters.priceMax, filters.yearMin, filters.yearMax,
+      filters.fuelTypes, filters.bodyTypes, filters.brands, filters.models, marks, availableModels]);
+
+  // Fetch first page when server filters or refreshKey change
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true); setAllCars([]); setNextCursor(null); setHasMore(false);
+    adminApi.getCars(serverFilters)
+      .then(res => {
+        if (cancelled) return;
+        setAllCars(res.data);
+        setNextCursor(res.next_cursor);
+        setHasMore(res.next_cursor !== null);
+      })
+      .catch(() => { if (!cancelled) toast.error('Ошибка загрузки автомобилей'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(serverFilters), refreshKey]);
+
+  // Load more pages (cursor-based)
+  const loadMore = useCallback(() => {
+    if (loadingMore || !hasMore || !nextCursor) return;
+    setLoadingMore(true);
+    adminApi.getCars({ ...serverFilters, cursor: nextCursor })
+      .then(res => {
+        setAllCars(prev => [...prev, ...res.data]);
+        setNextCursor(res.next_cursor);
+        setHasMore(res.next_cursor !== null);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingMore(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingMore, hasMore, nextCursor, JSON.stringify(serverFilters)]);
+
+  // IntersectionObserver for auto-load
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasMore || loading) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) loadMore(); },
+      { rootMargin: '400px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [loadMore, hasMore, loading]);
+
   useEffect(() => { return () => { previews.forEach(url => URL.revokeObjectURL(url)); }; }, [previews]);
 
-  const filterSource = allCarsReady ? allCars : serverPage;
-  const filteredCars = useMemo(() => {
-    if (!isFilteringActive) return [];
-    return applyFilters(filterSource, filters, debouncedSearch);
-  }, [filterSource, filters, debouncedSearch, isFilteringActive]);
+  // Client-side filters applied on top of server results
+  const filteredCars = useMemo(
+    () => applyFilters(allCars, filters, debouncedSearch, availableGens, availableConfs),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [allCars, filters, debouncedSearch, availableGens, availableConfs]
+  );
 
-  const availableBrands = useMemo(() => [...new Set(filterSource.map(c => c.brand))].sort(), [filterSource]);
-  const displayedCars = isFilteringActive ? filteredCars : serverPage;
-  const isLoading = pageLoading && serverPage.length === 0;
-
-  const handleReload = () => { loadPage(serverSkip); loadAllInBackground(); };
+  const availableBrands = useMemo(() => marks.map(m => markLabel(m)).sort(), [marks]);
+  const isLoading = loading && allCars.length === 0;
+  const handleReload = () => setRefreshKey(k => k + 1);
 
   const activeFiltersCount = [
     filters.status, filters.priceMin, filters.priceMax,
     filters.mileageMin, filters.mileageMax, filters.yearMin, filters.yearMax,
-    ...filters.brands, ...filters.transmissions, ...filters.fuelTypes, ...filters.bodyTypes,
+    ...filters.selectedGenIds, ...filters.selectedConfIds, ...filters.selectedModifIds,
+    ...filters.brands, ...filters.models, ...filters.transmissions, ...filters.fuelTypes, ...filters.bodyTypes,
   ].filter(Boolean).length;
 
   const handleFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -476,38 +644,37 @@ function CarsTab() {
   const openCreate = () => { setEditCar(null); setForm(emptyForm); clearFiles(); setShowForm(true); };
   const openEdit = (car: AdminCar) => {
     setEditCar(car);
-    setForm({ brand: car.brand, model: car.model, year: String(car.year), price: String(car.price), mileage: String(car.mileage), color: car.color ?? '', fuel_type: car.fuel_type ?? '', transmission: car.transmission ?? '', body_type: car.body_type ?? '', engine_volume: car.engine_volume ?? '', engine_power: String(car.engine_power ?? ''), description: car.description ?? '', vin: car.vin ?? '' });
+    const c = car as AdminCar & { viewing_days?: string[]; viewing_time_from?: string; viewing_time_to?: string; viewing_address?: string };
+    setForm({ brand: car.brand, model: car.model, year: String(car.year), price: String(car.price), mileage: String(car.mileage), color: car.color ?? '', fuel_type: car.fuel_type ?? '', transmission: car.transmission ?? '', body_type: car.body_type ?? '', engine_volume: car.engine_volume ?? '', engine_power: String(car.engine_power ?? ''), description: car.description ?? '', vin: car.vin ?? '', viewing_days: c.viewing_days ?? [], viewing_time_from: c.viewing_time_from ?? '09:00', viewing_time_to: c.viewing_time_to ?? '20:00', viewing_address: c.viewing_address ?? '' });
     clearFiles(); setShowForm(true);
   };
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault(); setSaving(true);
-    try {
-      const body = { brand: form.brand, model: form.model, year: Number(form.year), price: Number(form.price), mileage: Number(form.mileage), ...(form.color && { color: form.color }), ...(form.fuel_type && { fuel_type: form.fuel_type }), ...(form.transmission && { transmission: form.transmission }), ...(form.body_type && { body_type: form.body_type }), ...(form.engine_volume && { engine_volume: Number(form.engine_volume) }), ...(form.engine_power && { engine_power: Number(form.engine_power) }), ...(form.description && { description: form.description }), ...(form.vin && { vin: form.vin }) };
-      let carId = editCar?.id;
-      if (!editCar) { const c = await adminApi.createCar(body); carId = c.id; toast.success('Автомобиль добавлен'); }
-      else { await adminApi.updateCar(editCar.id, body); toast.success('Автомобиль обновлён'); }
-      if (selectedFiles.length > 0 && carId) {
-        const fd = new FormData(); selectedFiles.forEach(f => fd.append('images', f));
-        await adminApi.uploadCarImages?.(carId, fd); toast.success(`${selectedFiles.length} фото загружено`);
-      }
-      setShowForm(false); clearFiles(); handleReload();
-    } catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Ошибка'); }
-    finally { setSaving(false); }
+  const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    toast.error('Создание/редактирование авто недоступно: в новой системе пользователи создают объявления самостоятельно');
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Удалить "${name}"?`)) return;
-    try { await adminApi.deleteCar(id); toast.success('Удалён'); handleReload(); }
-    catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Ошибка'); }
+  const handleDelete = (id: string, name: string) => {
+    setDeleteModal({ id, name });
   };
 
-  const handleStatusChange = async (id: string, status: string) => {
+  const confirmDelete = async () => {
+    if (!deleteModal) return;
+    setDeleting(true);
     try {
-      await adminApi.updateCar(id, { status: status as AdminCar['status'] }); toast.success('Статус обновлён');
-      const upd = (c: AdminCar) => c.id === id ? { ...c, status: status as AdminCar['status'] } : c;
-      setServerPage(p => p.map(upd)); setAllCars(p => p.map(upd));
-    } catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Ошибка'); }
+      await adminApi.deleteListing(deleteModal.id);
+      toast.success('Объявление удалено');
+      setDeleteModal(null);
+      handleReload();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Ошибка удаления');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleStatusChange = async (_id: string, _status: string) => {
+    toast.error('Изменение статуса недоступно через панель администратора');
   };
 
   if (isLoading) return <LoadingSpinner />;
@@ -516,7 +683,9 @@ function CarsTab() {
     <div className="flex gap-4">
       <aside className="hidden lg:block w-60 flex-shrink-0">
         <CarFilterPanel filters={filters} onChange={setFilters} onReset={() => setFilters(EMPTY_FILTERS)}
-          availableBrands={availableBrands} brandsLoading={!allCarsReady && availableBrands.length === 0} />
+          availableBrands={availableBrands} brandsLoading={marks.length === 0}
+          availableModels={availableModels} modelsLoading={modelsLoading}
+          availableGens={availableGens} availableConfs={availableConfs} availableModifs={availableModifs} />
       </aside>
 
       <div className="flex-1 min-w-0 space-y-4">
@@ -524,7 +693,7 @@ function CarsTab() {
           <div className="flex items-center justify-between flex-wrap gap-3">
             <h2 className="text-2xl font-semibold text-foreground">
               Автомобили <span className="text-muted-foreground text-lg font-normal">
-                {isFilteringActive ? `(${filteredCars.length}${!allCarsReady ? ', загрузка...' : ` из ${allCars.length}`})` : `(${serverCount})`}
+                ({loading ? '…' : `${filteredCars.length}${hasMore ? '+' : ''}`})
               </span>
             </h2>
             <div className="flex gap-2 flex-wrap">
@@ -538,8 +707,8 @@ function CarsTab() {
                   <X className="w-4 h-4" /> Сбросить
                 </button>
               )}
-              <button onClick={handleReload} disabled={pageLoading} className="p-2 border border-border rounded-lg hover:bg-secondary transition-colors disabled:opacity-50 text-foreground" title="Обновить">
-                <RefreshCw className={`w-4 h-4 ${pageLoading ? 'animate-spin' : ''}`} />
+              <button onClick={handleReload} disabled={loading} className="p-2 border border-border rounded-lg hover:bg-secondary transition-colors disabled:opacity-50 text-foreground" title="Обновить">
+                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
               </button>
               <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity text-sm">
                 <Plus className="w-4 h-4" /> Добавить
@@ -591,7 +760,30 @@ function CarsTab() {
               )}
               {filters.brands.map(b => (
                 <span key={b} className="flex items-center gap-1 text-xs bg-secondary text-foreground px-2.5 py-1 rounded-full">
-                  {b} <button onClick={() => setFilters(f => ({ ...f, brands: f.brands.filter(x => x !== b) }))}><X className="w-3 h-3" /></button>
+                  {b} <button onClick={() => setFilters(f => ({ ...f, brands: f.brands.filter(x => x !== b), models: [], selectedGenIds: [], selectedConfIds: [], selectedModifIds: [] }))}><X className="w-3 h-3" /></button>
+                </span>
+              ))}
+              {filters.models.map(m => (
+                <span key={m} className="flex items-center gap-1 text-xs bg-secondary text-foreground px-2.5 py-1 rounded-full">
+                  {m} <button onClick={() => setFilters(f => ({ ...f, models: f.models.filter(x => x !== m), selectedGenIds: [], selectedConfIds: [], selectedModifIds: [] }))}><X className="w-3 h-3" /></button>
+                </span>
+              ))}
+              {filters.selectedGenIds.map(id => (
+                <span key={id} className="flex items-center gap-1 text-xs bg-secondary text-foreground px-2.5 py-1 rounded-full">
+                  {availableGens.find(g => g.id === id)?.name ?? 'Поколение'}
+                  <button onClick={() => setFilters(f => ({ ...f, selectedGenIds: f.selectedGenIds.filter(x => x !== id), selectedConfIds: [], selectedModifIds: [] }))}><X className="w-3 h-3" /></button>
+                </span>
+              ))}
+              {filters.selectedConfIds.map(id => (
+                <span key={id} className="flex items-center gap-1 text-xs bg-secondary text-foreground px-2.5 py-1 rounded-full">
+                  {availableConfs.find(c => c.id === id)?.name ?? 'Комплектация'}
+                  <button onClick={() => setFilters(f => ({ ...f, selectedConfIds: f.selectedConfIds.filter(x => x !== id), selectedModifIds: [] }))}><X className="w-3 h-3" /></button>
+                </span>
+              ))}
+              {filters.selectedModifIds.map(id => (
+                <span key={id} className="flex items-center gap-1 text-xs bg-secondary text-foreground px-2.5 py-1 rounded-full">
+                  {availableModifs.find(m => m.id === id)?.name ?? 'Модификация'}
+                  <button onClick={() => setFilters(f => ({ ...f, selectedModifIds: f.selectedModifIds.filter(x => x !== id) }))}><X className="w-3 h-3" /></button>
                 </span>
               ))}
               {filters.transmissions.map(t => (
@@ -609,9 +801,9 @@ function CarsTab() {
                   {BODY_LABELS[bt]} <button onClick={() => setFilters(f => ({ ...f, bodyTypes: f.bodyTypes.filter(x => x !== bt) }))}><X className="w-3 h-3" /></button>
                 </span>
               ))}
-              {isFilteringActive && !allCarsReady && (
+              {loading && (
                 <span className="flex items-center gap-1 text-xs text-muted-foreground px-2 py-1">
-                  <Loader2 className="w-3 h-3 animate-spin" /> Загрузка всех авто...
+                  <Loader2 className="w-3 h-3 animate-spin" /> Загрузка...
                 </span>
               )}
             </div>
@@ -621,7 +813,9 @@ function CarsTab() {
         {filtersOpen && (
           <div className="lg:hidden">
             <CarFilterPanel filters={filters} onChange={setFilters} onReset={() => setFilters(EMPTY_FILTERS)}
-              availableBrands={availableBrands} brandsLoading={!allCarsReady && availableBrands.length === 0} />
+              availableBrands={availableBrands} brandsLoading={marks.length === 0}
+              availableModels={availableModels} modelsLoading={modelsLoading}
+              availableGens={availableGens} availableConfs={availableConfs} availableModifs={availableModifs} />
           </div>
         )}
 
@@ -634,13 +828,13 @@ function CarsTab() {
                 ))}</tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {pageLoading && !isFilteringActive ? (
+                {loading && allCars.length === 0 ? (
                   <tr><td colSpan={6} className="px-4 py-12 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-muted-foreground" /></td></tr>
-                ) : displayedCars.length === 0 ? (
+                ) : filteredCars.length === 0 ? (
                   <tr><td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
-                    {isFilteringActive ? 'По вашему запросу ничего не найдено' : 'Список автомобилей пуст'}
+                    {hasActiveFilters(filters) || searchQuery ? 'По вашему запросу ничего не найдено' : 'Список автомобилей пуст'}
                   </td></tr>
-                ) : displayedCars.map(car => (
+                ) : filteredCars.map((car: AdminCar) => (
                   <CarTableRow key={car.id} car={car} onEdit={openEdit} onDelete={handleDelete}
                     onStatusChange={handleStatusChange} onRowClick={id => navigate(`/car/${id}`)} />
                 ))}
@@ -649,19 +843,41 @@ function CarsTab() {
           </div>
         </div>
 
-        {!isFilteringActive && (
-          <Pagination skip={serverSkip} limit={PAGE_SIZE} count={serverCount} onChange={skip => loadPage(skip)} />
-        )}
-        {isFilteringActive && allCarsReady && filteredCars.length > 0 && (
-          <p className="text-center text-xs text-muted-foreground mt-2">
-            Найдено {filteredCars.length} из {allCars.length} автомобилей
-          </p>
-        )}
+        <div ref={sentinelRef} className="mt-2">
+          {loadingMore && (
+            <div className="flex justify-center py-4">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            </div>
+          )}
+          {!hasMore && filteredCars.length > 0 && (
+            <p className="text-center text-xs text-muted-foreground py-4">
+              Все {filteredCars.length} объявлений загружены
+            </p>
+          )}
+        </div>
       </div>
 
+      {deleteModal && (
+        <Modal title="Подтверждение удаления" onClose={() => setDeleteModal(null)}>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Вы уверены, что хотите удалить объявление{' '}
+              <span className="font-semibold text-foreground">{deleteModal.name}</span>?
+              Это действие необратимо.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteModal(null)} className="flex-1 px-4 py-2 bg-secondary text-foreground rounded-lg text-sm hover:bg-secondary/80">Отмена</button>
+              <button onClick={confirmDelete} disabled={deleting} className="flex-1 px-4 py-2 bg-destructive text-white rounded-lg text-sm hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2">
+                {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                Удалить
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
       {showForm && (
-        <Modal title={editCar ? 'Редактировать авто' : 'Добавить авто'} onClose={() => setShowForm(false)}>
-          <form onSubmit={handleSave} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+        <Modal title={editCar ? 'Редактировать авто' : 'Добавить авто'} onClose={() => setShowForm(false)} size="lg">
+          <form onSubmit={handleSave} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
             <div className="grid grid-cols-2 gap-3">
               {([['brand','Марка *','text',true],['model','Модель *','text',true],['year','Год *','number',true],['price','Цена (₽) *','number',true],['mileage','Пробег (км)','number',false],['color','Цвет','text',false],['engine_volume','Объём (л)','number',false],['engine_power','Мощность (л.с.)','number',false],['vin','VIN','text',false]] as const).map(([key, label, type, required]) => (
                 <div key={key}>
@@ -722,6 +938,42 @@ function CarsTab() {
               <label className="block text-xs font-semibold mb-1 text-muted-foreground">Описание</label>
               <textarea value={form.description} rows={3} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} className={inputCls + ' resize-none'} />
             </div>
+
+            <div className="pt-2 border-t border-border">
+              <p className="text-sm font-semibold text-foreground mb-3">Осмотр автомобиля</p>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold mb-2 text-muted-foreground">Дни приёма</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map(day => {
+                      const active = form.viewing_days.includes(day);
+                      return (
+                        <button key={day} type="button"
+                          onClick={() => setForm(p => ({ ...p, viewing_days: active ? p.viewing_days.filter(d => d !== day) : [...p.viewing_days, day] }))}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${active ? 'bg-primary text-primary-foreground border-primary' : 'bg-secondary text-muted-foreground border-border hover:bg-secondary/80'}`}>
+                          {day}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold mb-1 text-muted-foreground">Время с</label>
+                    <input type="time" value={form.viewing_time_from} onChange={e => setForm(p => ({ ...p, viewing_time_from: e.target.value }))} className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1 text-muted-foreground">Время до</label>
+                    <input type="time" value={form.viewing_time_to} onChange={e => setForm(p => ({ ...p, viewing_time_to: e.target.value }))} className={inputCls} />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-muted-foreground">Адрес / место осмотра</label>
+                  <input type="text" placeholder="Например: г. Москва, ул. Автомобильная, д. 1" value={form.viewing_address} onChange={e => setForm(p => ({ ...p, viewing_address: e.target.value }))} className={inputCls} />
+                </div>
+              </div>
+            </div>
+
             <div className="flex gap-3 pt-2 sticky bottom-0 bg-card/95 backdrop-blur py-2 border-t border-border">
               <button type="button" onClick={() => setShowForm(false)} className="flex-1 px-4 py-2 bg-secondary text-foreground rounded-lg text-sm hover:bg-secondary/80 transition-colors">Отмена</button>
               <button type="submit" disabled={saving} className="flex-1 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm hover:opacity-90 disabled:opacity-50 transition-opacity">
@@ -735,14 +987,17 @@ function CarsTab() {
   );
 }
 
-// ─── OffersTab ─────────────────────────────────────────────
+// OffersTab
 
-function OffersTab() {
-  const [offers, setOffers] = useState<AdminCarOffer[]>([]);
+function OffersTab({ onPendingCountChange }: { onPendingCountChange?: (n: number) => void }) {
+  const [offers, setOffers] = useState<AdminCarOffer[]>([]);          // только pending (с сервера)
+  const [resolvedOffers, setResolvedOffers] = useState<AdminCarOffer[]>([]);  // одобрено/отклонено (локально)
   const [count, setCount] = useState(0); const [skip, setSkip] = useState(0);
   const [filterStatus, setFilterStatus] = useState<CarOfferStatus | ''>('');
   const [loading, setLoading] = useState(true);
-  const [rejectModal, setRejectModal] = useState<{ id: string; brand: string; model: string } | null>(null);
+  const [approveModal, setApproveModal] = useState<{ id: string; brand: string; model: string } | null>(null);
+  const [rejectModal,  setRejectModal]  = useState<{ id: string; brand: string; model: string } | null>(null);
+  const [revokeModal,  setRevokeModal]  = useState<{ id: string; brand: string; model: string } | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [processing, setProcessing] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -754,7 +1009,15 @@ function OffersTab() {
   const load = useCallback(async () => {
     if (searchQuery.trim()) return;
     setLoading(true);
-    try { const data = await adminApi.getOffers(filterStatus || undefined, skip); setOffers(data.data); setCount(data.count); }
+    try {
+      const data = await adminApi.getOffers(filterStatus || undefined, skip);
+      setOffers(data.data); setCount(data.count);
+      // Обновляем счётчик бейджа — берём pending отдельно если фильтр не выставлен
+      if (!filterStatus || filterStatus === 'pending') {
+        const pendingCount = filterStatus === 'pending' ? data.count : data.data.filter((o: AdminCarOffer) => o.status === 'pending').length;
+        onPendingCountChange?.(pendingCount);
+      }
+    }
     catch { toast.error('Ошибка загрузки заявок'); } finally { setLoading(false); }
   }, [skip, filterStatus, searchQuery]);
 
@@ -778,20 +1041,81 @@ function OffersTab() {
   useEffect(() => { load(); }, [load]);
   const clearSearch = () => { setSearchQuery(''); setSearchResults([]); setSkip(0); };
 
-  const handleApprove = async (id: string) => {
+  const handleApprove = async () => {
+    if (!approveModal) return;
+    const id = approveModal.id;
     setProcessing(id);
-    try { await adminApi.reviewOffer(id, 'approved'); toast.success('Заявка одобрена'); if (searchQuery.trim()) performSearch(searchQuery); else load(); }
-    catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Ошибка'); } finally { setProcessing(null); }
+    try {
+      await adminApi.reviewOffer(id, 'approved');
+      toast.success('Объявление опубликовано');
+      setApproveModal(null);
+      // Перемещаем из pending → resolved (local)
+      setOffers(prev => {
+        const found = prev.find(o => o.id === id);
+        if (found) setResolvedOffers(r => [{ ...found, status: 'approved' as CarOfferStatus }, ...r]);
+        const next = prev.filter(o => o.id !== id);
+        onPendingCountChange?.(next.length);
+        return next;
+      });
+      setSearchResults(prev => prev.map(o => o.id === id ? { ...o, status: 'approved' as CarOfferStatus } : o));
+    }
+    catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Ошибка'); }
+    finally { setProcessing(null); }
   };
   const handleReject = async () => {
-    if (!rejectModal) return; setProcessing(rejectModal.id);
-    try { await adminApi.reviewOffer(rejectModal.id, 'rejected', rejectReason || undefined); toast.success('Заявка отклонена'); setRejectModal(null); setRejectReason(''); if (searchQuery.trim()) performSearch(searchQuery); else load(); }
-    catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Ошибка'); } finally { setProcessing(null); }
+    if (!rejectModal) return;
+    const id = rejectModal.id;
+    const reason = rejectReason || undefined;
+    const reasonOrNull = rejectReason || null;
+    setProcessing(id);
+    try {
+      await adminApi.reviewOffer(id, 'rejected', reason);
+      toast.success('Заявка отклонена');
+      setRejectModal(null);
+      setRejectReason('');
+      // Перемещаем из pending → resolved (local)
+      setOffers(prev => {
+        const found = prev.find(o => o.id === id);
+        if (found) setResolvedOffers(r => [{ ...found, status: 'rejected' as CarOfferStatus, rejection_reason: reasonOrNull }, ...r]);
+        const next = prev.filter(o => o.id !== id);
+        onPendingCountChange?.(next.length);
+        return next;
+      });
+      setSearchResults(prev => prev.map(o => o.id === id ? { ...o, status: 'rejected' as CarOfferStatus, rejection_reason: reasonOrNull } : o));
+    }
+    catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Ошибка'); }
+    finally { setProcessing(null); }
+  };
+
+  const handleRevoke = async () => {
+    if (!revokeModal) return;
+    const id = revokeModal.id;
+    setProcessing(id);
+    try {
+      await adminApi.deleteListing(id);
+      toast.success('Одобрение отозвано, объявление снято с публикации');
+      setRevokeModal(null);
+      // Обновляем в resolved (одобрена → отклонена)
+      setResolvedOffers(prev => prev.map(o => o.id === id
+        ? { ...o, status: 'rejected' as CarOfferStatus, rejection_reason: 'Одобрение отозвано администратором' }
+        : o));
+      setSearchResults(prev => prev.map(o => o.id === id
+        ? { ...o, status: 'rejected' as CarOfferStatus, rejection_reason: 'Одобрение отозвано администратором' }
+        : o));
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Ошибка');
+    } finally {
+      setProcessing(null);
+    }
   };
 
   const isSearching = searchQuery.trim().length > 0;
-  const displayedOffers = isSearching ? searchResults : offers;
-  const displayedCount = isSearching ? searchResults.length : count;
+  // Объединяем: resolved (одобрено/отклонено локально) + pending (с сервера)
+  const allLocalOffers = [...resolvedOffers, ...offers];
+  const displayedOffers = isSearching
+    ? searchResults
+    : filterStatus ? allLocalOffers.filter(o => o.status === filterStatus) : allLocalOffers;
+  const displayedCount = isSearching ? searchResults.length : (filterStatus ? displayedOffers.length : resolvedOffers.length + count);
   if (loading && offers.length === 0 && !isSearching) return <LoadingSpinner />;
 
   return (
@@ -800,15 +1124,18 @@ function OffersTab() {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <h2 className="text-2xl font-semibold text-foreground">Заявки на продажу <span className="text-muted-foreground text-lg font-normal">({displayedCount})</span></h2>
           <div className="flex gap-2">
-            <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value as CarOfferStatus | ''); setSkip(0); }}
-              className="px-3 py-2 bg-card border border-border text-foreground rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary">
-              <option value="">Все статусы</option><option value="pending">На рассмотрении</option><option value="approved">Одобренные</option><option value="rejected">Отклонённые</option>
-            </select>
-            <button onClick={isSearching ? clearSearch : load} className="p-2 border border-border rounded-lg hover:bg-secondary transition-colors text-foreground">
+            {filterStatus && (
+              <button onClick={() => { setFilterStatus(''); setSkip(0); }}
+                className="flex items-center gap-1.5 px-3 py-2 bg-destructive/10 text-destructive rounded-lg text-sm hover:bg-destructive/20 transition-colors">
+                <X className="w-4 h-4" /> Сбросить
+              </button>
+            )}
+            <button onClick={isSearching ? clearSearch : load} className="p-2 border border-border rounded-lg hover:bg-secondary transition-colors text-foreground" title={isSearching ? 'Очистить поиск' : 'Обновить'}>
               {isSearching ? <X className="w-4 h-4" /> : <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />}
             </button>
           </div>
         </div>
+
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
@@ -816,6 +1143,23 @@ function OffersTab() {
             className="w-full pl-10 pr-10 py-2.5 bg-card border border-border text-foreground placeholder:text-muted-foreground rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary transition-all" />
           {searchQuery && <button onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-secondary rounded transition-colors"><X className="w-4 h-4 text-muted-foreground" /></button>}
         </div>
+
+        <div className="flex flex-wrap gap-3">
+          <div className="flex items-center gap-1.5 bg-secondary/50 rounded-lg px-2 py-1.5">
+            <span className="text-xs font-medium text-muted-foreground">Статус:</span>
+            <button onClick={() => { setFilterStatus(''); setSkip(0); }}
+              className={`text-xs px-2 py-0.5 rounded-full transition-colors ${!filterStatus ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'}`}>
+              Все
+            </button>
+            {(['pending', 'approved', 'rejected'] as CarOfferStatus[]).map(s => (
+              <button key={s} onClick={() => { setFilterStatus(filterStatus === s ? '' : s); setSkip(0); }}
+                className={`text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${filterStatus === s ? `${OFFER_STATUS_COLORS[s]} ring-2 ring-offset-1 ring-primary/20` : 'text-muted-foreground bg-secondary hover:bg-secondary/80'}`}>
+                {OFFER_STATUS_LABELS[s]}
+              </button>
+            ))}
+          </div>
+        </div>
+
       </div>
       <div className="space-y-3">
         {displayedOffers.length === 0 && !searchLoading && <EmptyTableState text={isSearching ? 'По вашему запросу ничего не найдено' : 'Заявок нет'} />}
@@ -824,7 +1168,7 @@ function OffersTab() {
           return (
             <div key={offer.id} className="bg-card rounded-xl border border-border p-4">
               <div className="flex gap-4">
-                {primaryImg && <div className="w-24 rounded-lg overflow-hidden flex-shrink-0 bg-secondary"><img src={primaryImg.thumb_url} alt="" className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} /></div>}
+                {primaryImg && <div className="w-24 rounded-lg overflow-hidden flex-shrink-0 bg-secondary"><img src={primaryImg.thumbnail_url} alt="" className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} /></div>}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2 flex-wrap">
                     <div>
@@ -837,8 +1181,19 @@ function OffersTab() {
                   {offer.rejection_reason && <p className="text-xs text-destructive mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{offer.rejection_reason}</p>}
                   {offer.status === 'pending' && (
                     <div className="flex gap-2 mt-3">
-                      <button onClick={() => handleApprove(offer.id)} disabled={processing === offer.id} className="flex items-center gap-1.5 px-3 py-1.5 bg-accent text-accent-foreground rounded-lg text-sm hover:opacity-90 disabled:opacity-50">{processing === offer.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Одобрить</button>
+                      <button onClick={() => setApproveModal({ id: offer.id, brand: offer.brand, model: offer.model })} disabled={processing === offer.id} className="flex items-center gap-1.5 px-3 py-1.5 bg-accent text-accent-foreground rounded-lg text-sm hover:opacity-90 disabled:opacity-50">{processing === offer.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Одобрить</button>
                       <button onClick={() => setRejectModal({ id: offer.id, brand: offer.brand, model: offer.model })} disabled={processing === offer.id} className="flex items-center gap-1.5 px-3 py-1.5 bg-destructive/10 text-destructive rounded-lg text-sm hover:bg-destructive/20 disabled:opacity-50"><X className="w-3.5 h-3.5" /> Отклонить</button>
+                    </div>
+                  )}
+                  {offer.status === 'approved' && (
+                    <div className="flex gap-2 mt-3">
+                      <button
+                        onClick={() => setRevokeModal({ id: offer.id, brand: offer.brand, model: offer.model })}
+                        disabled={processing === offer.id}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border border-yellow-500/30 rounded-lg text-sm hover:bg-yellow-500/20 transition-all duration-200 hover:scale-[1.02] disabled:opacity-50 disabled:scale-100">
+                        {processing === offer.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                        Отозвать
+                      </button>
                     </div>
                   )}
                 </div>
@@ -848,6 +1203,24 @@ function OffersTab() {
         })}
       </div>
       {!isSearching && <Pagination skip={skip} limit={20} count={count} onChange={setSkip} />}
+      {approveModal && (
+        <Modal title="Подтверждение публикации" onClose={() => setApproveModal(null)}>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Вы уверены, что хотите опубликовать объявление{' '}
+              <span className="font-semibold text-foreground">{approveModal.brand} {approveModal.model}</span>?
+              После публикации оно появится в каталоге.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setApproveModal(null)} className="flex-1 px-4 py-2 bg-secondary text-foreground rounded-lg text-sm hover:bg-secondary/80">Отмена</button>
+              <button onClick={handleApprove} disabled={!!processing} className="flex-1 px-4 py-2 bg-accent text-accent-foreground rounded-lg text-sm hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2">
+                {processing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                Опубликовать
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
       {rejectModal && (
         <Modal title={`Отклонить: ${rejectModal.brand} ${rejectModal.model}`} onClose={() => setRejectModal(null)}>
           <div className="space-y-4">
@@ -860,89 +1233,136 @@ function OffersTab() {
           </div>
         </Modal>
       )}
+      {revokeModal && (
+        <Modal title={`Отозвать одобрение: ${revokeModal.brand} ${revokeModal.model}`} onClose={() => setRevokeModal(null)}>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Одобрение объявления{' '}
+              <span className="font-semibold text-foreground">{revokeModal.brand} {revokeModal.model}</span>{' '}
+              будет отозвано. Объявление будет снято с публикации и скрыто из каталога.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setRevokeModal(null)} className="flex-1 px-4 py-2 bg-secondary text-foreground rounded-lg text-sm hover:bg-secondary/80">Отмена</button>
+              <button onClick={handleRevoke} disabled={!!processing}
+                className="flex-1 flex justify-center items-center gap-2 px-4 py-2 bg-yellow-500 text-white rounded-lg text-sm hover:opacity-90 disabled:opacity-50 transition-opacity">
+                {processing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+                Отозвать
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
 
-// ─── MessagesTab ───────────────────────────────────────────
+// MessagesTab
 
 function MessagesTab() {
   const [messages, setMessages] = useState<AdminMessage[]>([]);
-  const [count, setCount] = useState(0); const [skip, setSkip] = useState(0);
-  const [filterStatus, setFilterStatus] = useState<MessageStatus | ''>('new');
+  const [count, setCount] = useState(0);
+  const [skip, setSkip] = useState(0);
+  const [filterStatus, setFilterStatus] = useState<MessageStatus | ''>('open');
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [processing, setProcessing] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<AdminMessage[]>([]);
-  const [searchLoading, setSearchLoading] = useState(false);
   const debouncedSearch = useDebounce(searchQuery, 300);
-  const searchAbortRef = useRef<AbortController | null>(null);
 
   const load = useCallback(async () => {
     if (searchQuery.trim()) return;
     setLoading(true);
-    try { const data = await adminApi.getMessages(filterStatus || undefined, skip); setMessages(data.data); setCount(data.count); }
-    catch { toast.error('Ошибка загрузки сообщений'); } finally { setLoading(false); }
+    try {
+      const data = await adminApi.getMessages(filterStatus || undefined, skip);
+      setMessages(data.data); setCount(data.count);
+    } catch { toast.error('Ошибка загрузки тикетов'); }
+    finally { setLoading(false); }
   }, [skip, filterStatus, searchQuery]);
 
-  const performSearch = useCallback(async (query: string) => {
-    if (!query.trim()) { setSearchResults([]); return; }
-    setSearchLoading(true);
-    if (searchAbortRef.current) searchAbortRef.current.abort();
-    searchAbortRef.current = new AbortController();
-    try {
-      const data = await adminApi.getMessages(filterStatus || undefined, 0);
-      const q = query.toLowerCase();
-      setSearchResults(data.data.filter((m: AdminMessage) =>
-        (m.subject && m.subject.toLowerCase().includes(q)) || m.body.toLowerCase().includes(q) ||
-        m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q) ||
-        (m.phone && m.phone.toLowerCase().includes(q))
-      ));
-    } catch (err) { if ((err as Error).name !== 'AbortError') { toast.error('Ошибка поиска'); setSearchResults([]); } }
-    finally { setSearchLoading(false); }
-  }, [filterStatus]);
-
-  useEffect(() => { performSearch(debouncedSearch); }, [debouncedSearch, performSearch]);
   useEffect(() => { load(); }, [load]);
-  const clearSearch = () => { setSearchQuery(''); setSearchResults([]); setSkip(0); };
 
   const handleStatusChange = async (id: string, status: MessageStatus) => {
     setProcessing(id);
-    try { await adminApi.updateMessage(id, { status }); toast.success('Статус обновлён'); if (searchQuery.trim()) performSearch(searchQuery); else load(); }
-    catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Ошибка'); } finally { setProcessing(null); }
+    try {
+      await adminApi.updateMessage(id, { status });
+      toast.success('Статус обновлён');
+      load();
+    }
+    catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Ошибка'); }
+    finally { setProcessing(null); }
   };
 
-  const isSearching = searchQuery.trim().length > 0;
-  const displayedMessages = isSearching ? searchResults : messages;
-  const displayedCount = isSearching ? searchResults.length : count;
-  if (loading && messages.length === 0 && !isSearching) return <LoadingSpinner />;
+  const clearSearch = () => { setSearchQuery(''); setSkip(0); };
+
+  const filteredMessages = useMemo(() => {
+    let result = filterStatus ? messages.filter(m => m.status === filterStatus) : messages;
+    if (!debouncedSearch.trim()) return result;
+    const q = debouncedSearch.toLowerCase();
+    return result.filter(m =>
+      (m.subject && m.subject.toLowerCase().includes(q)) ||
+      m.body.toLowerCase().includes(q) ||
+      m.name.toLowerCase().includes(q) ||
+      m.email.toLowerCase().includes(q) ||
+      (m.phone && m.phone.toLowerCase().includes(q))
+    );
+  }, [messages, debouncedSearch, filterStatus]);
+
+  const displayedMessages = filteredMessages;
+  const hasActiveFilter = !!filterStatus;
+  if (loading && messages.length === 0) return <LoadingSpinner />;
 
   return (
     <div className="space-y-4">
       <div className="space-y-3">
         <div className="flex items-center justify-between flex-wrap gap-3">
-          <h2 className="text-2xl font-semibold text-foreground">Сообщения <span className="text-muted-foreground text-lg font-normal">({displayedCount})</span></h2>
+          <h2 className="text-2xl font-semibold text-foreground">
+            Тикеты <span className="text-muted-foreground text-lg font-normal">({debouncedSearch ? filteredMessages.length : count})</span>
+          </h2>
           <div className="flex gap-2">
-            <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value as MessageStatus | ''); setSkip(0); }}
-              className="px-3 py-2 bg-card border border-border text-foreground rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary">
-              <option value="">Все</option><option value="new">Новые</option><option value="in_progress">В работе</option><option value="resolved">Решено</option><option value="closed">Закрыто</option>
-            </select>
-            <button onClick={isSearching ? clearSearch : load} className="p-2 border border-border rounded-lg hover:bg-secondary transition-colors text-foreground">
-              {isSearching ? <X className="w-4 h-4" /> : <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />}
+            {hasActiveFilter && (
+              <button onClick={() => { setFilterStatus(''); setSkip(0); }}
+                className="flex items-center gap-1.5 px-3 py-2 bg-destructive/10 text-destructive rounded-lg text-sm hover:bg-destructive/20 transition-colors">
+                <X className="w-4 h-4" /> Сбросить
+              </button>
+            )}
+            <button onClick={searchQuery ? clearSearch : load}
+              className="p-2 border border-border rounded-lg hover:bg-secondary transition-colors text-foreground" title={searchQuery ? 'Очистить поиск' : 'Обновить'}>
+              {searchQuery ? <X className="w-4 h-4" /> : <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />}
             </button>
           </div>
         </div>
+
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
             placeholder="Поиск по теме, тексту, имени, email..."
             className="w-full pl-10 pr-10 py-2.5 bg-card border border-border text-foreground placeholder:text-muted-foreground rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary transition-all" />
-          {searchQuery && <button onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-secondary rounded transition-colors"><X className="w-4 h-4 text-muted-foreground" /></button>}
+          {searchQuery && (
+            <button onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-secondary rounded transition-colors">
+              <X className="w-4 h-4 text-muted-foreground" />
+            </button>
+          )}
         </div>
+
+        <div className="flex flex-wrap gap-3">
+          <div className="flex items-center gap-1.5 bg-secondary/50 rounded-lg px-2 py-1.5">
+            <span className="text-xs font-medium text-muted-foreground">Статус:</span>
+            <button onClick={() => { setFilterStatus(''); setSkip(0); }}
+              className={`text-xs px-2 py-0.5 rounded-full transition-colors ${!filterStatus ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'}`}>
+              Все
+            </button>
+            {(['open', 'in_progress', 'resolved', 'closed'] as MessageStatus[]).map(s => (
+              <button key={s} onClick={() => { setFilterStatus(filterStatus === s ? '' : s); setSkip(0); }}
+                className={`text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${filterStatus === s ? `${MSG_STATUS_COLORS[s]} ring-2 ring-offset-1 ring-primary/20` : 'text-muted-foreground bg-secondary hover:bg-secondary/80'}`}>
+                {MSG_STATUS_LABELS[s]}
+              </button>
+            ))}
+          </div>
+        </div>
+
       </div>
       <div className="space-y-2">
-        {displayedMessages.length === 0 && !searchLoading && <EmptyTableState text={isSearching ? 'По вашему запросу ничего не найдено' : 'Сообщений нет'} />}
+        {displayedMessages.length === 0 && <EmptyTableState text={debouncedSearch ? 'По вашему запросу ничего не найдено' : 'Сообщений нет'} />}
         {displayedMessages.map(msg => (
           <div key={msg.id} className="bg-card rounded-xl border border-border overflow-hidden">
             <button onClick={() => setExpanded(expanded === msg.id ? null : msg.id)}
@@ -958,7 +1378,7 @@ function MessagesTab() {
                 <p className="text-sm mt-3 text-muted-foreground leading-relaxed">{msg.body}</p>
                 {msg.phone && <p className="text-sm mt-2 text-foreground"><span className="font-medium">Телефон:</span> {msg.phone}</p>}
                 <div className="flex gap-2 mt-4 flex-wrap">
-                  {(['new', 'in_progress', 'resolved', 'closed'] as MessageStatus[]).map(s => (
+                  {(['open', 'in_progress', 'resolved', 'closed'] as MessageStatus[]).map(s => (
                     <button key={s} onClick={() => handleStatusChange(msg.id, s)} disabled={msg.status === s || processing === msg.id}
                       className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-40 ${msg.status === s ? `${MSG_STATUS_COLORS[s]} cursor-default` : 'bg-secondary text-foreground hover:bg-secondary/80'}`}>
                       {processing === msg.id ? <Loader2 className="w-3 h-3 animate-spin" /> : MSG_STATUS_LABELS[s]}
@@ -970,12 +1390,12 @@ function MessagesTab() {
           </div>
         ))}
       </div>
-      {!isSearching && <Pagination skip={skip} limit={20} count={count} onChange={setSkip} />}
+      <Pagination skip={skip} limit={20} count={count} onChange={setSkip} />
     </div>
   );
 }
 
-// ─── UsersTab ──────────────────────────────────────────────
+// UsersTab
 
 function UsersTab() {
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -1027,7 +1447,7 @@ function UsersTab() {
   const openCreate = () => { setEditUser(null); setForm({ full_name: '', email: '', password: '', role: 'manager' }); setShowForm(true); };
   const openEdit = (u: AdminUser) => { setEditUser(u); setForm({ full_name: u.full_name, email: u.email, password: '', role: u.role, status: u.status }); setShowForm(true); };
 
-  const handleSave = async (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault(); setSaving(true);
     try {
       if (editUser) {
@@ -1111,8 +1531,8 @@ function UsersTab() {
               ))}</tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {displayedUsers.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">Пусто</td></tr>
+              {displayedUsers.length === 0 && !searchLoading ? (
+                <tr><td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">{isSearching ? 'По вашему запросу ничего не найдено' : 'Пусто'}</td></tr>
               ) : displayedUsers.map(u => (
                 <tr key={u.id} className="hover:bg-secondary/50 transition-colors">
                   <td className="px-4 py-3"><p className="font-semibold text-foreground">{u.full_name}</p>{u.phone && <p className="text-xs text-muted-foreground">{u.phone}</p>}</td>
@@ -1160,7 +1580,7 @@ function UsersTab() {
   );
 }
 
-// ─── Shared UI ─────────────────────────────────────────────
+// Shared UI
 
 function LoadingSpinner() {
   return <div className="flex items-center justify-center py-16"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>;
@@ -1172,11 +1592,12 @@ function EmptyTableState({ text }: { text: string }) {
   return <div className="bg-card rounded-xl border border-border py-12 text-center"><p className="text-muted-foreground">{text}</p></div>;
 }
 
-function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+function Modal({ title, children, onClose, size = 'md' }: { title: string; children: React.ReactNode; onClose: () => void; size?: 'md' | 'lg' }) {
+  const maxW = size === 'lg' ? 'max-w-2xl' : 'max-w-lg';
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-card border border-border rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-xl">
+      <div className={`relative bg-card border border-border rounded-2xl p-6 w-full ${maxW} max-h-[90vh] overflow-y-auto shadow-xl`}>
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-lg font-semibold text-foreground">{title}</h3>
           <button onClick={onClose} className="p-1.5 hover:bg-secondary rounded-lg transition-colors text-foreground"><X className="w-5 h-5" /></button>
@@ -1187,14 +1608,18 @@ function Modal({ title, children, onClose }: { title: string; children: React.Re
   );
 }
 
-// ─── Main Page ─────────────────────────────────────────────
+// Main Page
 
 export function AdminPage() {
+  useEffect(() => { window.scrollTo(0, 0); }, []);
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<TabType>('stats');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = (searchParams.get('tab') as TabType) || 'stats';
+  const setActiveTab = (tab: TabType) => setSearchParams({ tab }, { replace: true });
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
+  const [pendingOffersCount, setPendingOffersCount] = useState(0);
 
   useEffect(() => {
     if (!authLoading && (!user || (user.role !== 'admin' && user.role !== 'manager'))) {
@@ -1204,6 +1629,7 @@ export function AdminPage() {
 
   useEffect(() => {
     adminApi.getStats().then(setStats).catch(() => toast.error('Не удалось загрузить статистику')).finally(() => setStatsLoading(false));
+    adminApi.getOffers('pending', 0).then(data => setPendingOffersCount(data.count)).catch(() => {});
   }, []);
 
   if (authLoading) return (
@@ -1214,9 +1640,9 @@ export function AdminPage() {
 
   const tabs = [
     { id: 'stats' as TabType, label: 'Статистика', icon: BarChart3 },
-    { id: 'cars' as TabType, label: 'Автомобили', icon: Car, badge: stats?.available_cars },
-    { id: 'offers' as TabType, label: 'Заявки на продажу', icon: FileText, badge: stats?.pending_offers },
-    { id: 'messages' as TabType, label: 'Сообщения', icon: MessageSquare, badge: stats?.new_messages },
+    { id: 'cars' as TabType, label: 'Объявления', icon: Car, badge: stats?.active_listings },
+    { id: 'offers' as TabType, label: 'Модерация', icon: FileText, badge: pendingOffersCount },
+    { id: 'messages' as TabType, label: 'Тикеты', icon: MessageSquare, badge: stats?.open_tickets },
     ...(user?.role === 'admin' ? [{ id: 'users' as TabType, label: 'Сотрудники', icon: Users }] : []),
   ];
 
@@ -1236,7 +1662,7 @@ export function AdminPage() {
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 ${isActive ? 'bg-foreground text-background shadow-sm' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'}`}>
                 <Icon className="w-4 h-4" /> {tab.label}
                 {tab.badge !== undefined && tab.badge > 0 && (
-                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${isActive ? 'bg-white/20 text-white' : 'bg-destructive/10 text-destructive'}`}>{tab.badge}</span>
+                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${isActive ? 'bg-background/20 text-background' : 'bg-destructive/10 text-destructive'}`}>{tab.badge}</span>
                 )}
               </button>
             );
@@ -1244,7 +1670,7 @@ export function AdminPage() {
         </div>
         {activeTab === 'stats' && <StatsTab stats={stats} loading={statsLoading} />}
         {activeTab === 'cars' && <CarsTab />}
-        {activeTab === 'offers' && <OffersTab />}
+        {activeTab === 'offers' && <OffersTab onPendingCountChange={setPendingOffersCount} />}
         {activeTab === 'messages' && <MessagesTab />}
         {activeTab === 'users' && user?.role === 'admin' && <UsersTab />}
       </div>

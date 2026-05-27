@@ -56,16 +56,14 @@ export function CarSearch({
 
     setLoading(true);
     try {
-      // Ищем по марке и модели параллельно
-      const [byBrand, byModel] = await Promise.all([
-        carsApi.list({ brand: q.trim(), limit: 5 }),
-        carsApi.list({ model: q.trim(), limit: 5 }),
-      ]);
-
-      // Объединяем и дедублируем по id
-      const combined = [...byBrand.data, ...byModel.data];
-      const unique = Array.from(new Map(combined.map(c => [c.id, c])).values());
-      setResults(unique.slice(0, 8));
+      const res = await carsApi.list({ limit: 20 });
+      const lq = q.toLowerCase().trim();
+      const filtered = res.data.filter(c =>
+        c.brand.toLowerCase().includes(lq) ||
+        c.model.toLowerCase().includes(lq) ||
+        `${c.brand} ${c.model}`.toLowerCase().includes(lq)
+      );
+      setResults(filtered.slice(0, 8));
       setOpen(true);
       setActiveIndex(-1);
     } catch {
@@ -195,7 +193,7 @@ export function CarSearch({
                       <div className="w-12 h-9 rounded-lg overflow-hidden flex-shrink-0 bg-secondary">
                         {primaryImg ? (
                           <img
-                            src={primaryImg.thumb_url}
+                            src={primaryImg.thumbnail_url}
                             alt={`${car.brand} ${car.model}`}
                             className="w-full h-full object-cover"
                             onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}

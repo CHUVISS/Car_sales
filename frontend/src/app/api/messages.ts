@@ -14,18 +14,18 @@ export interface MessageCreate {
 
 export interface MessagePublic {
   id: string;
-  name: string;
-  email: string;
-  phone: string | null;
-  subject: string | null;
-  body: string;
-  message_type: MessageType;
+  type: string;
   status: string;
-  car_id: string | null;
+  title: string;
+  listing_id: string | null;
   created_at: string;
 }
 
 export const messagesApi = {
   send: (data: MessageCreate) =>
-    api.post<MessagePublic>('/messages', data),
+    api.post<MessagePublic>('/tickets', {
+      type: 'support_inquiry',
+      title: data.subject || data.body.slice(0, 200),
+      listing_id: data.car_id || undefined,
+    }),
 };

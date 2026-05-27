@@ -150,6 +150,8 @@ export function AiPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<boolean>(false);
 
+  useEffect(() => { window.scrollTo(0, 0); }, []);
+
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);

@@ -6,6 +6,7 @@ import { ProfilePage } from './pages/ProfilePage';
 import { AdminPage } from './pages/AdminPage';
 import { AboutPage } from './pages/AboutPage';
 import { AiPage } from './pages/AiPage';
+import { CreateListingPage } from './pages/CreateListingPage';
 import { Layout } from './components/Layout';
 import { NotFoundPage } from './pages/NotFoundPage';
 
@@ -21,6 +22,8 @@ export const router = createBrowserRouter([
       { path: 'admin', element: <AdminPage /> },
       { path: 'about', element: <AboutPage /> },
       { path: 'ai', element: <AiPage /> },
+      { path: 'sell', element: <CreateListingPage /> },
+      { path: 'listing/:id/edit', element: <CreateListingPage /> },
       { path: '*', element: <NotFoundPage /> },
     ],
   },

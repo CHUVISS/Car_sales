@@ -3,6 +3,15 @@ import { Heart, Eye } from 'lucide-react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { useFavorites } from '../hooks/useFavorites';
 
+type CarStatus = 'available' | 'reserved' | 'sold' | 'inactive';
+
+const STATUS_LABELS: Record<CarStatus, string> = {
+  available: 'В наличии',
+  reserved: 'Зарезервирован',
+  sold: 'Продан',
+  inactive: 'Снят с продажи',
+};
+
 interface Car {
   id: string;
   brand: string;
@@ -22,6 +31,7 @@ interface Car {
   isNew: boolean;
   createdAt: string;
   vin?: string;
+  status?: CarStatus;
 }
 
 interface CarCardProps { car: Car; }
@@ -57,19 +67,33 @@ export function CarCard({ car }: CarCardProps) {
   return (
     <Link
       to={`/car/${car.id}`}
-      className="group block bg-card text-card-foreground rounded-lg border border-border overflow-hidden hover:shadow-lg transition-shadow"
+      className="group block bg-card text-card-foreground rounded-lg border border-border overflow-hidden
+        transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25"
     >
       <div className="relative aspect-[4/3] bg-secondary overflow-hidden">
         <ImageWithFallback
           src={imageSrc}
           alt={`${car.brand} ${car.model}`}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+          className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 ${car.status === 'sold' || car.status === 'inactive' ? 'brightness-75' : ''}`}
         />
-        {car.isNew && (
-          <div className="absolute top-3 left-3">
-            <span className="px-3 py-1 bg-accent text-accent-foreground rounded-full text-xs font-medium">Новый</span>
-          </div>
-        )}
+
+        {/* Бейдж «Новый» или статус — левый верхний угол */}
+        <div className="absolute top-3 left-3 flex flex-col gap-1.5">
+          {car.isNew && (
+            <span className="px-2.5 py-1 bg-accent text-accent-foreground rounded-full text-xs font-medium">
+              Новый
+            </span>
+          )}
+          {car.status && car.status !== 'available' && (
+            <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+              car.status === 'reserved' ? 'bg-primary/90 text-primary-foreground' :
+              'bg-black/60 text-white backdrop-blur-sm'
+            }`}>
+              {STATUS_LABELS[car.status]}
+            </span>
+          )}
+        </div>
+
         <button
           onClick={e => { e.preventDefault(); toggle(car.id); }}
           className="absolute top-3 right-3 p-2 bg-card/90 rounded-full hover:bg-card transition-colors"

@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { carsApi, type Car, type CarsPublic, type CarFilters } from '../api/cars';
+import { carsApi, type Car, type CarFilters } from '../api/cars';
 
 export function useCars(filters: CarFilters = {}) {
-  const [data, setData] = useState<CarsPublic>({ data: [], count: 0 });
+  const [data, setData] = useState<{ data: Car[]; next_cursor: string | null }>({ data: [], next_cursor: null });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -15,7 +15,7 @@ export function useCars(filters: CarFilters = {}) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(filters)]);
 
-  return { cars: data.data, count: data.count, loading, error };
+  return { cars: data.data, nextCursor: data.next_cursor, loading, error };
 }
 
 export function useCar(id: string | undefined) {
