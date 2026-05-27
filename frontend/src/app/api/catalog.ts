@@ -74,6 +74,27 @@ export const catalogApi = {
     api.get<GeoCity[]>('/geo/cities'),
 };
 
+// ── City-by-ID resolver (module-level cache, fetched once per session) ────────
+let _allCitiesCache: GeoCity[] | null = null;
+let _fetchingCities: Promise<GeoCity[]> | null = null;
+
+async function getAllCities(): Promise<GeoCity[]> {
+  if (_allCitiesCache) return _allCitiesCache;
+  if (_fetchingCities) return _fetchingCities;
+  _fetchingCities = api.get<GeoCity[]>('/geo/cities?all=true').then(cities => {
+    _allCitiesCache = cities;
+    _fetchingCities = null;
+    return cities;
+  });
+  return _fetchingCities;
+}
+
+/** Возвращает русское название города по его id (из поля city_id листинга). */
+export async function resolveCityName(cityId: string): Promise<string | null> {
+  const cities = await getAllCities();
+  return cities.find(c => c.id === cityId)?.name_ru ?? null;
+}
+
 export interface MyListingImage {
   id: string;
   url: string;

@@ -30,6 +30,7 @@ export interface Car {
   description: string | null;
   condition: string | null;
   city_name: string | null;
+  city_id?: string | null;
   status: CarStatus;
   created_at: string;
   images: CarImage[];

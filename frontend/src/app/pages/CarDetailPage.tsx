@@ -7,6 +7,7 @@ import { useCar } from '../hooks/useCars';
 import { useFavorites } from '../hooks/useFavorites';
 import { viewingsApi, type ViewingWindow } from '../api/viewings';
 import { reservationsApi } from '../api/reservations';
+import { resolveCityName } from '../api/catalog';
 
 function formatPrice(price: number): string {
   return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(price);
@@ -75,6 +76,15 @@ export function CarDetailPage() {
   const [reserving, setReserving] = useState(false);
   const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
   const [reservationDone, setReservationDone] = useState(false);
+
+  // Город — берём из city_name (каталог) или резолвим по city_id (детальная страница)
+  const [cityName, setCityName] = useState<string | null>(null);
+  useEffect(() => {
+    if (!car) return;
+    if (car.city_name) { setCityName(car.city_name); return; }
+    if (!car.city_id) return;
+    resolveCityName(car.city_id).then(name => setCityName(name)).catch(() => {});
+  }, [car]);
 
   // Загружаем окна просмотра при маунте — нужны и для секции «Осмотр», и для панели бронирования
   useEffect(() => {
@@ -272,7 +282,10 @@ export function CarDetailPage() {
                       </span>
                     )}
                   </div>
-                  <p className="text-muted-foreground">{car.year} год • {formatMileage(car.mileage)}</p>
+                  <p className="text-muted-foreground">
+                    {car.year} год • {formatMileage(car.mileage)}
+                    {cityName && <> • <MapPin className="w-3.5 h-3.5 inline-block mb-0.5 mr-0.5" />{cityName}</>}
+                  </p>
                 </div>
                 <div className="flex gap-2">
                   <button
@@ -495,20 +508,34 @@ export function CarDetailPage() {
                     )}
                   </div>
                 </div>
-                {/* Способы оплаты */}
-                {(car.accepts_cash || car.accepts_transfer) && (
-                  <div className="flex gap-2 mt-2">
+              </div>
+
+              {/* Способы оплаты */}
+              <div className="mt-6 pt-6 border-t border-border">
+                <h4 className="font-semibold text-foreground mb-3">Способы оплаты</h4>
+                {(car.accepts_cash || car.accepts_transfer) ? (
+                  <div className="space-y-2">
                     {car.accepts_cash && (
-                      <span className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-secondary text-muted-foreground border border-border">
-                        <Banknote className="w-3.5 h-3.5" /> Наличные
-                      </span>
+                      <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-secondary border border-border">
+                        <Banknote className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                        <div>
+                          <p className="text-sm font-medium text-foreground">Наличные</p>
+                          <p className="text-xs text-muted-foreground">Оплата при передаче автомобиля</p>
+                        </div>
+                      </div>
                     )}
                     {car.accepts_transfer && (
-                      <span className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-secondary text-muted-foreground border border-border">
-                        <ArrowRightLeft className="w-3.5 h-3.5" /> Перевод
-                      </span>
+                      <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-secondary border border-border">
+                        <ArrowRightLeft className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                        <div>
+                          <p className="text-sm font-medium text-foreground">Банковский перевод</p>
+                          <p className="text-xs text-muted-foreground">Перевод на счёт продавца</p>
+                        </div>
+                      </div>
                     )}
                   </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Не указано</p>
                 )}
               </div>
 
@@ -546,17 +573,19 @@ export function CarDetailPage() {
                   <p className="text-sm text-muted-foreground">Расписание просмотров не указано</p>
                 )}
 
-                {/* Адрес осмотра */}
+                {/* Город + адрес осмотра */}
                 <div className="flex items-start gap-2 mt-3">
                   <MapPin className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
-                  {car.sale_address ? (
-                    <span className="text-sm text-foreground">{car.sale_address}</span>
-                  ) : (
-                    <span className="text-sm text-muted-foreground">
-                      {car.city_name ? `${car.city_name} · ` : ''}
-                      Адрес будет раскрыт после бронирования
-                    </span>
-                  )}
+                  <div className="text-sm">
+                    {cityName && (
+                      <p className="font-medium text-foreground">{cityName}</p>
+                    )}
+                    {car.sale_address ? (
+                      <p className="text-muted-foreground">{car.sale_address}</p>
+                    ) : (
+                      <p className="text-muted-foreground">Точный адрес будет раскрыт после бронирования</p>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
