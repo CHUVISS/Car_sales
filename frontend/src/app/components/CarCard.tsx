@@ -67,7 +67,8 @@ export function CarCard({ car }: CarCardProps) {
   return (
     <Link
       to={`/car/${car.id}`}
-      className="group block bg-card text-card-foreground rounded-lg border border-border overflow-hidden hover:shadow-lg transition-shadow"
+      className="group block bg-card text-card-foreground rounded-lg border border-border overflow-hidden
+        transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25"
     >
       <div className="relative aspect-[4/3] bg-secondary overflow-hidden">
         <ImageWithFallback

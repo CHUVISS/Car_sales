@@ -155,7 +155,7 @@ function GridCard({ car }: { car: CarType }) {
   const isSoldOrInactive = car.status === 'sold' || car.status === 'inactive';
   return (
     <Link to={`/car/${car.id}`}
-      className="group block bg-card rounded-lg border border-border overflow-hidden hover:shadow-md transition-shadow">
+      className="group block bg-card rounded-lg border border-border overflow-hidden transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25">
       <div className="relative aspect-[4/3] bg-secondary overflow-hidden">
         {img ? (
           <ImageWithFallback src={img.url} alt={`${car.brand} ${car.model}`}
@@ -213,7 +213,7 @@ function ListRow({ car }: { car: CarType }) {
 
   return (
     <Link to={`/car/${car.id}`}
-      className="group flex gap-4 bg-card rounded-lg border border-border overflow-hidden hover:shadow-md transition-shadow p-3">
+      className="group flex gap-4 bg-card rounded-lg border border-border overflow-hidden transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25 p-3">
       {/* Фото */}
       <div className="relative w-44 flex-shrink-0 rounded-lg overflow-hidden bg-secondary self-stretch min-h-[110px]">
         {img ? (
