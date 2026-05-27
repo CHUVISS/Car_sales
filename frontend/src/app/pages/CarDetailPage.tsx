@@ -290,14 +290,14 @@ export function CarDetailPage() {
                 <div className="flex gap-2">
                   <button
                     onClick={() => toggleFavorite(car.id)}
-                    className="p-2 rounded-lg hover:bg-secondary transition-colors border border-border"
+                    className="p-2 rounded-lg border border-border transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-destructive/25"
                     title={favorite ? 'Убрать из избранного' : 'Добавить в избранное'}
                   >
                     <Heart className={`w-6 h-6 transition-colors ${favorite ? 'fill-destructive text-destructive' : 'text-muted-foreground'}`} />
                   </button>
                   <button
                     onClick={handleShare}
-                    className="p-2 rounded-lg hover:bg-secondary transition-colors border border-border"
+                    className="p-2 rounded-lg border border-border transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-blue-500/25"
                     title="Поделиться"
                   >
                     <Share2 className="w-6 h-6 text-muted-foreground" />
@@ -390,7 +390,7 @@ export function CarDetailPage() {
                     href={paymentUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity"
+                    className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-primary text-primary-foreground rounded-lg transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25"
                   >
                     <CreditCard className="w-5 h-5" />
                     Оплатить депозит
@@ -406,17 +406,17 @@ export function CarDetailPage() {
                 <div className="space-y-3 mb-6">
                   <button
                     onClick={() => { window.location.href = 'tel:+79001234567'; }}
-                    className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-accent text-accent-foreground rounded-lg hover:opacity-90 transition-opacity"
+                    className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-accent text-accent-foreground rounded-lg transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-accent/25"
                   >
                     <Phone className="w-5 h-5" />
                     <span>Позвонить</span>
                   </button>
                   <button
                     onClick={() => setShowBookingPanel(!showBookingPanel)}
-                    className={`flex items-center justify-center gap-2 w-full px-4 py-3 rounded-lg transition-opacity ${
+                    className={`flex items-center justify-center gap-2 w-full px-4 py-3 rounded-lg transition-all duration-200 ${
                       car.status === 'reserved'
                         ? 'bg-primary/60 text-primary-foreground cursor-default'
-                        : 'bg-primary text-primary-foreground hover:opacity-90'
+                        : 'bg-primary text-primary-foreground hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25'
                     }`}
                     disabled={car.status === 'reserved'}
                     title={car.status === 'reserved' ? 'Автомобиль зарезервирован' : undefined}
@@ -477,7 +477,7 @@ export function CarDetailPage() {
                   <button
                     onClick={handleReserve}
                     disabled={reserving}
-                    className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+                    className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-primary text-primary-foreground rounded-lg transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25 disabled:opacity-50 disabled:scale-100 disabled:shadow-none"
                   >
                     {reserving
                       ? <><Loader2 className="w-4 h-4 animate-spin" /> Создаём бронь...</>
