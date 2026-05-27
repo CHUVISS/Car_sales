@@ -331,7 +331,7 @@ export function ProfilePage() {
                 </div>
 
                 {/* OTP верификация телефона */}
-                <PhoneVerification phone={user.phone} />
+                <PhoneVerification phone={user.phone} userId={user.id} />
               </div>
             )}
 
@@ -469,10 +469,13 @@ function SecurityTab() {
 // PhoneVerification — OTP
 // ────────────────────────────────────────────────────────────────────────────
 
-function PhoneVerification({ phone }: { phone: string | null }) {
+function PhoneVerification({ phone, userId }: { phone: string | null; userId: string }) {
+  const STORAGE_KEY = `phone_verified_${userId}`;
   const [phoneInput, setPhoneInput] = useState(phone ?? '');
   const [otpCode, setOtpCode] = useState('');
-  const [stage, setStage] = useState<'idle' | 'sent' | 'done'>('idle');
+  const [stage, setStage] = useState<'idle' | 'sent' | 'done'>(() =>
+    localStorage.getItem(`phone_verified_${userId}`) ? 'done' : 'idle'
+  );
   const [cooldown, setCooldown] = useState(0);
   const [sending, setSending] = useState(false);
   const [verifying, setVerifying] = useState(false);
@@ -517,6 +520,7 @@ function PhoneVerification({ phone }: { phone: string | null }) {
         phone: phoneInput.trim(),
         code: otpCode.trim(),
       });
+      localStorage.setItem(STORAGE_KEY, '1');
       setStage('done');
       toast.success('Телефон подтверждён!');
     } catch (err: unknown) {
@@ -554,26 +558,40 @@ function PhoneVerification({ phone }: { phone: string | null }) {
           </p>
         </div>
       </div>
-      <div className="space-y-3 max-w-sm">
+      <div className="space-y-3 w-full max-w-sm min-w-[280px]">
+        {/* Строка телефона */}
         <div className="flex gap-2">
-          <input type="tel" value={phoneInput} onChange={e => setPhoneInput(e.target.value)}
+          <input
+            type="tel"
+            value={phoneInput}
+            onChange={e => setPhoneInput(e.target.value)}
             placeholder="+7 (999) 000-00-00"
-            className={inputCls + ' flex-1'} disabled={stage === 'sent'} />
+            className={inputCls + ' flex-1 min-w-0'}
+            disabled={stage === 'sent'}
+          />
           <button
             onClick={handleSendOtp}
             disabled={sending || cooldown > 0 || stage === 'sent'}
-            className="px-4 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 text-sm whitespace-nowrap flex items-center gap-1.5">
+            className="w-[120px] flex-shrink-0 flex items-center justify-center gap-1.5 px-3 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 text-sm font-medium">
             {sending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
             {cooldown > 0 ? `${cooldown}с` : stage === 'sent' ? 'Отправлено' : 'Получить код'}
           </button>
         </div>
+        {/* Строка SMS-кода */}
         {stage === 'sent' && (
           <div className="flex gap-2">
-            <input type="text" value={otpCode} onChange={e => setOtpCode(e.target.value)}
-              placeholder="Введите код из SMS" maxLength={6}
-              className={inputCls + ' flex-1 text-center tracking-widest text-lg'} />
-            <button onClick={handleVerify} disabled={verifying}
-              className="px-4 py-3 bg-accent text-accent-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 text-sm flex items-center gap-1.5">
+            <input
+              type="text"
+              value={otpCode}
+              onChange={e => setOtpCode(e.target.value)}
+              placeholder="Код из SMS"
+              maxLength={6}
+              className={inputCls + ' flex-1 min-w-0 text-center tracking-widest'}
+            />
+            <button
+              onClick={handleVerify}
+              disabled={verifying}
+              className="w-[120px] flex-shrink-0 flex items-center justify-center gap-1.5 px-3 py-3 bg-accent text-accent-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 text-sm font-medium">
               {verifying && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               Проверить
             </button>
