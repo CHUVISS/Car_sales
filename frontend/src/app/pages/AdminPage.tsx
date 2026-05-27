@@ -69,8 +69,8 @@ const MSG_STATUS_LABELS: Record<string, string> = {
 const MSG_STATUS_COLORS: Record<string, string> = {
   open: 'bg-accent/10 text-accent',
   in_progress: 'bg-primary/10 text-primary',
-  resolved: 'bg-muted text-muted-foreground',
-  closed: 'bg-secondary text-muted-foreground',
+  resolved: 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400',
+  closed: 'bg-destructive/10 text-destructive',
   new: 'bg-accent/10 text-accent',
 };
 const USER_ROLE_LABELS: Record<string, string> = {
