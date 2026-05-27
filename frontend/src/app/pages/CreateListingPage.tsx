@@ -211,10 +211,10 @@ export function CreateListingPage() {
       setSelectedCity(listing.city_id ?? '');
       setVin(listing.vin ?? '');
       setDescription(listing.description ?? '');
-      setLicensePlate((listing as Record<string, unknown>).license_plate as string ?? '');
-      setSaleAddress((listing as Record<string, unknown>).sale_address as string ?? '');
-      setAcceptsCash(Boolean((listing as Record<string, unknown>).accepts_cash));
-      setAcceptsTransfer(Boolean((listing as Record<string, unknown>).accepts_transfer));
+      setLicensePlate(listing.license_plate ?? '');
+      setSaleAddress(listing.sale_address ?? '');
+      setAcceptsCash(Boolean(listing.accepts_cash));
+      setAcceptsTransfer(Boolean(listing.accepts_transfer));
       setColors(cols);
       setCities(cts);
       if (listing.modification_id) setOriginalModId(listing.modification_id);

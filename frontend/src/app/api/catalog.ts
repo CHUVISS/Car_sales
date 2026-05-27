@@ -94,9 +94,14 @@ export interface MyListing {
   created_at: string;
   description: string | null;
   vin: string | null;
+  license_plate: string | null;
   color_id: string | null;
   city_id: string | null;
   condition: string | null;
+  sale_address: string | null;
+  viewing_enabled: boolean | null;
+  accepts_cash: boolean | null;
+  accepts_transfer: boolean | null;
   images?: MyListingImage[];
 }
 
