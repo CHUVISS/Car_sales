@@ -1,9 +1,168 @@
 import { Link, useNavigate } from 'react-router';
-import { Car, Phone, User, Menu, LogOut, Bot, PlusCircle } from 'lucide-react';
-import { useState } from 'react';
+import { Car, Phone, User, Menu, LogOut, Bot, Bell } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { toast } from 'sonner';
 import { ThemeToggle } from './ThemeToggle';
+import {
+  notificationsApi,
+  notificationText,
+  notificationHref,
+  type Notification,
+} from '../api/notifications';
+
+// ────────────────────────────────────────────────────────────────────────────
+// NotificationBell
+// ────────────────────────────────────────────────────────────────────────────
+
+function NotificationItem({
+  n,
+  onRead,
+}: {
+  n: Notification;
+  onRead: (id: string) => void;
+}) {
+  const isUnread = !n.read_at;
+  return (
+    <Link
+      to={notificationHref(n)}
+      onClick={() => { if (isUnread) onRead(n.id); }}
+      className={`flex items-start gap-3 px-4 py-3 hover:bg-secondary transition-colors border-b border-border last:border-0 ${
+        isUnread ? 'bg-primary/5' : ''
+      }`}
+    >
+      <span
+        className={`mt-1.5 flex-shrink-0 w-2 h-2 rounded-full ${
+          isUnread ? 'bg-primary' : 'bg-transparent'
+        }`}
+      />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm text-foreground leading-snug">{notificationText(n)}</p>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          {new Date(n.created_at).toLocaleString('ru-RU', {
+            day: 'numeric',
+            month: 'short',
+            hour: '2-digit',
+            minute: '2-digit',
+          })}
+        </p>
+      </div>
+    </Link>
+  );
+}
+
+function NotificationBell() {
+  const [items, setItems] = useState<Notification[]>([]);
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const data = await notificationsApi.list();
+      setItems(data);
+    } catch { /* silent */ }
+  }, []);
+
+  // Load on mount
+  useEffect(() => { load(); }, [load]);
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const unread = items.filter(n => !n.read_at).length;
+
+  const handleToggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next) load();
+  };
+
+  const handleMarkAllRead = async () => {
+    try {
+      await notificationsApi.markAllRead();
+      setItems(prev => prev.map(n => ({ ...n, read_at: new Date().toISOString() })));
+    } catch {
+      toast.error('Ошибка');
+    }
+  };
+
+  const handleMarkOne = async (id: string) => {
+    try {
+      await notificationsApi.markRead(id);
+      setItems(prev => prev.map(n => n.id === id ? { ...n, read_at: new Date().toISOString() } : n));
+    } catch { /* silent */ }
+  };
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <button
+        onClick={handleToggle}
+        className="relative p-2 text-foreground hover:text-primary transition-colors"
+        aria-label="Уведомления"
+      >
+        <Bell className="w-5 h-5" />
+        {unread > 0 && (
+          <span className="absolute top-0.5 right-0.5 min-w-[16px] h-4 bg-destructive text-white text-[10px] font-bold rounded-full flex items-center justify-center px-0.5 leading-none">
+            {unread > 9 ? '9+' : unread}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-2 w-80 bg-card border border-border rounded-xl shadow-xl z-50 overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+            <span className="font-semibold text-sm text-foreground">Уведомления</span>
+            {unread > 0 && (
+              <button
+                onClick={handleMarkAllRead}
+                className="text-xs text-primary hover:underline"
+              >
+                Прочитать все
+              </button>
+            )}
+          </div>
+
+          {/* List */}
+          <div className="max-h-72 overflow-y-auto">
+            {items.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-10">
+                Уведомлений нет
+              </p>
+            ) : (
+              items.map(n => (
+                <NotificationItem key={n.id} n={n} onRead={handleMarkOne} />
+              ))
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="px-4 py-2.5 border-t border-border text-center">
+            <Link
+              to="/profile?tab=reservations"
+              onClick={() => setOpen(false)}
+              className="text-xs text-primary hover:underline"
+            >
+              Мои брони →
+            </Link>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Header
+// ────────────────────────────────────────────────────────────────────────────
 
 export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -43,11 +202,7 @@ export function Header() {
 
             {user ? (
               <div className="flex items-center gap-2">
-                {/* <Link to="/sell"
-                  className="flex items-center gap-2 px-4 py-2 bg-accent text-accent-foreground rounded-lg hover:opacity-90 transition-opacity">
-                  <PlusCircle className="w-4 h-4" />
-                  <span>Продать авто</span>
-                </Link> */}
+                <NotificationBell />
                 <Link to="/profile"
                   className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity">
                   <User className="w-5 h-5" />
@@ -71,7 +226,9 @@ export function Header() {
             )}
           </div>
 
+          {/* Mobile controls */}
           <div className="flex items-center gap-2 md:hidden">
+            {user && <NotificationBell />}
             <ThemeToggle />
             <button className="p-2 text-foreground" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
               <Menu className="w-6 h-6" />
@@ -93,10 +250,6 @@ export function Header() {
               </a>
               {user ? (
                 <>
-                  <Link to="/sell" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 bg-accent text-accent-foreground rounded-lg w-fit">
-                    <PlusCircle className="w-4 h-4" />
-                    <span>Продать авто</span>
-                  </Link>
                   <Link to="/profile" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg w-fit">
                     <User className="w-5 h-5" />
                     <span>{user.full_name}</span>

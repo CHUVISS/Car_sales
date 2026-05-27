@@ -166,9 +166,15 @@ export function CreateListingPage() {
   const [viewingDays, setViewingDays] = useState<number[]>([]);
   const [viewingFrom, setViewingFrom] = useState('10:00');
   const [viewingTo, setViewingTo] = useState('18:00');
+  const [licensePlate, setLicensePlate] = useState('');
+  const [saleAddress, setSaleAddress] = useState('');
+  const [acceptsCash, setAcceptsCash] = useState(false);
+  const [acceptsTransfer, setAcceptsTransfer] = useState(false);
 
   const toggleDay = (i: number) =>
     setViewingDays(prev => prev.includes(i) ? prev.filter(d => d !== i) : [...prev, i]);
+
+  const viewingEnabled = viewingDays.length > 0;
 
   // Step 3 — images
   const [images, setImages] = useState<File[]>([]);
@@ -205,6 +211,10 @@ export function CreateListingPage() {
       setSelectedCity(listing.city_id ?? '');
       setVin(listing.vin ?? '');
       setDescription(listing.description ?? '');
+      setLicensePlate((listing as Record<string, unknown>).license_plate as string ?? '');
+      setSaleAddress((listing as Record<string, unknown>).sale_address as string ?? '');
+      setAcceptsCash(Boolean((listing as Record<string, unknown>).accepts_cash));
+      setAcceptsTransfer(Boolean((listing as Record<string, unknown>).accepts_transfer));
       setColors(cols);
       setCities(cts);
       if (listing.modification_id) setOriginalModId(listing.modification_id);
@@ -337,8 +347,13 @@ export function CreateListingPage() {
 
   const handleSubmit = async () => {
     const modId = selectedMod || originalModId;
-    if (!modId || !year || !price || !mileage || !condition || !selectedColor || !selectedCity || vin.trim().length !== 17) {
+    const hasId = vin.trim().length === 17 || licensePlate.trim().length > 0;
+    if (!modId || !year || !price || !mileage || !condition || !selectedColor || !selectedCity || !hasId) {
       toast.error('Заполните все обязательные поля');
+      return;
+    }
+    if (!acceptsCash && !acceptsTransfer) {
+      toast.error('Выберите хотя бы один способ оплаты');
       return;
     }
     setSubmitting(true);
@@ -351,8 +366,13 @@ export function CreateListingPage() {
           condition: condition as 'excellent' | 'good' | 'fair' | 'poor',
           color_id: selectedColor,
           city_id: selectedCity,
-          vin: vin.trim(),
+          vin: vin.trim() || undefined,
+          license_plate: licensePlate.trim() || undefined,
           description: description.trim() || undefined,
+          viewing_enabled: viewingEnabled,
+          sale_address: saleAddress.trim() || undefined,
+          accepts_cash: acceptsCash,
+          accepts_transfer: acceptsTransfer,
         });
         if (images.length > 0) {
           try {
@@ -373,8 +393,13 @@ export function CreateListingPage() {
           condition: condition as 'excellent' | 'good' | 'fair' | 'poor',
           color_id: selectedColor,
           city_id: selectedCity,
-          vin: vin.trim(),
+          vin: vin.trim() || undefined,
+          license_plate: licensePlate.trim() || undefined,
           description: description.trim() || undefined,
+          viewing_enabled: viewingEnabled,
+          sale_address: saleAddress.trim() || undefined,
+          accepts_cash: acceptsCash,
+          accepts_transfer: acceptsTransfer,
         });
         if (images.length > 0) {
           try {
@@ -431,7 +456,13 @@ export function CreateListingPage() {
 
   // In edit mode, can proceed with step 1 if modification was pre-loaded OR newly selected
   const canGoNext0 = Boolean(selectedMod || originalModId);
-  const canGoNext1 = Boolean(year && price && mileage && condition && selectedColor && selectedCity && vin.trim().length === 17);
+  const hasIdentifier = vin.trim().length === 17 || licensePlate.trim().length > 0;
+  const hasPaymentMethod = acceptsCash || acceptsTransfer;
+  const canGoNext1 = Boolean(
+    year && price && mileage && condition && selectedColor && selectedCity &&
+    hasIdentifier && hasPaymentMethod &&
+    (!viewingEnabled || saleAddress.trim().length > 0)
+  );
 
   return (
     <div className="min-h-screen bg-background">
@@ -611,11 +642,29 @@ export function CreateListingPage() {
               </div>
 
               <div>
-                <label className={labelCls}>VIN-номер *</label>
+                <label className={labelCls}>VIN-номер</label>
                 <input type="text" value={vin} onChange={e => setVin(e.target.value.toUpperCase())}
                   placeholder="WBAXXXXXXXXXXXXXXX" maxLength={17} className={inputCls} />
                 {vin.length > 0 && vin.length < 17 && (
                   <p className="text-xs text-destructive mt-1">VIN должен содержать 17 символов ({vin.length}/17)</p>
+                )}
+              </div>
+
+              <div>
+                <label className={labelCls}>
+                  Гос. номер{!vin.trim() ? ' *' : ''}
+                  <span className="text-xs font-normal text-muted-foreground ml-1">(обязателен если VIN не указан)</span>
+                </label>
+                <input
+                  type="text"
+                  value={licensePlate}
+                  onChange={e => setLicensePlate(e.target.value.toUpperCase())}
+                  placeholder="А123БВ777"
+                  maxLength={10}
+                  className={inputCls}
+                />
+                {!hasIdentifier && (vin.length > 0 || licensePlate.length > 0) && (
+                  <p className="text-xs text-destructive mt-1">Укажите VIN (17 символов) или гос. номер</p>
                 )}
               </div>
 
@@ -637,23 +686,68 @@ export function CreateListingPage() {
                     </button>
                   ))}
                 </div>
-                {viewingDays.length > 0 && (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs text-muted-foreground mb-1">С</label>
-                      <select value={viewingFrom} onChange={e => setViewingFrom(e.target.value)}
-                        className={inputCls + ' appearance-none cursor-pointer'}>
-                        {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
+                {viewingEnabled && (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-muted-foreground mb-1">С</label>
+                        <select value={viewingFrom} onChange={e => setViewingFrom(e.target.value)}
+                          className={inputCls + ' appearance-none cursor-pointer'}>
+                          {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-muted-foreground mb-1">До</label>
+                        <select value={viewingTo} onChange={e => setViewingTo(e.target.value)}
+                          className={inputCls + ' appearance-none cursor-pointer'}>
+                          {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
                     </div>
                     <div>
-                      <label className="block text-xs text-muted-foreground mb-1">До</label>
-                      <select value={viewingTo} onChange={e => setViewingTo(e.target.value)}
-                        className={inputCls + ' appearance-none cursor-pointer'}>
-                        {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
+                      <label className={labelCls}>
+                        Адрес просмотра <span className="text-destructive">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={saleAddress}
+                        onChange={e => setSaleAddress(e.target.value)}
+                        placeholder="Москва, ул. Примерная, 1 — адрес для встречи с покупателем"
+                        className={inputCls}
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">Адрес будет показан покупателю только после внесения залога</p>
                     </div>
                   </div>
+                )}
+              </div>
+
+              <div className="pt-2 border-t border-border">
+                <label className={labelCls}>
+                  Способы оплаты <span className="text-destructive">*</span>
+                </label>
+                <p className="text-xs text-muted-foreground mb-3">Выберите хотя бы один вариант оплаты при продаже</p>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={acceptsCash}
+                      onChange={e => setAcceptsCash(e.target.checked)}
+                      className="w-4 h-4 accent-primary rounded"
+                    />
+                    <span className="text-sm text-foreground">Наличные</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={acceptsTransfer}
+                      onChange={e => setAcceptsTransfer(e.target.checked)}
+                      className="w-4 h-4 accent-primary rounded"
+                    />
+                    <span className="text-sm text-foreground">Перевод</span>
+                  </label>
+                </div>
+                {!hasPaymentMethod && (
+                  <p className="text-xs text-destructive mt-1.5">Выберите хотя бы один способ оплаты</p>
                 )}
               </div>
             </div>

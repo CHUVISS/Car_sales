@@ -339,7 +339,7 @@ export function ProfilePage() {
             {activeTab === 'listings' && <MyListingsTab />}
             {activeTab === 'drafts' && <DraftsTab />}
             {activeTab === 'archive' && <ArchiveTab />}
-            {activeTab === 'reservations' && <ReservationsTab />}
+            {activeTab === 'reservations' && <ReservationsTab userId={user.id} />}
             {activeTab === 'tickets' && <TicketsTab userId={user.id} />}
             {activeTab === 'favorites' && <FavoritesPage />}
           </div>
@@ -609,11 +609,15 @@ const RES_STATUS_COLORS: Record<string, string> = {
   cancelled: 'bg-destructive/10 text-destructive',
 };
 
-function ReservationsTab() {
+function ReservationsTab({ userId }: { userId: string }) {
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [carsMap, setCarsMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState<string | null>(null);
+  const [payingNow, setPayingNow] = useState<string | null>(null);
+  const [declining, setDeclining] = useState<string | null>(null);
+  const [declineConfirm, setDeclineConfirm] = useState<string | null>(null);
+  const [declineReason, setDeclineReason] = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -652,6 +656,40 @@ function ReservationsTab() {
     }
   };
 
+  const handlePayNow = async (reservationId: string, listingId: string) => {
+    setPayingNow(reservationId);
+    try {
+      const result = await reservationsApi.reserve(listingId);
+      if (result.payment_url) {
+        window.open(result.payment_url, '_blank');
+      } else {
+        toast.info('Оплата уже подтверждена');
+        load();
+      }
+    } catch {
+      toast.error('Не удалось получить ссылку на оплату');
+    } finally {
+      setPayingNow(null);
+    }
+  };
+
+  const handleDecline = async () => {
+    if (!declineConfirm || !declineReason.trim()) return;
+    const id = declineConfirm;
+    setDeclining(id);
+    setDeclineConfirm(null);
+    try {
+      await reservationsApi.decline(id, declineReason.trim());
+      toast.success('Бронь отклонена, депозит будет возвращён покупателю');
+      setDeclineReason('');
+      load();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Ошибка');
+    } finally {
+      setDeclining(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="bg-card rounded-lg border border-border p-12 text-center">
@@ -674,63 +712,147 @@ function ReservationsTab() {
   }
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-2xl font-semibold text-foreground">Мои брони</h2>
-      {reservations.map(r => (
-        <div key={r.id} className="bg-card rounded-lg border border-border p-6">
-          <div className="flex items-start justify-between gap-3 mb-3">
-            <div className="flex-1 min-w-0">
-              <Link to={`/car/${r.listing_id}`}
-                className="font-semibold text-foreground hover:text-primary transition-colors">
-                {carsMap[r.listing_id] ?? 'Автомобиль'}
-              </Link>
-              <p className="text-sm text-muted-foreground mt-0.5">
-                {new Date(r.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
-              </p>
-              <p className="text-sm text-muted-foreground mt-0.5">
-                Депозит: {new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0 }).format(r.deposit_amount)}
-              </p>
-            </div>
-            <span className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium ${RES_STATUS_COLORS[r.status] ?? 'bg-secondary text-muted-foreground'}`}>
-              {RES_STATUS_LABELS[r.status] ?? r.status}
-            </span>
-          </div>
+    <>
+      <div className="space-y-4">
+        <h2 className="text-2xl font-semibold text-foreground">Мои брони</h2>
+        {reservations.map(r => {
+          const isBuyer = r.buyer_id === userId;
+          const isSeller = r.seller_id === userId;
 
-          {/* Раскрытые данные продавца */}
-          {r.seller_phone && (
-            <div className="flex items-center gap-2 mb-2 text-sm">
-              <Phone className="w-4 h-4 text-muted-foreground" />
-              <span className="text-foreground">{r.seller_phone}</span>
-            </div>
-          )}
-          {r.sale_address && (
-            <p className="text-sm text-muted-foreground mb-2">📍 {r.sale_address}</p>
-          )}
+          return (
+            <div key={r.id} className="bg-card rounded-lg border border-border p-6">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <Link to={`/car/${r.listing_id}`}
+                      className="font-semibold text-foreground hover:text-primary transition-colors">
+                      {carsMap[r.listing_id] ?? 'Автомобиль'}
+                    </Link>
+                    <span className="text-xs text-muted-foreground bg-secondary px-2 py-0.5 rounded-full">
+                      {isBuyer ? 'Покупатель' : 'Продавец'}
+                    </span>
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    {new Date(r.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    Депозит: {new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0 }).format(r.deposit_amount)}
+                  </p>
+                </div>
+                <span className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium ${RES_STATUS_COLORS[r.status] ?? 'bg-secondary text-muted-foreground'}`}>
+                  {RES_STATUS_LABELS[r.status] ?? r.status}
+                </span>
+              </div>
 
-          {r.status === 'pending_payment' && (
-            <div className="mt-3 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-sm text-yellow-700 dark:text-yellow-400 flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-              <span>Оплатите депозит до {new Date(r.payment_deadline).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} для подтверждения брони</span>
-            </div>
-          )}
+              {/* Раскрытые данные продавца (для покупателя) */}
+              {isBuyer && r.seller_phone && (
+                <div className="flex items-center gap-2 mb-2 text-sm">
+                  <Phone className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-foreground">{r.seller_phone}</span>
+                </div>
+              )}
+              {isBuyer && r.sale_address && (
+                <p className="text-sm text-muted-foreground mb-2">📍 {r.sale_address}</p>
+              )}
 
-          <div className="flex gap-2 mt-4">
-            {(r.status === 'pending_payment' || r.status === 'active') && (
-              <button
-                onClick={() => handleCancel(r.id)}
-                disabled={cancelling === r.id}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm text-destructive border border-destructive/50 rounded-lg hover:bg-destructive/10 transition-colors disabled:opacity-50">
-                {cancelling === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-                Отменить бронь
+              {/* Предупреждение об оплате */}
+              {isBuyer && r.status === 'pending_payment' && (
+                <div className="mt-3 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-sm text-yellow-700 dark:text-yellow-400 flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <span>
+                    Оплатите депозит до{' '}
+                    {new Date(r.payment_deadline).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}{' '}
+                    для подтверждения брони
+                  </span>
+                </div>
+              )}
+
+              {/* Действия */}
+              <div className="flex flex-wrap gap-2 mt-4">
+                {/* Покупатель: оплатить */}
+                {isBuyer && r.status === 'pending_payment' && (
+                  <button
+                    onClick={() => handlePayNow(r.id, r.listing_id)}
+                    disabled={payingNow === r.id}
+                    className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50">
+                    {payingNow === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                    Перейти к оплате
+                  </button>
+                )}
+
+                {/* Покупатель: отменить */}
+                {isBuyer && (r.status === 'pending_payment' || r.status === 'active') && (
+                  <button
+                    onClick={() => handleCancel(r.id)}
+                    disabled={cancelling === r.id}
+                    className="flex items-center gap-1.5 px-4 py-2 text-sm text-destructive border border-destructive/50 rounded-lg hover:bg-destructive/10 transition-colors disabled:opacity-50">
+                    {cancelling === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                    Отменить бронь
+                  </button>
+                )}
+
+                {/* Покупатель: итог сделки */}
+                {isBuyer && r.status === 'active' && (
+                  <ReservationOutcomeButtons reservationId={r.id} onDone={load} />
+                )}
+
+                {/* Продавец: отклонить */}
+                {isSeller && (r.status === 'pending_payment' || r.status === 'active') && (
+                  <button
+                    onClick={() => setDeclineConfirm(r.id)}
+                    disabled={declining === r.id}
+                    className="flex items-center gap-1.5 px-4 py-2 text-sm text-destructive border border-destructive/50 rounded-lg hover:bg-destructive/10 transition-colors disabled:opacity-50">
+                    {declining === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                    Отклонить бронь
+                  </button>
+                )}
+
+                {/* Продавец: итог сделки */}
+                {isSeller && r.status === 'active' && (
+                  <ReservationOutcomeButtons reservationId={r.id} onDone={load} />
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Модал отклонения брони */}
+      {declineConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => { setDeclineConfirm(null); setDeclineReason(''); }} />
+          <div className="relative bg-card border border-border rounded-2xl p-6 w-full max-w-md shadow-xl">
+            <h3 className="text-lg font-semibold text-foreground mb-2">Отклонить бронь</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Укажите причину. Покупатель получит уведомление, а депозит будет возвращён.
+            </p>
+            <textarea
+              value={declineReason}
+              onChange={e => setDeclineReason(e.target.value)}
+              placeholder="Причина отклонения..."
+              rows={3}
+              maxLength={300}
+              className={inputCls + ' resize-none mb-1'}
+            />
+            <p className="text-xs text-muted-foreground text-right mb-4">{declineReason.length}/300</p>
+            <div className="flex gap-3">
+              <button onClick={() => { setDeclineConfirm(null); setDeclineReason(''); }}
+                className="flex-1 px-4 py-2 text-sm border border-border rounded-lg hover:bg-secondary transition-colors">
+                Отмена
               </button>
-            )}
-            {r.status === 'active' && (
-              <ReservationOutcomeButtons reservationId={r.id} onDone={load} />
-            )}
+              <button
+                onClick={handleDecline}
+                disabled={!declineReason.trim() || !!declining}
+                className="flex-1 flex justify-center items-center gap-2 px-4 py-2 text-sm bg-destructive text-white rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity">
+                {declining ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                Отклонить
+              </button>
+            </div>
           </div>
         </div>
-      ))}
-    </div>
+      )}
+    </>
   );
 }
 

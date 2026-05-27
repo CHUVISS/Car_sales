@@ -109,7 +109,12 @@ export interface ListingCreateBody {
   condition: 'excellent' | 'good' | 'fair' | 'poor';
   city_id: string;
   vin?: string;
+  license_plate?: string;
   description?: string;
+  sale_address?: string;
+  viewing_enabled?: boolean;
+  accepts_cash?: boolean;
+  accepts_transfer?: boolean;
 }
 
 export const listingsApi = {
