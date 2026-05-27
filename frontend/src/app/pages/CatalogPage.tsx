@@ -93,6 +93,46 @@ function SearchableMultiSelect<T extends string>({
 
 function fmtNum(s: string) { return s.replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
 
+const SORT_OPTIONS: { value: NonNullable<CarFilters['sort_by']>; label: string }[] = [
+  { value: 'date_desc', label: 'Новые' },
+  { value: 'date_asc', label: 'Старые' },
+  { value: 'price_asc', label: 'Дешевле' },
+  { value: 'price_desc', label: 'Дороже' },
+];
+
+function SortDropdown({ value, onChange }: { value: CarFilters['sort_by']; onChange: (v: CarFilters['sort_by']) => void }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setIsOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+  const current = SORT_OPTIONS.find(o => o.value === value) ?? SORT_OPTIONS[0];
+  return (
+    <div className="relative flex-shrink-0" ref={ref}>
+      <button type="button" onClick={() => setIsOpen(o => !o)}
+        className="flex items-center justify-between gap-1.5 min-w-[110px] px-3 py-2.5 bg-secondary border border-border rounded-xl text-sm text-foreground hover:bg-secondary/80 transition-colors whitespace-nowrap">
+        <span>{current.label}</span>
+        <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      {isOpen && (
+        <div className="absolute right-0 z-30 mt-1.5 min-w-full bg-card border border-border rounded-lg shadow-lg overflow-hidden">
+          {SORT_OPTIONS.map(opt => (
+            <button key={opt.value} type="button"
+              onClick={() => { onChange(opt.value); setIsOpen(false); }}
+              className={`w-full flex items-center justify-between gap-3 px-3 py-2 text-left text-xs transition-colors
+                ${opt.value === value ? 'text-primary font-medium bg-secondary/60' : 'text-foreground hover:bg-secondary/50'}`}>
+              <span>{opt.label}</span>
+              {opt.value === value && <Check className="w-3 h-3 text-primary flex-shrink-0" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NumberFilterInput({ placeholder, value, onChange, onConfirm, format = false }: {
   placeholder: string; value: string; onChange: (v: string) => void; onConfirm: (v: string) => void; format?: boolean;
 }) {
@@ -265,7 +305,7 @@ function BoardSearch({ cars, onSelect }: { cars: CarType[]; onSelect: (car: CarT
             else if (e.key === 'Escape') { setIsOpen(false); setHi(-1); }
           }}
           placeholder="Поиск по марке или модели..."
-          className="w-full pl-10 pr-10 py-3 bg-secondary text-foreground placeholder:text-muted-foreground rounded-xl outline-none focus:ring-2 focus:ring-primary text-sm border border-border focus:border-primary"
+          className="w-full pl-10 pr-10 py-2.5 bg-secondary text-foreground placeholder:text-muted-foreground rounded-xl outline-none focus:ring-2 focus:ring-primary text-sm border border-border focus:border-primary"
         />
         {query && <button type="button" onClick={() => { setQuery(''); onSelect(null); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>}
       </div>
@@ -641,11 +681,7 @@ export function CatalogPage() {
                   </button>
                 </div>
                 <div className="mb-4">
-                  <select value={sortBy} onChange={e => setSortBy(e.target.value as CarFilters['sort_by'])} className={selectCls}>
-                    <option value="date_desc">Сначала новые</option>
-                    <option value="price_asc">Дешевле</option>
-                    <option value="price_desc">Дороже</option>
-                  </select>
+                  <SortDropdown value={sortBy} onChange={setSortBy} />
                 </div>
                 {filtersPanel}
               </div>
@@ -664,12 +700,7 @@ export function CatalogPage() {
                 <SlidersHorizontal className="w-4 h-4 text-foreground" />
                 {hasActiveFilters && <span className="w-1.5 h-1.5 bg-primary rounded-full" />}
               </button>
-              <select value={sortBy} onChange={e => setSortBy(e.target.value as CarFilters['sort_by'])}
-                className={selectCls + ' w-32 flex-shrink-0 text-xs'}>
-                <option value="date_desc">Новые</option>
-                <option value="price_asc">Дешевле</option>
-                <option value="price_desc">Дороже</option>
-              </select>
+              <SortDropdown value={sortBy} onChange={setSortBy} />
               <div className="flex items-center border border-border rounded-lg overflow-hidden flex-shrink-0">
                 <button onClick={() => setViewMode('grid')} title="Сетка"
                   className={`p-2.5 transition-colors ${viewMode === 'grid' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground hover:text-foreground'}`}>
