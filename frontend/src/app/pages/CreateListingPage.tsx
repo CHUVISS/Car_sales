@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, Link } from 'react-router';
-import { ChevronRight, Upload, X, CheckCircle, Loader2, Search } from 'lucide-react';
+import { ChevronRight, Upload, X, CheckCircle, Loader2, Search, Trash2, Star } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../hooks/useAuth';
 import {
@@ -13,6 +13,7 @@ import {
   type CatalogModification,
   type CatalogColor,
   type GeoCity,
+  type MyListingImage,
 } from '../api/catalog';
 import { viewingsApi } from '../api/viewings';
 
@@ -172,6 +173,9 @@ export function CreateListingPage() {
   // Step 3 — images
   const [images, setImages] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
+  // Уже загруженные фото (только в режиме редактирования)
+  const [existingImages, setExistingImages] = useState<MyListingImage[]>([]);
+  const [deletingImageId, setDeletingImageId] = useState<string | null>(null);
 
   // Load marks on mount (always)
   useEffect(() => {
@@ -204,6 +208,10 @@ export function CreateListingPage() {
       setColors(cols);
       setCities(cts);
       if (listing.modification_id) setOriginalModId(listing.modification_id);
+      // Загружаем существующие фото
+      if (listing.images && listing.images.length > 0) {
+        setExistingImages([...listing.images].sort((a, b) => a.sort_order - b.sort_order));
+      }
 
       // Pre-fill cascade: mark → model → generations
       setSelectedMark(listing.mark_id);
@@ -275,6 +283,20 @@ export function CreateListingPage() {
     setOriginalModId('');
     setModsLoading(true);
     catalogApi.getModifications(id).then(setModifications).catch(() => setModifications([])).finally(() => setModsLoading(false));
+  };
+
+  const handleExistingImageDelete = async (image: MyListingImage) => {
+    if (!editId) return;
+    setDeletingImageId(image.id);
+    try {
+      await listingsApi.deleteImage(editId, image.id);
+      setExistingImages(prev => prev.filter(img => img.id !== image.id));
+      toast.success('Фото удалено');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Не удалось удалить фото');
+    } finally {
+      setDeletingImageId(null);
+    }
   };
 
   const handleImageAdd = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -642,8 +664,47 @@ export function CreateListingPage() {
             <div className="space-y-6">
               <h2 className="text-xl font-semibold text-foreground mb-4">Фотографии</h2>
 
+              {/* Существующие фото (режим редактирования) */}
+              {isEdit && existingImages.length > 0 && (
+                <div>
+                  <label className={labelCls}>Загруженные фото ({existingImages.length})</label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {existingImages.map((img) => (
+                      <div key={img.id} className="relative aspect-square rounded-lg overflow-hidden group bg-secondary">
+                        <img
+                          src={img.thumbnail_url || img.url}
+                          alt=""
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                        />
+                        {img.is_primary && (
+                          <span className="absolute bottom-1 left-1 flex items-center gap-0.5 text-[10px] bg-black/60 text-yellow-300 px-1.5 py-0.5 rounded">
+                            <Star className="w-2.5 h-2.5" /> Главное
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleExistingImageDelete(img)}
+                          disabled={deletingImageId === img.id}
+                          className="absolute top-1 right-1 w-7 h-7 bg-black/70 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-60"
+                          title="Удалить фото"
+                        >
+                          {deletingImageId === img.id
+                            ? <Loader2 className="w-3.5 h-3.5 text-white animate-spin" />
+                            : <Trash2 className="w-3.5 h-3.5 text-white" />
+                          }
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Загрузка новых фото */}
               <div>
-                <label className={labelCls}>Фото автомобиля (до 10 штук)</label>
+                <label className={labelCls}>
+                  {isEdit ? 'Добавить фото' : 'Фото автомобиля (до 10 штук)'}
+                </label>
                 <label className="flex flex-col items-center justify-center gap-3 p-8 border-2 border-dashed border-border rounded-xl cursor-pointer hover:border-primary/50 transition-colors group">
                   <Upload className="w-8 h-8 text-muted-foreground group-hover:text-primary transition-colors" />
                   <div className="text-center">
@@ -665,7 +726,7 @@ export function CreateListingPage() {
                         >
                           <X className="w-3.5 h-3.5 text-white" />
                         </button>
-                        {i === 0 && (
+                        {i === 0 && !isEdit && (
                           <span className="absolute bottom-1 left-1 text-[10px] bg-black/60 text-white px-1.5 py-0.5 rounded">Главное</span>
                         )}
                       </div>

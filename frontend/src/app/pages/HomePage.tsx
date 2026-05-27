@@ -49,6 +49,12 @@ export function HomePage() {
   const handleLeadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formEmail) { toast.error('Укажите email для связи'); return; }
+    if (!localStorage.getItem('access_token')) {
+      toast.error('Для отправки заявки необходимо войти в аккаунт', {
+        action: { label: 'Войти', onClick: () => navigate('/auth') },
+      });
+      return;
+    }
     setSubmitting(true);
     try {
       await messagesApi.send({

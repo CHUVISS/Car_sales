@@ -113,20 +113,20 @@ export interface AdminDeal {
   created_at: string;
 }
 
-// New backend DashboardStats
+// New backend DashboardStats (matches /admin/stats response)
 export interface DashboardStats {
-  // New fields
+  // Real backend fields
   total_listings: number;
   active_listings: number;
   reserved_listings: number;
   sold_listings: number;
-  total_transactions: number;
-  completed_transactions: number;
-  disputed_transactions: number;
-  total_revenue: string;
+  total_reservations: number;
+  active_reservations: number;
+  settling_reservations: number;
+  completed_reservations: number;
   total_users: number;
   open_tickets: number;
-  // Legacy aliases (mapped from new fields for backward compat with UI)
+  // Legacy aliases (mapped from real fields for backward compat with UI)
   total_cars: number;
   available_cars: number;
   sold_cars: number;
@@ -260,16 +260,20 @@ function mapTicketToMessage(ticket: Record<string, unknown>): AdminMessage {
 
 // Helper: map new DashboardStats → augmented stats with legacy aliases
 function mapStats(raw: Record<string, unknown>): DashboardStats {
+  const totalReservations = (raw.total_reservations as number) ?? 0;
+  const completedReservations = (raw.completed_reservations as number) ?? 0;
+  const settlingReservations = (raw.settling_reservations as number) ?? 0;
+  const activeReservations = (raw.active_reservations as number) ?? 0;
   return {
-    // New fields
+    // Real backend fields
     total_listings: (raw.total_listings as number) ?? 0,
     active_listings: (raw.active_listings as number) ?? 0,
     reserved_listings: (raw.reserved_listings as number) ?? 0,
     sold_listings: (raw.sold_listings as number) ?? 0,
-    total_transactions: (raw.total_transactions as number) ?? 0,
-    completed_transactions: (raw.completed_transactions as number) ?? 0,
-    disputed_transactions: (raw.disputed_transactions as number) ?? 0,
-    total_revenue: String(raw.total_revenue ?? '0'),
+    total_reservations: totalReservations,
+    active_reservations: activeReservations,
+    settling_reservations: settlingReservations,
+    completed_reservations: completedReservations,
     total_users: (raw.total_users as number) ?? 0,
     open_tickets: (raw.open_tickets as number) ?? 0,
     // Legacy aliases for existing UI
@@ -278,9 +282,9 @@ function mapStats(raw: Record<string, unknown>): DashboardStats {
     sold_cars: (raw.sold_listings as number) ?? 0,
     reserved_cars: (raw.reserved_listings as number) ?? 0,
     total_clients: (raw.total_users as number) ?? 0,
-    total_deals: (raw.total_transactions as number) ?? 0,
-    completed_deals: (raw.completed_transactions as number) ?? 0,
-    pending_deals: (raw.disputed_transactions as number) ?? 0,
+    total_deals: totalReservations,
+    completed_deals: completedReservations,
+    pending_deals: settlingReservations,
     new_messages: (raw.open_tickets as number) ?? 0,
     total_viewings: 0,
     pending_offers: 0,

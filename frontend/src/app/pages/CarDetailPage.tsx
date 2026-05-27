@@ -1,12 +1,13 @@
 import { useParams, Link, useNavigate } from 'react-router';
-import { ArrowLeft, Heart, Share2, Phone, Calendar, Check, ChevronLeft, ChevronRight, Clock, MapPin } from 'lucide-react';
+import { ArrowLeft, Heart, Share2, Phone, Calendar, ChevronLeft, ChevronRight, Clock, MapPin, Loader2, CreditCard, CheckCircle } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 import { toast } from 'sonner';
 import { useCar } from '../hooks/useCars';
 import { useFavorites } from '../hooks/useFavorites';
 import { useSalonInfo } from '../hooks/useSalonInfo';
-import { viewingsApi } from '../api/viewings';
+import { viewingsApi, type ViewingWindow } from '../api/viewings';
+import { reservationsApi } from '../api/reservations';
 
 function formatPrice(price: number): string {
   return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(price);
@@ -41,6 +42,20 @@ const CONDITION_COLORS: Record<string, string> = {
   poor: 'bg-destructive/10 text-destructive border-destructive/30',
 };
 
+/** Группирует окна просмотра по дате */
+function groupWindowsByDate(windows: ViewingWindow[]): Record<string, ViewingWindow[]> {
+  return windows.reduce<Record<string, ViewingWindow[]>>((acc, w) => {
+    const d = w.window_date;
+    if (!acc[d]) acc[d] = [];
+    acc[d].push(w);
+    return acc;
+  }, {});
+}
+
+function formatWindowDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
 export function CarDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { car, loading, error } = useCar(id);
@@ -50,11 +65,29 @@ export function CarDetailPage() {
 
   useEffect(() => { window.scrollTo(0, 0); }, []);
 
-  const [showAppointmentForm, setShowAppointmentForm] = useState(false);
+  const [showBookingPanel, setShowBookingPanel] = useState(false);
   const [activeSlide, setActiveSlide] = useState(0);
-  const [submitting, setSubmitting] = useState(false);
-  const [selectedDate, setSelectedDate] = useState('');
-  const [selectedTime, setSelectedTime] = useState('');
+
+  // Окна просмотра
+  const [windows, setWindows] = useState<ViewingWindow[]>([]);
+  const [windowsLoading, setWindowsLoading] = useState(false);
+  const [selectedWindowId, setSelectedWindowId] = useState<string | null>(null);
+
+  // Состояние резервации
+  const [reserving, setReserving] = useState(false);
+  const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
+  const [reservationDone, setReservationDone] = useState(false);
+
+  // Загружаем окна просмотра когда открывается панель
+  useEffect(() => {
+    if (!showBookingPanel || !id) return;
+    setWindowsLoading(true);
+    viewingsApi
+      .getAvailableSlots(id)
+      .then((data) => setWindows(data.filter((w) => w.is_available)))
+      .catch(() => setWindows([]))
+      .finally(() => setWindowsLoading(false));
+  }, [showBookingPanel, id]);
 
   if (loading) {
     return (
@@ -90,11 +123,7 @@ export function CarDetailPage() {
     const url = window.location.href;
     const title = `${car.brand} ${car.model} ${car.year}`;
     if (navigator.share) {
-      try {
-        await navigator.share({ title, url });
-      } catch {
-        // пользователь отменил — ничего не делаем
-      }
+      try { await navigator.share({ title, url }); } catch { /* отменено */ }
     } else {
       try {
         await navigator.clipboard.writeText(url);
@@ -105,26 +134,47 @@ export function CarDetailPage() {
     }
   };
 
-  const handleAppointmentSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleReserve = async () => {
     const token = localStorage.getItem('access_token');
     if (!token) {
-      toast.error('Для записи на просмотр необходимо войти в аккаунт');
+      toast.error('Для бронирования необходимо войти в аккаунт');
       return;
     }
-    setSubmitting(true);
+    setReserving(true);
     try {
-      await viewingsApi.book({ car_id: car.id, viewing_date: selectedDate || undefined, viewing_time: selectedTime || undefined });
-      toast.success('Заявка на просмотр отправлена! Продавец свяжется с вами.');
-      setShowAppointmentForm(false);
-      setSelectedDate('');
-      setSelectedTime('');
-    } catch {
-      toast.error('Ошибка отправки. Попробуйте позже.');
+      // 1. Создаём резервацию
+      const res = await reservationsApi.reserve(car.id);
+
+      // 2. Если выбрано окно — сразу бронируем
+      if (selectedWindowId) {
+        try {
+          await reservationsApi.bookViewing(res.reservation_id, selectedWindowId);
+        } catch {
+          // Не критично — запишемся позже из профиля
+          toast.info('Бронь создана, выберите время просмотра в личном кабинете');
+        }
+      }
+
+      if (res.payment_url) {
+        setPaymentUrl(res.payment_url);
+      } else {
+        setReservationDone(true);
+        toast.success('Бронирование успешно создано!');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Ошибка бронирования';
+      if (msg.includes('already reserved') || msg.includes('already reserved')) {
+        toast.error('Этот автомобиль уже зарезервирован');
+      } else {
+        toast.error(msg);
+      }
     } finally {
-      setSubmitting(false);
+      setReserving(false);
     }
   };
+
+  const groupedWindows = groupWindowsByDate(windows);
+  const sortedDates = Object.keys(groupedWindows).sort();
 
   const specs = [
     ['Марка', car.brand], ['Модель', car.model], ['Год выпуска', String(car.year)],
@@ -286,7 +336,7 @@ export function CarDetailPage() {
           <div className="space-y-6">
             <div className="bg-card rounded-lg border border-border p-6 sticky top-20">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-foreground">Свяжитесь с нами</h3>
+                <h3 className="font-semibold text-foreground">Действия</h3>
                 {car.status && (
                   <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${STATUS_COLORS[car.status] ?? 'bg-muted text-muted-foreground border-border'}`}>
                     {STATUS_LABELS[car.status] ?? car.status}
@@ -305,6 +355,42 @@ export function CarDetailPage() {
                       : 'Автомобиль временно недоступен для покупки'}
                   </p>
                 </div>
+              ) : reservationDone ? (
+                <div className="mb-6 p-4 rounded-lg bg-accent/10 border border-accent/30 text-center">
+                  <CheckCircle className="w-8 h-8 text-accent mx-auto mb-2" />
+                  <p className="font-semibold text-foreground mb-1">Бронирование оформлено!</p>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    Детали в разделе «Мои записи» личного кабинета
+                  </p>
+                  <Link to="/profile?tab=reservations"
+                    className="text-sm text-primary hover:underline">
+                    Перейти в кабинет →
+                  </Link>
+                </div>
+              ) : paymentUrl ? (
+                <div className="mb-6 space-y-3">
+                  <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
+                    <p className="text-sm font-medium text-foreground mb-1">Бронь создана!</p>
+                    <p className="text-xs text-muted-foreground">
+                      Внесите депозит для подтверждения. Он будет возвращён после просмотра.
+                    </p>
+                  </div>
+                  <a
+                    href={paymentUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity"
+                  >
+                    <CreditCard className="w-5 h-5" />
+                    Оплатить депозит
+                  </a>
+                  <button
+                    onClick={() => { setPaymentUrl(null); setShowBookingPanel(false); }}
+                    className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Сделать позже
+                  </button>
+                </div>
               ) : (
                 <div className="space-y-3 mb-6">
                   <button
@@ -315,8 +401,12 @@ export function CarDetailPage() {
                     <span>Позвонить</span>
                   </button>
                   <button
-                    onClick={() => setShowAppointmentForm(!showAppointmentForm)}
-                    className={`flex items-center justify-center gap-2 w-full px-4 py-3 rounded-lg transition-opacity ${car.status === 'reserved' ? 'bg-primary/60 text-primary-foreground cursor-default' : 'bg-primary text-primary-foreground hover:opacity-90'}`}
+                    onClick={() => setShowBookingPanel(!showBookingPanel)}
+                    className={`flex items-center justify-center gap-2 w-full px-4 py-3 rounded-lg transition-opacity ${
+                      car.status === 'reserved'
+                        ? 'bg-primary/60 text-primary-foreground cursor-default'
+                        : 'bg-primary text-primary-foreground hover:opacity-90'
+                    }`}
                     disabled={car.status === 'reserved'}
                     title={car.status === 'reserved' ? 'Автомобиль зарезервирован' : undefined}
                   >
@@ -326,54 +416,73 @@ export function CarDetailPage() {
                 </div>
               )}
 
-              {showAppointmentForm && (
-                <form className="space-y-4 pt-4 border-t border-border" onSubmit={handleAppointmentSubmit}>
-                  <div>
-                    <p className="text-xs font-medium text-foreground mb-2">Удобная дата</p>
-                    <div className="flex gap-1.5 flex-wrap">
-                      {Array.from({ length: 7 }, (_, i) => {
-                        const d = new Date();
-                        d.setDate(d.getDate() + i + 1);
-                        const iso = d.toISOString().slice(0, 10);
-                        const label = d.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short' });
-                        const active = selectedDate === iso;
-                        return (
-                          <button key={iso} type="button" onClick={() => setSelectedDate(active ? '' : iso)}
-                            className={`px-2.5 py-1.5 rounded-lg text-xs border transition-colors ${active ? 'border-primary bg-primary/5 text-primary font-medium' : 'border-border hover:border-foreground/30 text-foreground'}`}>
-                            {label}
-                          </button>
-                        );
-                      })}
+              {/* Форма бронирования */}
+              {showBookingPanel && !paymentUrl && !reservationDone && (
+                <div className="pt-4 border-t border-border">
+                  <h4 className="text-sm font-semibold text-foreground mb-3">Выберите удобное время</h4>
+
+                  {windowsLoading ? (
+                    <div className="flex items-center justify-center py-6">
+                      <Loader2 className="w-6 h-6 animate-spin text-primary" />
                     </div>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-foreground mb-2">Удобное время</p>
-                    <div className="grid grid-cols-4 gap-1.5">
-                      {['10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00'].map(t => {
-                        const active = selectedTime === t;
-                        return (
-                          <button key={t} type="button" onClick={() => setSelectedTime(active ? '' : t)}
-                            className={`py-1.5 rounded-lg text-xs border transition-colors ${active ? 'border-primary bg-primary/5 text-primary font-medium' : 'border-border hover:border-foreground/30 text-foreground'}`}>
-                            {t}
-                          </button>
-                        );
-                      })}
+                  ) : windows.length === 0 ? (
+                    <div className="text-center py-4">
+                      <p className="text-sm text-muted-foreground mb-3">
+                        Продавец не указал время просмотра.
+                        Вы всё равно можете создать бронь.
+                      </p>
                     </div>
+                  ) : (
+                    <div className="space-y-3 mb-3 max-h-52 overflow-y-auto pr-1">
+                      {sortedDates.map((date) => (
+                        <div key={date}>
+                          <p className="text-xs text-muted-foreground mb-1.5">{formatWindowDate(date)}</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {groupedWindows[date].map((w) => (
+                              <button
+                                key={w.id}
+                                type="button"
+                                onClick={() => setSelectedWindowId(selectedWindowId === w.id ? null : w.id)}
+                                className={`px-2.5 py-1.5 rounded-lg text-xs border transition-colors ${
+                                  selectedWindowId === w.id
+                                    ? 'border-primary bg-primary/5 text-primary font-medium'
+                                    : 'border-border hover:border-foreground/30 text-foreground'
+                                }`}
+                              >
+                                {w.time_from.slice(0, 5)}–{w.time_to.slice(0, 5)}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="p-3 mb-3 rounded-lg bg-secondary/60 border border-border text-xs text-muted-foreground">
+                    <p className="font-medium text-foreground mb-0.5">Как работает бронирование?</p>
+                    <p>Будет удержан небольшой депозит, который вернётся после просмотра независимо от результата.</p>
                   </div>
-                  <button type="submit" disabled={submitting}
-                    className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity text-sm disabled:opacity-50">
-                    {submitting ? 'Отправка...' : 'Отправить заявку'}
+
+                  <button
+                    onClick={handleReserve}
+                    disabled={reserving}
+                    className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+                  >
+                    {reserving
+                      ? <><Loader2 className="w-4 h-4 animate-spin" /> Создаём бронь...</>
+                      : <><CreditCard className="w-4 h-4" /> Забронировать{selectedWindowId ? '' : ' без времени'}</>
+                    }
                   </button>
-                </form>
+                </div>
               )}
 
+              {/* Продавец */}
               <div className="mt-6 pt-6 border-t border-border">
                 <h4 className="font-semibold text-foreground mb-3">Продавец</h4>
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-12 h-12 bg-primary rounded-full flex items-center justify-center text-primary-foreground text-lg font-semibold">МД</div>
                   <div>
                     <p className="font-semibold text-foreground">Матвей Дворников</p>
-                    {/* <p className="text-sm text-muted-foreground">Менеджер по продажам</p> */}
                   </div>
                 </div>
               </div>
@@ -410,18 +519,6 @@ export function CarDetailPage() {
                   </div>
                 )}
               </div>
-
-              {/* <div className="mt-6 pt-6 border-t border-border">
-                {/* <h4 className="font-semibold text-foreground mb-3">Гарантии</h4>
-                <div className="space-y-2">
-                  {['Проверка юридической чистоты', 'Техническая диагностика', 'Гарантия на автомобиль', 'Помощь в оформлении'].map(text => (
-                    <div key={text} className="flex items-start gap-2">
-                      <Check className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
-                      <span className="text-sm text-foreground">{text}</span>
-                    </div>
-                  ))}
-                </div>
-              </div> */}
             </div>
           </div>
         </div>

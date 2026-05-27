@@ -74,6 +74,14 @@ export const catalogApi = {
     api.get<GeoCity[]>('/geo/cities'),
 };
 
+export interface MyListingImage {
+  id: string;
+  url: string;
+  thumbnail_url: string;
+  is_primary: boolean;
+  sort_order: number;
+}
+
 export interface MyListing {
   id: string;
   mark_id: string;
@@ -89,6 +97,7 @@ export interface MyListing {
   color_id: string | null;
   city_id: string | null;
   condition: string | null;
+  images?: MyListingImage[];
 }
 
 export interface ListingCreateBody {
@@ -136,4 +145,7 @@ export const listingsApi = {
     api.patch<MyListing>(`/listings/${listingId}`, body),
 
   archive: (listingId: string) => api.delete<unknown>(`/listings/${listingId}`),
+
+  deleteImage: (listingId: string, imageId: string) =>
+    api.delete<{ deleted: boolean }>(`/listings/${listingId}/images/${imageId}`),
 };
