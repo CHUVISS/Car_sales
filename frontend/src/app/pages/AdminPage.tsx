@@ -3,7 +3,7 @@ import {
   Car, Users, FileText, BarChart3, Plus, Edit, Trash2,
   Check, X, RefreshCw, Loader2, ChevronLeft, ChevronRight,
   MessageSquare, DollarSign, AlertCircle, Eye, Search, Upload,
-  SlidersHorizontal, ChevronDown,
+  SlidersHorizontal, ChevronDown, RotateCcw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../hooks/useAuth';
@@ -990,12 +990,14 @@ function CarsTab() {
 // OffersTab
 
 function OffersTab({ onPendingCountChange }: { onPendingCountChange?: (n: number) => void }) {
-  const [offers, setOffers] = useState<AdminCarOffer[]>([]);
+  const [offers, setOffers] = useState<AdminCarOffer[]>([]);          // только pending (с сервера)
+  const [resolvedOffers, setResolvedOffers] = useState<AdminCarOffer[]>([]);  // одобрено/отклонено (локально)
   const [count, setCount] = useState(0); const [skip, setSkip] = useState(0);
   const [filterStatus, setFilterStatus] = useState<CarOfferStatus | ''>('');
   const [loading, setLoading] = useState(true);
   const [approveModal, setApproveModal] = useState<{ id: string; brand: string; model: string } | null>(null);
-  const [rejectModal, setRejectModal] = useState<{ id: string; brand: string; model: string } | null>(null);
+  const [rejectModal,  setRejectModal]  = useState<{ id: string; brand: string; model: string } | null>(null);
+  const [revokeModal,  setRevokeModal]  = useState<{ id: string; brand: string; model: string } | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [processing, setProcessing] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -1047,9 +1049,12 @@ function OffersTab({ onPendingCountChange }: { onPendingCountChange?: (n: number
       await adminApi.reviewOffer(id, 'approved');
       toast.success('Объявление опубликовано');
       setApproveModal(null);
+      // Перемещаем из pending → resolved (local)
       setOffers(prev => {
-        const next = prev.map(o => o.id === id ? { ...o, status: 'approved' as CarOfferStatus } : o);
-        onPendingCountChange?.(next.filter(o => o.status === 'pending').length);
+        const found = prev.find(o => o.id === id);
+        if (found) setResolvedOffers(r => [{ ...found, status: 'approved' as CarOfferStatus }, ...r]);
+        const next = prev.filter(o => o.id !== id);
+        onPendingCountChange?.(next.length);
         return next;
       });
       setSearchResults(prev => prev.map(o => o.id === id ? { ...o, status: 'approved' as CarOfferStatus } : o));
@@ -1068,9 +1073,12 @@ function OffersTab({ onPendingCountChange }: { onPendingCountChange?: (n: number
       toast.success('Заявка отклонена');
       setRejectModal(null);
       setRejectReason('');
+      // Перемещаем из pending → resolved (local)
       setOffers(prev => {
-        const next = prev.map(o => o.id === id ? { ...o, status: 'rejected' as CarOfferStatus, rejection_reason: reasonOrNull } : o);
-        onPendingCountChange?.(next.filter(o => o.status === 'pending').length);
+        const found = prev.find(o => o.id === id);
+        if (found) setResolvedOffers(r => [{ ...found, status: 'rejected' as CarOfferStatus, rejection_reason: reasonOrNull }, ...r]);
+        const next = prev.filter(o => o.id !== id);
+        onPendingCountChange?.(next.length);
         return next;
       });
       setSearchResults(prev => prev.map(o => o.id === id ? { ...o, status: 'rejected' as CarOfferStatus, rejection_reason: reasonOrNull } : o));
@@ -1079,9 +1087,35 @@ function OffersTab({ onPendingCountChange }: { onPendingCountChange?: (n: number
     finally { setProcessing(null); }
   };
 
+  const handleRevoke = async () => {
+    if (!revokeModal) return;
+    const id = revokeModal.id;
+    setProcessing(id);
+    try {
+      await adminApi.deleteListing(id);
+      toast.success('Одобрение отозвано, объявление снято с публикации');
+      setRevokeModal(null);
+      // Обновляем в resolved (одобрена → отклонена)
+      setResolvedOffers(prev => prev.map(o => o.id === id
+        ? { ...o, status: 'rejected' as CarOfferStatus, rejection_reason: 'Одобрение отозвано администратором' }
+        : o));
+      setSearchResults(prev => prev.map(o => o.id === id
+        ? { ...o, status: 'rejected' as CarOfferStatus, rejection_reason: 'Одобрение отозвано администратором' }
+        : o));
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Ошибка');
+    } finally {
+      setProcessing(null);
+    }
+  };
+
   const isSearching = searchQuery.trim().length > 0;
-  const displayedOffers = isSearching ? searchResults : offers;
-  const displayedCount = isSearching ? searchResults.length : count;
+  // Объединяем: resolved (одобрено/отклонено локально) + pending (с сервера)
+  const allLocalOffers = [...resolvedOffers, ...offers];
+  const displayedOffers = isSearching
+    ? searchResults
+    : filterStatus ? allLocalOffers.filter(o => o.status === filterStatus) : allLocalOffers;
+  const displayedCount = isSearching ? searchResults.length : (filterStatus ? displayedOffers.length : resolvedOffers.length + count);
   if (loading && offers.length === 0 && !isSearching) return <LoadingSpinner />;
 
   return (
@@ -1151,6 +1185,17 @@ function OffersTab({ onPendingCountChange }: { onPendingCountChange?: (n: number
                       <button onClick={() => setRejectModal({ id: offer.id, brand: offer.brand, model: offer.model })} disabled={processing === offer.id} className="flex items-center gap-1.5 px-3 py-1.5 bg-destructive/10 text-destructive rounded-lg text-sm hover:bg-destructive/20 disabled:opacity-50"><X className="w-3.5 h-3.5" /> Отклонить</button>
                     </div>
                   )}
+                  {offer.status === 'approved' && (
+                    <div className="flex gap-2 mt-3">
+                      <button
+                        onClick={() => setRevokeModal({ id: offer.id, brand: offer.brand, model: offer.model })}
+                        disabled={processing === offer.id}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border border-yellow-500/30 rounded-lg text-sm hover:bg-yellow-500/20 transition-all duration-200 hover:scale-[1.02] disabled:opacity-50 disabled:scale-100">
+                        {processing === offer.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                        Отозвать
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1184,6 +1229,25 @@ function OffersTab({ onPendingCountChange }: { onPendingCountChange?: (n: number
             <div className="flex gap-3">
               <button onClick={() => setRejectModal(null)} className="flex-1 px-4 py-2 bg-secondary text-foreground rounded-lg text-sm hover:bg-secondary/80">Отмена</button>
               <button onClick={handleReject} disabled={!!processing} className="flex-1 px-4 py-2 bg-destructive text-white rounded-lg text-sm hover:opacity-90 disabled:opacity-50">{processing ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Отклонить'}</button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      {revokeModal && (
+        <Modal title={`Отозвать одобрение: ${revokeModal.brand} ${revokeModal.model}`} onClose={() => setRevokeModal(null)}>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Одобрение объявления{' '}
+              <span className="font-semibold text-foreground">{revokeModal.brand} {revokeModal.model}</span>{' '}
+              будет отозвано. Объявление будет снято с публикации и скрыто из каталога.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setRevokeModal(null)} className="flex-1 px-4 py-2 bg-secondary text-foreground rounded-lg text-sm hover:bg-secondary/80">Отмена</button>
+              <button onClick={handleRevoke} disabled={!!processing}
+                className="flex-1 flex justify-center items-center gap-2 px-4 py-2 bg-yellow-500 text-white rounded-lg text-sm hover:opacity-90 disabled:opacity-50 transition-opacity">
+                {processing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+                Отозвать
+              </button>
             </div>
           </div>
         </Modal>

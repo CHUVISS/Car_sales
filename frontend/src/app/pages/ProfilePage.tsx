@@ -1331,8 +1331,63 @@ function ListingCard({ listing, actions }: { listing: MyListing; actions?: React
 }
 
 function MyListingsTab() {
-  const { listings, loading } = useMyListings();
+  const { listings, loading, reload } = useMyListings();
   const active = listings.filter(l => l.status === 'active' || l.status === 'reserved');
+
+  const [deactivating,   setDeactivating]   = useState<string | null>(null);
+  const [archiving,      setArchiving]      = useState<string | null>(null);
+  const [deleting,       setDeleting]       = useState<string | null>(null);
+  const [deactivateConfirm, setDeactivateConfirm] = useState<{ id: string; label: string } | null>(null);
+  const [archiveConfirm,    setArchiveConfirm]    = useState<{ id: string; label: string } | null>(null);
+  const [deleteConfirm,     setDeleteConfirm]     = useState<{ id: string; label: string } | null>(null);
+
+  const makeLabel = (l: MyListing) =>
+    `${formatCatalogId(l.mark_id)} ${formatModelId(l.mark_id, l.model_id)} ${l.year}`;
+
+  const handleDeactivate = async () => {
+    if (!deactivateConfirm) return;
+    setDeactivating(deactivateConfirm.id);
+    setDeactivateConfirm(null);
+    try {
+      await listingsApi.archive(deactivateConfirm.id);
+      toast.success('Объявление снято с публикации');
+      reload();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Ошибка');
+    } finally {
+      setDeactivating(null);
+    }
+  };
+
+  const handleArchive = async () => {
+    if (!archiveConfirm) return;
+    setArchiving(archiveConfirm.id);
+    setArchiveConfirm(null);
+    try {
+      await listingsApi.archive(archiveConfirm.id);
+      toast.success('Объявление перемещено в архив');
+      reload();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Ошибка');
+    } finally {
+      setArchiving(null);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteConfirm) return;
+    setDeleting(deleteConfirm.id);
+    setDeleteConfirm(null);
+    try {
+      await listingsApi.archive(deleteConfirm.id);
+      toast.success('Объявление удалено');
+      reload();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Ошибка');
+    } finally {
+      setDeleting(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -1356,19 +1411,188 @@ function MyListingsTab() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-semibold text-foreground">Мои объявления</h2>
-        <Link to="/sell" className="text-sm text-primary hover:underline">+ Новое</Link>
+    <>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-2xl font-semibold text-foreground">Мои объявления</h2>
+          <Link to="/sell" className="text-sm text-primary hover:underline">+ Новое</Link>
+        </div>
+
+        {active.map(l => (
+          <ListingCard
+            key={l.id}
+            listing={l}
+            actions={
+              l.status === 'reserved' ? (
+                /* Зарезервировано — только редактировать */
+                <Link
+                  to={`/listing/${l.id}/edit`}
+                  className="flex items-center gap-1.5 px-4 py-2 text-sm border border-border rounded-lg hover:bg-secondary transition-colors">
+                  <Pencil className="w-3.5 h-3.5" /> Редактировать
+                </Link>
+              ) : (
+                <>
+                  {/* Неактивно — с подтверждением */}
+                  <button
+                    onClick={() => setDeactivateConfirm({ id: l.id, label: makeLabel(l) })}
+                    disabled={deactivating === l.id || archiving === l.id || deleting === l.id}
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border border-yellow-500/30 rounded-lg hover:bg-yellow-500/20 transition-all duration-200 hover:scale-[1.02] disabled:opacity-50 disabled:scale-100">
+                    {deactivating === l.id
+                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      : <EyeOff className="w-3.5 h-3.5" />}
+                    Неактивно
+                  </button>
+
+                  {/* Редактировать */}
+                  <Link
+                    to={`/listing/${l.id}/edit`}
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm border border-border rounded-lg hover:bg-secondary transition-all duration-200 hover:scale-[1.02]">
+                    <Pencil className="w-3.5 h-3.5" /> Редактировать
+                  </Link>
+
+                  {/* В архив — с подтверждением */}
+                  <button
+                    onClick={() => setArchiveConfirm({ id: l.id, label: makeLabel(l) })}
+                    disabled={deactivating === l.id || archiving === l.id || deleting === l.id}
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm border border-border rounded-lg hover:bg-secondary transition-all duration-200 hover:scale-[1.02] disabled:opacity-50 disabled:scale-100">
+                    {archiving === l.id
+                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      : <Archive className="w-3.5 h-3.5" />}
+                    В архив
+                  </button>
+
+                  {/* Удалить — с жёстким подтверждением */}
+                  <button
+                    onClick={() => setDeleteConfirm({ id: l.id, label: makeLabel(l) })}
+                    disabled={deactivating === l.id || archiving === l.id || deleting === l.id}
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm text-destructive border border-destructive/40 rounded-lg hover:bg-destructive/10 transition-all duration-200 hover:scale-[1.02] disabled:opacity-50 disabled:scale-100">
+                    {deleting === l.id
+                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      : <Trash2 className="w-3.5 h-3.5" />}
+                    Удалить
+                  </button>
+                </>
+              )
+            }
+          />
+        ))}
       </div>
-      {active.map(l => <ListingCard key={l.id} listing={l} />)}
-    </div>
+
+      {/* Модал: Неактивно */}
+      {deactivateConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setDeactivateConfirm(null)} />
+          <div className="relative bg-card border border-border rounded-2xl p-6 w-full max-w-md shadow-xl">
+            <h3 className="text-lg font-semibold text-foreground mb-2 text-center">Снять с публикации</h3>
+            <p className="text-sm text-muted-foreground mb-5 text-center">
+              Объявление <span className="font-semibold text-foreground">{deactivateConfirm.label}</span> будет скрыто из каталога. Восстановить его можно из раздела «Архив».
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeactivateConfirm(null)}
+                className="flex-1 px-4 py-2 text-sm border border-border rounded-lg hover:bg-secondary transition-colors">
+                Отмена
+              </button>
+              <button onClick={handleDeactivate} disabled={!!deactivating}
+                className="flex-1 flex justify-center items-center gap-2 px-4 py-2 text-sm bg-yellow-500 text-white rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity">
+                {deactivating ? <Loader2 className="w-4 h-4 animate-spin" /> : <EyeOff className="w-4 h-4" />}
+                Снять
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модал: В архив */}
+      {archiveConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setArchiveConfirm(null)} />
+          <div className="relative bg-card border border-border rounded-2xl p-6 w-full max-w-md shadow-xl">
+            <h3 className="text-lg font-semibold text-foreground mb-2 text-center">Переместить в архив</h3>
+            <p className="text-sm text-muted-foreground mb-5 text-center">
+              Объявление <span className="font-semibold text-foreground">{archiveConfirm.label}</span> будет снято с публикации и перемещено в архив.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setArchiveConfirm(null)}
+                className="flex-1 px-4 py-2 text-sm border border-border rounded-lg hover:bg-secondary transition-colors">
+                Отмена
+              </button>
+              <button onClick={handleArchive} disabled={!!archiving}
+                className="flex-1 flex justify-center items-center gap-2 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity">
+                {archiving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Archive className="w-4 h-4" />}
+                В архив
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модал: Удалить */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setDeleteConfirm(null)} />
+          <div className="relative bg-card border border-border rounded-2xl p-6 w-full max-w-md shadow-xl">
+            <h3 className="text-lg font-semibold text-foreground mb-2 text-center">Удалить объявление</h3>
+            <p className="text-sm text-muted-foreground mb-5 text-center">
+              Вы уверены, что хотите удалить <span className="font-semibold text-foreground">{deleteConfirm.label}</span>?
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteConfirm(null)}
+                className="flex-1 px-4 py-2 text-sm border border-border rounded-lg hover:bg-secondary transition-colors">
+                Отмена
+              </button>
+              <button onClick={handleDelete} disabled={!!deleting}
+                className="flex-1 flex justify-center items-center gap-2 px-4 py-2 text-sm bg-destructive text-white rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity">
+                {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                Удалить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
 function ArchiveTab() {
-  const { listings, loading } = useMyListings();
+  const { listings, loading, reload } = useMyListings();
   const archived = listings.filter(l => l.status === 'archived' || l.status === 'sold');
+  const [activating,     setActivating]     = useState<string | null>(null);
+  const [deleting,       setDeleting]       = useState<string | null>(null);
+  const [activateConfirm, setActivateConfirm] = useState<{ id: string; label: string } | null>(null);
+  const [deleteConfirm,   setDeleteConfirm]   = useState<{ id: string; label: string } | null>(null);
+
+  const makeLabel = (l: MyListing) =>
+    `${formatCatalogId(l.mark_id)} ${formatModelId(l.mark_id, l.model_id)} ${l.year}`;
+
+  const handleActivate = async () => {
+    if (!activateConfirm) return;
+    setActivating(activateConfirm.id);
+    setActivateConfirm(null);
+    try {
+      await listingsApi.publish(activateConfirm.id);
+      toast.success('Объявление отправлено на модерацию');
+      reload();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Ошибка');
+    } finally {
+      setActivating(null);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteConfirm) return;
+    setDeleting(deleteConfirm.id);
+    setDeleteConfirm(null);
+    try {
+      await listingsApi.archive(deleteConfirm.id);
+      toast.success('Объявление удалено');
+      reload();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Ошибка');
+    } finally {
+      setDeleting(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -1389,10 +1613,94 @@ function ArchiveTab() {
   }
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-2xl font-semibold text-foreground">Архив</h2>
-      {archived.map(l => <ListingCard key={l.id} listing={l} />)}
-    </div>
+    <>
+      <div className="space-y-4">
+        <h2 className="text-2xl font-semibold text-foreground">Архив</h2>
+        {archived.map(l => (
+          <ListingCard
+            key={l.id}
+            listing={l}
+            actions={
+              l.status === 'sold' ? (
+                /* Продано — ничего нельзя */
+                <p className="text-sm text-muted-foreground italic">Продано</p>
+              ) : (
+                <>
+                  {/* Активно — с подтверждением */}
+                  <button
+                    onClick={() => setActivateConfirm({ id: l.id, label: makeLabel(l) })}
+                    disabled={activating === l.id || deleting === l.id}
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm bg-accent/10 text-accent border border-accent/30 rounded-lg hover:bg-accent/20 transition-all duration-200 hover:scale-[1.02] disabled:opacity-50 disabled:scale-100">
+                    {activating === l.id
+                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      : <Eye className="w-3.5 h-3.5" />}
+                    Активно
+                  </button>
+
+                  {/* Удалить */}
+                  <button
+                    onClick={() => setDeleteConfirm({ id: l.id, label: makeLabel(l) })}
+                    disabled={activating === l.id || deleting === l.id}
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm text-destructive border border-destructive/40 rounded-lg hover:bg-destructive/10 transition-all duration-200 hover:scale-[1.02] disabled:opacity-50 disabled:scale-100">
+                    {deleting === l.id
+                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      : <Trash2 className="w-3.5 h-3.5" />}
+                    Удалить
+                  </button>
+                </>
+              )
+            }
+          />
+        ))}
+      </div>
+
+      {/* Модал: Активно */}
+      {activateConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setActivateConfirm(null)} />
+          <div className="relative bg-card border border-border rounded-2xl p-6 w-full max-w-md shadow-xl">
+            <h3 className="text-lg font-semibold text-foreground mb-2 text-center">Опубликовать объявление</h3>
+            <p className="text-sm text-muted-foreground mb-5 text-center">
+              Объявление <span className="font-semibold text-foreground">{activateConfirm.label}</span> будет отправлено на модерацию. После проверки оно снова появится в каталоге.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setActivateConfirm(null)}
+                className="flex-1 px-4 py-2 text-sm border border-border rounded-lg hover:bg-secondary transition-colors">
+                Отмена
+              </button>
+              <button onClick={handleActivate} disabled={!!activating}
+                className="flex-1 flex justify-center items-center gap-2 px-4 py-2 text-sm bg-accent text-accent-foreground rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity">
+                {activating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
+                Опубликовать
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setDeleteConfirm(null)} />
+          <div className="relative bg-card border border-border rounded-2xl p-6 w-full max-w-md shadow-xl">
+            <h3 className="text-lg font-semibold text-foreground mb-2 text-center">Удалить объявление</h3>
+            <p className="text-sm text-muted-foreground mb-5 text-center">
+              Вы уверены, что хотите удалить <span className="font-semibold text-foreground">{deleteConfirm.label}</span>?
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteConfirm(null)}
+                className="flex-1 px-4 py-2 text-sm border border-border rounded-lg hover:bg-secondary transition-colors">
+                Отмена
+              </button>
+              <button onClick={handleDelete} disabled={!!deleting}
+                className="flex-1 flex justify-center items-center gap-2 px-4 py-2 text-sm bg-destructive text-white rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity">
+                {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                Удалить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

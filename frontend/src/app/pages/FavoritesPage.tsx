@@ -90,7 +90,7 @@ export function FavoritesPage() {
         </p>
         <Link
           to="/catalog"
-          className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity"
+          className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-lg transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25"
         >
           <ShoppingBag className="w-5 h-5" />
           Перейти в каталог
@@ -139,7 +139,7 @@ export function FavoritesPage() {
           return (
             <div
               key={car.id}
-              className="bg-card border border-border rounded-xl overflow-hidden hover:shadow-md transition-shadow group"
+              className="bg-card border border-border rounded-xl overflow-hidden transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25 group"
             >
               <div className="flex">
                 {/* Фото */}
@@ -199,7 +199,7 @@ export function FavoritesPage() {
                     </p>
                     <Link
                       to={`/car/${car.id}`}
-                      className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm hover:opacity-90 transition-opacity flex-shrink-0"
+                      className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25 flex-shrink-0"
                     >
                       Подробнее
                     </Link>
