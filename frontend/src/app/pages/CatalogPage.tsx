@@ -18,7 +18,6 @@ const FUELS = [['petrol', 'Бензин'], ['diesel', 'Дизель'], ['electri
 const BODY_TYPES = ['Седан', 'Хэтчбек', 'Универсал', 'Внедорожник', 'Кроссовер', 'Купе', 'Минивэн', 'Пикап', 'Кабриолет', 'Лифтбек', 'Фургон'] as const;
 
 const inputCls = "w-full px-3 py-2 bg-secondary text-foreground placeholder:text-muted-foreground rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary border border-transparent focus:border-primary";
-const selectCls = "w-full px-3 py-2 bg-secondary text-foreground rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary border border-transparent appearance-none cursor-pointer";
 
 const STATUS_LABELS: Record<string, string> = {
   available: 'В наличии', reserved: 'Зарезервирован', sold: 'Продан', inactive: 'Снят с продажи',
@@ -92,6 +91,7 @@ function SearchableMultiSelect<T extends string>({
 }
 
 function fmtNum(s: string) { return s.replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
+
 
 const SORT_OPTIONS: { value: NonNullable<CarFilters['sort_by']>; label: string }[] = [
   { value: 'date_desc', label: 'Новые' },
@@ -364,9 +364,9 @@ export function CatalogPage() {
 
   const [marks, setMarks] = useState<CatalogMark[]>([]);
   const [availableModels, setAvailableModels] = useState<CatalogModel[]>([]);
-  const [selectedGenId, setSelectedGenId] = useState('');
-  const [selectedConfId, setSelectedConfId] = useState('');
-  const [selectedModifId, setSelectedModifId] = useState('');
+  const [selectedGenIds, setSelectedGenIds] = useState<string[]>([]);
+  const [selectedConfIds, setSelectedConfIds] = useState<string[]>([]);
+  const [selectedModifIds, setSelectedModifIds] = useState<string[]>([]);
   const [availableGens, setAvailableGens] = useState<CatalogGeneration[]>([]);
   const [availableConfs, setAvailableConfs] = useState<CatalogConfiguration[]>([]);
   const [availableModifs, setAvailableModifs] = useState<CatalogModification[]>([]);
@@ -432,7 +432,7 @@ export function CatalogPage() {
   }, [selectedBrands, marks]);
 
   useEffect(() => {
-    setSelectedGenId(''); setSelectedConfId(''); setSelectedModifId('');
+    setSelectedGenIds([]); setSelectedConfIds([]); setSelectedModifIds([]);
     setAvailableGens([]); setAvailableConfs([]); setAvailableModifs([]);
     if (selectedModels.length !== 1) return;
     const modelId = availableModels.find(m => modelLabel(m) === selectedModels[0])?.id;
@@ -442,18 +442,22 @@ export function CatalogPage() {
   }, [selectedModels, availableModels]);
 
   useEffect(() => {
-    setSelectedConfId(''); setSelectedModifId('');
+    setSelectedConfIds([]); setSelectedModifIds([]);
     setAvailableConfs([]); setAvailableModifs([]);
-    if (!selectedGenId) return;
-    catalogApi.getConfigurations(selectedGenId).then(setAvailableConfs).catch(() => {});
-  }, [selectedGenId]);
+    if (selectedGenIds.length === 0) return;
+    Promise.all(selectedGenIds.map(id => catalogApi.getConfigurations(id)))
+      .then(results => setAvailableConfs(results.flat()))
+      .catch(() => {});
+  }, [selectedGenIds]);
 
   useEffect(() => {
-    setSelectedModifId('');
+    setSelectedModifIds([]);
     setAvailableModifs([]);
-    if (!selectedConfId) return;
-    catalogApi.getModifications(selectedConfId).then(setAvailableModifs).catch(() => {});
-  }, [selectedConfId]);
+    if (selectedConfIds.length === 0) return;
+    Promise.all(selectedConfIds.map(id => catalogApi.getModifications(id)))
+      .then(results => setAvailableModifs(results.flat()))
+      .catch(() => {});
+  }, [selectedConfIds]);
 
   const apiFilters: CarFilters = useMemo(() => {
     const f: CarFilters = { sort_by: sortBy };
@@ -515,19 +519,25 @@ export function CatalogPage() {
     const mMax = mileageMax ? Number(mileageMax) : null;
     if (pMin !== null || pMax !== null) result = result.filter(c => { const p = Number(c.price); return (pMin === null || p >= pMin) && (pMax === null || p <= pMax); });
     if (mMin !== null || mMax !== null) result = result.filter(c => { const m = Number(c.mileage); return (mMin === null || m >= mMin) && (mMax === null || m <= mMax); });
-    if (selectedGenId) {
-      const gen = availableGens.find(g => g.id === selectedGenId);
-      if (gen) result = result.filter(c => (!gen.year_from || c.year >= gen.year_from) && (!gen.year_to || c.year <= gen.year_to));
+    if (selectedGenIds.length > 0) {
+      result = result.filter(c => selectedGenIds.some(gid => {
+        const gen = availableGens.find(g => g.id === gid);
+        return gen && (!gen.year_from || c.year >= gen.year_from) && (!gen.year_to || c.year <= gen.year_to);
+      }));
     }
-    if (selectedConfId) {
-      const conf = availableConfs.find(cf => cf.id === selectedConfId);
-      if (conf?.body_type) result = result.filter(c => c.body_type === conf.body_type);
+    if (selectedConfIds.length > 0) {
+      const confBodyTypes = selectedConfIds
+        .map(cid => availableConfs.find(cf => cf.id === cid))
+        .filter(Boolean)
+        .map(cf => cf!.body_type)
+        .filter(Boolean);
+      if (confBodyTypes.length > 0) result = result.filter(c => confBodyTypes.includes(c.body_type));
     }
     return result;
-  }, [allCars, searchQuery, selectedBrands, selectedModels, selectedTransmissions, selectedFuels, selectedColors, selectedBodyTypes, priceMin, priceMax, mileageMin, mileageMax, selectedGenId, selectedConfId, availableGens, availableConfs]);
+  }, [allCars, searchQuery, selectedBrands, selectedModels, selectedTransmissions, selectedFuels, selectedColors, selectedBodyTypes, priceMin, priceMax, mileageMin, mileageMax, selectedGenIds, selectedConfIds, availableGens, availableConfs]);
 
   const resetFilters = () => {
-    setSelectedBrands([]); setSelectedModels([]); setSelectedGenId(''); setSelectedConfId(''); setSelectedModifId('');
+    setSelectedBrands([]); setSelectedModels([]); setSelectedGenIds([]); setSelectedConfIds([]); setSelectedModifIds([]);
     setSelectedTransmissions([]); setSelectedFuels([]); setSelectedColors([]); setSelectedBodyTypes([]);
     setSortBy('date_desc'); setSearchQuery('');
     setPriceMin(''); setPriceMax(''); setMileageMin(''); setMileageMax(''); setYearMin(''); setYearMax('');
@@ -535,7 +545,7 @@ export function CatalogPage() {
     setSearchParams({});
   };
 
-  const hasActiveFilters = selectedBrands.length > 0 || selectedModels.length > 0 || Boolean(selectedGenId) || Boolean(selectedConfId) || Boolean(selectedModifId) || selectedTransmissions.length > 0 || selectedFuels.length > 0 || selectedColors.length > 0 || selectedBodyTypes.length > 0 || priceMin || priceMax || mileageMin || mileageMax || yearMin || yearMax;
+  const hasActiveFilters = selectedBrands.length > 0 || selectedModels.length > 0 || selectedGenIds.length > 0 || selectedConfIds.length > 0 || selectedModifIds.length > 0 || selectedTransmissions.length > 0 || selectedFuels.length > 0 || selectedColors.length > 0 || selectedBodyTypes.length > 0 || priceMin || priceMax || mileageMin || mileageMax || yearMin || yearMax;
 
   const filtersPanel = (
     <div className="bg-card rounded-xl border border-border p-5 space-y-5">
@@ -565,46 +575,34 @@ export function CatalogPage() {
         <SearchableMultiSelect label="Модель" options={availableModels.map(m => ({ value: modelLabel(m), label: modelLabel(m) }))} selected={selectedModels} onToggle={v => setSelectedModels(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])} onClear={() => setSelectedModels([])} placeholder="Все модели" />
       )}
       {selectedModels.length === 1 && availableGens.length > 0 && (
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="font-semibold text-foreground">Поколение</h3>
-            {selectedGenId && <button type="button" onClick={() => setSelectedGenId('')} className="text-xs text-destructive hover:underline flex items-center gap-1"><X className="w-3 h-3" />Очистить</button>}
-          </div>
-          <select value={selectedGenId} onChange={e => setSelectedGenId(e.target.value)} className={selectCls}>
-            <option value="">Любое</option>
-            {availableGens.map(g => (
-              <option key={g.id} value={g.id}>{g.name ?? `${g.year_from ?? ''}–${g.year_to ?? '...'}`}</option>
-            ))}
-          </select>
-        </div>
+        <SearchableMultiSelect
+          label="Поколение"
+          options={availableGens.map(g => ({ value: g.id, label: g.name ?? `${g.year_from ?? ''}–${g.year_to ?? '...'}` }))}
+          selected={selectedGenIds}
+          onToggle={v => setSelectedGenIds(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])}
+          onClear={() => setSelectedGenIds([])}
+          placeholder="Любое"
+        />
       )}
-      {selectedGenId && availableConfs.length > 0 && (
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="font-semibold text-foreground">Комплектация</h3>
-            {selectedConfId && <button type="button" onClick={() => setSelectedConfId('')} className="text-xs text-destructive hover:underline flex items-center gap-1"><X className="w-3 h-3" />Очистить</button>}
-          </div>
-          <select value={selectedConfId} onChange={e => setSelectedConfId(e.target.value)} className={selectCls}>
-            <option value="">Любая</option>
-            {availableConfs.map(c => (
-              <option key={c.id} value={c.id}>{c.name ?? c.id}</option>
-            ))}
-          </select>
-        </div>
+      {selectedGenIds.length > 0 && availableConfs.length > 0 && (
+        <SearchableMultiSelect
+          label="Комплектация"
+          options={availableConfs.map(c => ({ value: c.id, label: c.name ?? c.id }))}
+          selected={selectedConfIds}
+          onToggle={v => setSelectedConfIds(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])}
+          onClear={() => setSelectedConfIds([])}
+          placeholder="Любая"
+        />
       )}
-      {selectedConfId && availableModifs.length > 0 && (
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="font-semibold text-foreground">Модификация</h3>
-            {selectedModifId && <button type="button" onClick={() => setSelectedModifId('')} className="text-xs text-destructive hover:underline flex items-center gap-1"><X className="w-3 h-3" />Очистить</button>}
-          </div>
-          <select value={selectedModifId} onChange={e => setSelectedModifId(e.target.value)} className={selectCls}>
-            <option value="">Любая</option>
-            {availableModifs.map(m => (
-              <option key={m.id} value={m.id}>{m.name ?? m.group_name ?? m.id}</option>
-            ))}
-          </select>
-        </div>
+      {selectedConfIds.length > 0 && availableModifs.length > 0 && (
+        <SearchableMultiSelect
+          label="Модификация"
+          options={availableModifs.map(m => ({ value: m.id, label: m.name ?? m.group_name ?? m.id }))}
+          selected={selectedModifIds}
+          onToggle={v => setSelectedModifIds(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])}
+          onClear={() => setSelectedModifIds([])}
+          placeholder="Любая"
+        />
       )}
       <SearchableMultiSelect label="Коробка передач" options={TRANSMISSIONS.map(([v, l]) => ({ value: v, label: l }))} selected={selectedTransmissions} onToggle={v => setSelectedTransmissions(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])} onClear={() => setSelectedTransmissions([])} placeholder="Любая" />
       <SearchableMultiSelect label="Тип топлива" options={FUELS.map(([v, l]) => ({ value: v as FuelType, label: l }))} selected={selectedFuels} onToggle={v => setSelectedFuels(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])} onClear={() => setSelectedFuels([])} placeholder="Любой" />
