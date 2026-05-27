@@ -33,6 +33,14 @@ export interface Car {
   status: CarStatus;
   created_at: string;
   images: CarImage[];
+  // Seller info — populated by GET /listings/:id
+  seller_name?: string | null;
+  seller_phone?: string | null;
+  // Listing settings
+  sale_address?: string | null;
+  viewing_enabled?: boolean | null;
+  accepts_cash?: boolean | null;
+  accepts_transfer?: boolean | null;
 }
 
 export interface CarsPublic {

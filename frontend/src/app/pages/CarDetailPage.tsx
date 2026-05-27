@@ -1,11 +1,10 @@
 import { useParams, Link, useNavigate } from 'react-router';
-import { ArrowLeft, Heart, Share2, Phone, Calendar, ChevronLeft, ChevronRight, Clock, MapPin, Loader2, CreditCard, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Heart, Share2, Phone, Calendar, ChevronLeft, ChevronRight, Clock, MapPin, Loader2, CreditCard, CheckCircle, Banknote, ArrowRightLeft } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 import { toast } from 'sonner';
 import { useCar } from '../hooks/useCars';
 import { useFavorites } from '../hooks/useFavorites';
-import { useSalonInfo } from '../hooks/useSalonInfo';
 import { viewingsApi, type ViewingWindow } from '../api/viewings';
 import { reservationsApi } from '../api/reservations';
 
@@ -61,7 +60,6 @@ export function CarDetailPage() {
   const { car, loading, error } = useCar(id);
   const { isFavorite, toggle: toggleFavorite } = useFavorites();
   const navigate = useNavigate();
-  const salonInfo = useSalonInfo();
 
   useEffect(() => { window.scrollTo(0, 0); }, []);
 
@@ -78,16 +76,16 @@ export function CarDetailPage() {
   const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
   const [reservationDone, setReservationDone] = useState(false);
 
-  // Загружаем окна просмотра когда открывается панель
+  // Загружаем окна просмотра при маунте — нужны и для секции «Осмотр», и для панели бронирования
   useEffect(() => {
-    if (!showBookingPanel || !id) return;
+    if (!id) return;
     setWindowsLoading(true);
     viewingsApi
       .getAvailableSlots(id)
       .then((data) => setWindows(data.filter((w) => w.is_available)))
       .catch(() => setWindows([]))
       .finally(() => setWindowsLoading(false));
-  }, [showBookingPanel, id]);
+  }, [id]);
 
   if (loading) {
     return (
@@ -480,44 +478,86 @@ export function CarDetailPage() {
               <div className="mt-6 pt-6 border-t border-border">
                 <h4 className="font-semibold text-foreground mb-3">Продавец</h4>
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="w-12 h-12 bg-primary rounded-full flex items-center justify-center text-primary-foreground text-lg font-semibold">МД</div>
+                  <div className="w-12 h-12 bg-primary rounded-full flex items-center justify-center text-primary-foreground text-lg font-semibold select-none">
+                    {car.seller_name
+                      ? car.seller_name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('')
+                      : '?'}
+                  </div>
                   <div>
-                    <p className="font-semibold text-foreground">Матвей Дворников</p>
+                    <p className="font-semibold text-foreground">
+                      {car.seller_name ?? 'Частный продавец'}
+                    </p>
+                    {car.seller_phone && (
+                      <a href={`tel:${car.seller_phone}`}
+                        className="text-sm text-primary hover:underline">
+                        {car.seller_phone}
+                      </a>
+                    )}
                   </div>
                 </div>
+                {/* Способы оплаты */}
+                {(car.accepts_cash || car.accepts_transfer) && (
+                  <div className="flex gap-2 mt-2">
+                    {car.accepts_cash && (
+                      <span className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-secondary text-muted-foreground border border-border">
+                        <Banknote className="w-3.5 h-3.5" /> Наличные
+                      </span>
+                    )}
+                    {car.accepts_transfer && (
+                      <span className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-secondary text-muted-foreground border border-border">
+                        <ArrowRightLeft className="w-3.5 h-3.5" /> Перевод
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
 
+              {/* Осмотр автомобиля */}
               <div className="mt-6 pt-6 border-t border-border">
                 <h4 className="font-semibold text-foreground mb-3">Осмотр автомобиля</h4>
-                {salonInfo ? (
-                  <div className="space-y-3">
-                    <div className="flex items-start gap-2">
-                      <Clock className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
-                      <div className="space-y-1">
-                        {salonInfo.working_hours.map(wh => (
-                          <div key={wh.days} className="flex gap-2 text-sm">
-                            <span className="text-muted-foreground w-16 flex-shrink-0">{wh.days}</span>
-                            <span className="font-medium text-foreground">{wh.hours}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <MapPin className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
-                      {salonInfo.map_url ? (
-                        <a href={salonInfo.map_url} target="_blank" rel="noopener noreferrer"
-                          className="text-sm text-primary hover:underline">{salonInfo.address}</a>
-                      ) : (
-                        <span className="text-sm text-foreground">{salonInfo.address}</span>
+
+                {car.viewing_enabled === false ? (
+                  <p className="text-sm text-muted-foreground">Продавец не предусмотрел осмотр</p>
+                ) : windowsLoading ? (
+                  <div className="space-y-2">
+                    <div className="h-3.5 bg-secondary rounded animate-pulse w-3/4" />
+                    <div className="h-3.5 bg-secondary rounded animate-pulse w-1/2" />
+                  </div>
+                ) : windows.length > 0 ? (
+                  <div className="flex items-start gap-2">
+                    <Clock className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      {sortedDates.slice(0, 4).map(date => (
+                        <div key={date} className="flex items-center gap-2 text-sm">
+                          <span className="text-muted-foreground w-20 flex-shrink-0">{formatWindowDate(date)}</span>
+                          <span className="text-foreground font-medium">
+                            {groupedWindows[date].map(w => `${w.time_from.slice(0, 5)}–${w.time_to.slice(0, 5)}`).join(', ')}
+                          </span>
+                        </div>
+                      ))}
+                      {sortedDates.length > 4 && (
+                        <p className="text-xs text-muted-foreground">
+                          и ещё {sortedDates.length - 4} {sortedDates.length - 4 === 1 ? 'день' : 'дня'}…
+                        </p>
                       )}
                     </div>
                   </div>
                 ) : (
-                  <div className="space-y-2">
-                    <div className="h-4 bg-secondary rounded animate-pulse w-3/4" />
-                    <div className="h-4 bg-secondary rounded animate-pulse w-1/2" />
-                  </div>
+                  <p className="text-sm text-muted-foreground">Расписание просмотров не указано</p>
                 )}
+
+                {/* Адрес осмотра */}
+                <div className="flex items-start gap-2 mt-3">
+                  <MapPin className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+                  {car.sale_address ? (
+                    <span className="text-sm text-foreground">{car.sale_address}</span>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">
+                      {car.city_name ? `${car.city_name} · ` : ''}
+                      Адрес будет раскрыт после бронирования
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           </div>
