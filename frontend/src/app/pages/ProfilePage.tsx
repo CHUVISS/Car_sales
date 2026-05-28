@@ -659,21 +659,46 @@ function ReservationsTab({ userId }: { userId: string }) {
   const [declineReason, setDeclineReason] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('');
 
+  const REVEALED = ['active', 'settling', 'completed'];
+
   const load = async () => {
     setLoading(true);
     try {
       const data = await reservationsApi.my();
       setReservations(data);
+
+      // Параллельно: детали машин + детали броней (для seller_phone / sale_address)
       const uniqueIds = [...new Set(data.map(r => r.listing_id))];
-      const results = await Promise.allSettled(uniqueIds.map(id => carsApi.get(id)));
+      const toEnrich = data.filter(r => REVEALED.includes(r.status));
+
+      const [carResults, detailResults] = await Promise.all([
+        Promise.allSettled(uniqueIds.map(id => carsApi.get(id))),
+        Promise.allSettled(toEnrich.map(r => reservationsApi.get(r.id))),
+      ]);
+
+      // Карта авто
       const map: Record<string, string> = {};
-      results.forEach((r, i) => {
+      carResults.forEach((r, i) => {
         if (r.status === 'fulfilled') {
           const c = r.value;
           map[uniqueIds[i]] = `${c.brand} ${c.model} ${c.year}`;
         }
       });
       setCarsMap(map);
+
+      // Мержим seller_phone / sale_address в список броней
+      const detailMap: Record<string, Partial<Reservation>> = {};
+      toEnrich.forEach((r, i) => {
+        const result = detailResults[i];
+        if (result.status === 'fulfilled') {
+          detailMap[r.id] = {
+            seller_phone: result.value.seller_phone,
+            sale_address: result.value.sale_address,
+          };
+        }
+      });
+
+      setReservations(data.map(r => ({ ...r, ...(detailMap[r.id] ?? {}) })));
     } catch {
       setReservations([]);
     } finally {
@@ -871,6 +896,27 @@ function ReservationsTab({ userId }: { userId: string }) {
                 </div>
               )}
 
+              {/* Итог завершённой брони */}
+              {r.status === 'completed' && r.outcome && (
+                <div className={`mt-3 p-3 rounded-lg border flex items-center gap-2 text-sm font-medium ${
+                  r.outcome === 'sold'
+                    ? 'bg-accent/10 border-accent/30 text-accent'
+                    : 'bg-muted border-border text-muted-foreground'
+                }`}>
+                  {r.outcome === 'sold'
+                    ? <CheckCircle className="w-4 h-4 flex-shrink-0" />
+                    : <X className="w-4 h-4 flex-shrink-0" />}
+                  <span>
+                    {r.outcome === 'sold' ? RT.outcomeCompletedSold : RT.outcomeCompletedNotSold}
+                    {r.outcome_set_at && (
+                      <span className="font-normal text-xs ml-2 opacity-70">
+                        {RT.outcomeSetAt} {new Date(r.outcome_set_at).toLocaleDateString(dateFmt, { day: 'numeric', month: 'short' })}
+                      </span>
+                    )}
+                  </span>
+                </div>
+              )}
+
               <div className="flex flex-wrap gap-2 mt-4">
                 {isBuyer && r.status === 'pending_payment' && !r.yk_payment_id && (
                   <button
@@ -892,8 +938,13 @@ function ReservationsTab({ userId }: { userId: string }) {
                   </button>
                 )}
 
-                {isBuyer && r.status === 'active' && (
-                  <ReservationOutcomeButtons reservationId={r.id} onDone={load} />
+                {(isBuyer || isSeller) && (r.status === 'active' || r.status === 'settling') && (
+                  <ReservationOutcomeButtons
+                    reservationId={r.id}
+                    reservation={r}
+                    userId={userId}
+                    onDone={load}
+                  />
                 )}
 
                 {isSeller && (r.status === 'pending_payment' || r.status === 'active') && (
@@ -904,10 +955,6 @@ function ReservationsTab({ userId }: { userId: string }) {
                     {declining === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
                     {RT.declineBookingBtn}
                   </button>
-                )}
-
-                {isSeller && r.status === 'active' && (
-                  <ReservationOutcomeButtons reservationId={r.id} onDone={load} />
                 )}
               </div>
             </div>
@@ -951,10 +998,27 @@ function ReservationsTab({ userId }: { userId: string }) {
   );
 }
 
-function ReservationOutcomeButtons({ reservationId, onDone }: { reservationId: string; onDone: () => void }) {
-  const { T } = useLanguage();
+function ReservationOutcomeButtons({
+  reservationId,
+  reservation,
+  userId,
+  onDone,
+}: {
+  reservationId: string;
+  reservation: Reservation;
+  userId: string;
+  onDone: () => void;
+}) {
+  const { lang, T } = useLanguage();
   const RT = T.profile.reservationsTab;
   const [saving, setSaving] = useState(false);
+
+  const isSettling = reservation.status === 'settling';
+  // Определяем: я уже отметил или нет
+  const myRole = reservation.buyer_id === userId ? 'buyer' : 'seller';
+  const iAlreadyMarked = isSettling && reservation.outcome_set_by === myRole;
+  // Что отметил первый участник (когда settling и я — второй)
+  const otherAlreadyMarked = isSettling && reservation.outcome_set_by !== null && !iAlreadyMarked;
 
   const mark = async (result: 'sold' | 'not_sold') => {
     setSaving(true);
@@ -969,18 +1033,64 @@ function ReservationOutcomeButtons({ reservationId, onDone }: { reservationId: s
     }
   };
 
+  const dateFmt = lang === 'ru' ? 'ru-RU' : 'en-US';
+
+  // Если я уже отметил — показываем ожидание второй стороны
+  if (iAlreadyMarked) {
+    return (
+      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary border border-border text-sm text-muted-foreground w-full">
+        <Loader2 className="w-3.5 h-3.5 animate-spin flex-shrink-0" />
+        <span>
+          {reservation.outcome === 'sold' ? RT.outcomeSold : RT.outcomeNotSold}
+          {' · '}{RT.outcomeAwaitingYours.toLowerCase().replace('вашей', 'ответа другой стороны').replace('your', 'other party')}
+        </span>
+      </div>
+    );
+  }
+
   return (
-    <>
-      <button onClick={() => mark('sold')} disabled={saving}
-        className="flex items-center gap-1.5 px-4 py-2 text-sm bg-accent text-accent-foreground rounded-lg transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-accent/25 disabled:opacity-50 disabled:scale-100 disabled:shadow-none">
-        {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-        {RT.soldBtn}
-      </button>
-      <button onClick={() => mark('not_sold')} disabled={saving}
-        className="flex items-center gap-1.5 px-4 py-2 text-sm border border-border rounded-lg hover:bg-secondary transition-colors disabled:opacity-50">
-        {RT.notSoldBtn}
-      </button>
-    </>
+    <div className="w-full space-y-2">
+      {/* Заголовок секции */}
+      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+        {isSettling ? RT.outcomeSettlingDesc : RT.outcomeTitle}
+      </div>
+
+      {/* Что отметил первый участник */}
+      {otherAlreadyMarked && reservation.outcome && (
+        <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm ${
+          reservation.outcome === 'sold'
+            ? 'bg-accent/10 border-accent/30 text-accent'
+            : 'bg-muted border-border text-muted-foreground'
+        }`}>
+          {reservation.outcome === 'sold'
+            ? <CheckCircle className="w-4 h-4 flex-shrink-0" />
+            : <X className="w-4 h-4 flex-shrink-0" />}
+          <span>
+            {RT.outcomeSetBy}: <strong>
+              {reservation.outcome === 'sold' ? RT.outcomeSold : RT.outcomeNotSold}
+            </strong>
+            {reservation.outcome_set_at && (
+              <span className="opacity-60 ml-1.5 font-normal">
+                · {new Date(reservation.outcome_set_at).toLocaleDateString(dateFmt, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+          </span>
+        </div>
+      )}
+
+      {/* Кнопки выбора */}
+      <div className="flex flex-wrap gap-2">
+        <button onClick={() => mark('sold')} disabled={saving}
+          className="flex items-center gap-1.5 px-4 py-2 text-sm bg-accent text-accent-foreground rounded-lg transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-accent/25 disabled:opacity-50 disabled:scale-100 disabled:shadow-none">
+          {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+          {RT.soldBtn}
+        </button>
+        <button onClick={() => mark('not_sold')} disabled={saving}
+          className="flex items-center gap-1.5 px-4 py-2 text-sm border border-border rounded-lg hover:bg-secondary transition-colors disabled:opacity-50">
+          {RT.notSoldBtn}
+        </button>
+      </div>
+    </div>
   );
 }
 

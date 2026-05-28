@@ -2,12 +2,12 @@ import '@testing-library/jest-dom';
 import { beforeAll, afterAll, afterEach, vi } from 'vitest';
 import { server } from './mocks/server';
 
-// ── MSW ─────────────────────────────────────────────────────────────────────
+// MSW
 beforeAll(() => server.listen({ onUnhandledRequest: 'warn' }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
-// ── localStorage mock ────────────────────────────────────────────────────────
+// localStorage mock
 const localStorageMock = (() => {
   let store: Record<string, string> = {};
   return {
@@ -21,7 +21,7 @@ const localStorageMock = (() => {
 })();
 Object.defineProperty(window, 'localStorage', { value: localStorageMock, writable: true });
 
-// ── matchMedia mock (jsdom doesn't implement it) ─────────────────────────────
+// matchMedia mock (jsdom doesn't implement it)
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: vi.fn().mockImplementation((query: string) => ({

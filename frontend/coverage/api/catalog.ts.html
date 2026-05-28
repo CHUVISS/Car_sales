@@ -25,28 +25,28 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/41</span>
+                <span class='fraction'>0/46</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/15</span>
+                <span class='fraction'>0/17</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/21</span>
+                <span class='fraction'>0/24</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/37</span>
+                <span class='fraction'>0/40</span>
             </div>
         
             
@@ -245,7 +245,20 @@
 <a name='L180'></a><a href='#L180'>180</a>
 <a name='L181'></a><a href='#L181'>181</a>
 <a name='L182'></a><a href='#L182'>182</a>
-<a name='L183'></a><a href='#L183'>183</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L183'></a><a href='#L183'>183</a>
+<a name='L184'></a><a href='#L184'>184</a>
+<a name='L185'></a><a href='#L185'>185</a>
+<a name='L186'></a><a href='#L186'>186</a>
+<a name='L187'></a><a href='#L187'>187</a>
+<a name='L188'></a><a href='#L188'>188</a>
+<a name='L189'></a><a href='#L189'>189</a>
+<a name='L190'></a><a href='#L190'>190</a>
+<a name='L191'></a><a href='#L191'>191</a>
+<a name='L192'></a><a href='#L192'>192</a>
+<a name='L193'></a><a href='#L193'>193</a>
+<a name='L194'></a><a href='#L194'>194</a>
+<a name='L195'></a><a href='#L195'>195</a>
+<a name='L196'></a><a href='#L196'>196</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -390,6 +403,18 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -417,17 +442,18 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { api } from './client';
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { api, resolveImageUrl } from './client';
 &nbsp;
 export interface CatalogMark {
   id: string;
@@ -503,7 +529,7 @@ export const catalogApi = <span class="cstat-no" title="statement not covered" >
 <span class="cstat-no" title="statement not covered" >    api.get&lt;GeoCity[]&gt;('/geo/cities'),</span>
 };
 &nbsp;
-// ── City-by-ID resolver (module-level cache, fetched once per session) ────────
+// City-by-ID resolver (module-level cache, fetched once per session)
 let _allCitiesCache: GeoCity[] | null = <span class="cstat-no" title="statement not covered" >null;</span>
 let _fetchingCities: Promise&lt;GeoCity[]&gt; | null = <span class="cstat-no" title="statement not covered" >null;</span>
 &nbsp;
@@ -572,6 +598,18 @@ export interface ListingCreateBody {
   accepts_transfer?: boolean;
 }
 &nbsp;
+function <span class="fstat-no" title="function not covered" >resolveListingImages(l</span>isting: MyListing): MyListing {
+<span class="cstat-no" title="statement not covered" >  if (!listing.images) <span class="cstat-no" title="statement not covered" >return listing;</span></span>
+<span class="cstat-no" title="statement not covered" >  return {</span>
+    ...listing,
+    images: listing.images.<span class="fstat-no" title="function not covered" >map(i</span>mg =&gt; (<span class="cstat-no" title="statement not covered" >{</span>
+      ...img,
+      url: resolveImageUrl(img.url),
+      thumbnail_url: resolveImageUrl(img.thumbnail_url),
+    })),
+  };
+}
+&nbsp;
 export const listingsApi = <span class="cstat-no" title="statement not covered" >{</span>
 <span class="fstat-no" title="function not covered" >  create: (b</span>ody: ListingCreateBody) =&gt;
 <span class="cstat-no" title="statement not covered" >    api.post&lt;{ id: string }&gt;('/listings', body),</span>
@@ -597,9 +635,10 @@ export const listingsApi = <span class="cstat-no" title="statement not covered" 
 <span class="fstat-no" title="function not covered" >  publish: (l</span>istingId: string) =&gt;
 <span class="cstat-no" title="statement not covered" >    api.post&lt;{ id: string; status: string }&gt;(`/listings/${listingId}/publish`, {}),</span>
 &nbsp;
-<span class="fstat-no" title="function not covered" >  my: () =&gt; <span class="cstat-no" title="statement not covered" >a</span>pi.get&lt;MyListing[]&gt;('/listings/my'),</span>
+<span class="fstat-no" title="function not covered" >  my: () =&gt; <span class="cstat-no" title="statement not covered" >a</span>pi.get&lt;MyListing[]&gt;('/listings/my').<span class="fstat-no" title="function not covered" >then(l</span>ist =&gt; <span class="cstat-no" title="statement not covered" >list.map(resolveListingImages))</span>,</span>
 &nbsp;
-<span class="fstat-no" title="function not covered" >  get: (l</span>istingId: string) =&gt; <span class="cstat-no" title="statement not covered" >api.get&lt;MyListing&gt;(`/listings/${listingId}`),</span>
+<span class="fstat-no" title="function not covered" >  get: (l</span>istingId: string) =&gt;
+<span class="cstat-no" title="statement not covered" >    api.get&lt;MyListing&gt;(`/listings/${listingId}`).then(resolveListingImages),</span>
 &nbsp;
 <span class="fstat-no" title="function not covered" >  update: (l</span>istingId: string, body: Partial&lt;ListingCreateBody&gt;) =&gt;
 <span class="cstat-no" title="statement not covered" >    api.patch&lt;MyListing&gt;(`/listings/${listingId}`, body),</span>
@@ -616,7 +655,7 @@ export const listingsApi = <span class="cstat-no" title="statement not covered" 
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-05-27T19:39:10.946Z
+                at 2026-05-28T17:11:46.834Z
             </div>
         <script src="../prettify.js"></script>
         <script>
