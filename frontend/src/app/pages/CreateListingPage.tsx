@@ -443,11 +443,8 @@ export function CreateListingPage() {
     );
   }
 
-  const genLabel = (gen: CatalogGeneration) => {
-    const name = gen.name ?? '';
-    const years = gen.year_from ? `${gen.year_from}–${gen.year_to ?? '...'}` : '';
-    return [name, years].filter(Boolean).join(' · ');
-  };
+  const genLabel = (gen: CatalogGeneration) =>
+    gen.name ?? `${gen.year_from ?? ''}–${gen.year_to ?? '...'}`;
 
   const modLabel = (m: CatalogModification) => m.name ?? m.group_name ?? m.id;
 
@@ -505,7 +502,7 @@ export function CreateListingPage() {
                   options={marks}
                   value={selectedMark}
                   onChange={(id) => handleMarkChange(id)}
-                  getLabel={(m) => m.cyrillic_name ?? m.name ?? m.id}
+                  getLabel={(m) => m.name ?? m.cyrillic_name ?? m.id}
                   placeholder={L.chooseMark}
                   searchPlaceholder={L.searchPlaceholder}
                   noResults={L.noResults}
@@ -549,7 +546,7 @@ export function CreateListingPage() {
                   options={configurations}
                   value={selectedConf}
                   onChange={(id) => handleConfChange(id)}
-                  getLabel={(c) => [c.name, c.body_type].filter(Boolean).join(', ') || c.id}
+                  getLabel={(c) => c.name ?? c.id}
                   placeholder={selectedGen ? L.chooseConfiguration : L.firstChooseGeneration}
                   searchPlaceholder={L.searchPlaceholder}
                   noResults={L.noResults}
