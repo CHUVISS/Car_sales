@@ -1,14 +1,12 @@
 import { Link, useNavigate } from 'react-router';
-import { Search, Car, Shield, Wallet, Headset } from 'lucide-react';
+import { Search, Shield, Wallet, Headset } from 'lucide-react';
 import { CarCard } from '../components/CarCard';
 import { useState, useEffect } from 'react';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 import { toast } from 'sonner';
 import { useCars } from '../hooks/useCars';
 import { messagesApi } from '../api/messages';
-
-// import Mercedes from '../../assets/mercedes.jpg';
-// import Ford from '../../assets/ford.jpg';
+import { useLanguage } from '../i18n/LanguageContext';
 
 const ALL_BRANDS = ['Audi', 'BMW', 'Hyundai', 'Kia', 'Lexus', 'Mazda', 'Mercedes-Benz', 'Nissan', 'Skoda', 'Tesla', 'Toyota', 'Volkswagen'];
 
@@ -17,6 +15,7 @@ const inputCls = "w-full px-4 py-3 bg-secondary text-foreground placeholder:text
 export function HomePage() {
   useEffect(() => { window.scrollTo(0, 0); }, []);
   const navigate = useNavigate();
+  const { T } = useLanguage();
   const [searchBrand, setSearchBrand] = useState('');
   const [formName, setFormName] = useState('');
   const [formPhone, setFormPhone] = useState('');
@@ -48,10 +47,10 @@ export function HomePage() {
 
   const handleLeadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formEmail) { toast.error('Укажите email для связи'); return; }
+    if (!formEmail) { toast.error(T.home.emailRequired); return; }
     if (!localStorage.getItem('access_token')) {
-      toast.error('Для отправки заявки необходимо войти в аккаунт', {
-        action: { label: 'Войти', onClick: () => navigate('/auth') },
+      toast.error(T.home.loginRequired, {
+        action: { label: T.nav.signIn, onClick: () => navigate('/auth') },
       });
       return;
     }
@@ -63,10 +62,10 @@ export function HomePage() {
         body: formComment || 'Заявка с главной страницы',
         message_type: 'callback',
       });
-      toast.success('Заявка успешно отправлена! Мы свяжемся с вами в ближайшее время.');
+      toast.success(T.home.requestSuccess);
       setFormName(''); setFormPhone(''); setFormComment(''); setFormEmail('');
     } catch {
-      toast.error('Ошибка отправки. Попробуйте позже.');
+      toast.error(T.home.requestError);
     } finally {
       setSubmitting(false);
     }
@@ -86,10 +85,10 @@ export function HomePage() {
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 lg:py-32">
           <div className="max-w-2xl">
             <h1 className="text-4xl lg:text-5xl font-semibold mb-4 transition-transform duration-300 group-hover:scale-105">
-              Найдите автомобиль своей мечты
+              {T.home.heroTitle}
             </h1>
             <p className="text-lg opacity-90 mb-8 transition-transform duration-300 group-hover:scale-105 origin-left">
-              Широкий выбор новых и подержанных автомобилей. Выгодные условия, гарантия качества.
+              {T.home.heroSubtitle}
             </p>
             <form onSubmit={handleSearch} className="bg-card rounded-lg p-4 shadow-lg border border-border transition-all duration-300 group-hover:shadow-[0_0_24px_6px_hsl(var(--primary)/0.25)]">
               <div className="flex flex-col md:flex-row gap-3">
@@ -99,14 +98,14 @@ export function HomePage() {
                     onChange={e => setSearchBrand(e.target.value)}
                     className="w-full px-4 py-3 bg-secondary text-foreground rounded-lg outline-none focus:ring-2 focus:ring-primary border border-border transition-all duration-200 focus:scale-[1.02]"
                   >
-                    <option value="">Все марки</option>
+                    <option value="">{T.home.allBrands}</option>
                     {ALL_BRANDS.map(brand => <option key={brand} value={brand}>{brand}</option>)}
                   </select>
                 </div>
                 <button type="submit"
                   className="px-8 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-all duration-200 flex items-center justify-center gap-2 hover:scale-105 active:scale-95">
                   <Search className="w-5 h-5 transition-transform duration-200 group-hover:scale-110" />
-                  <span>Найти</span>
+                  <span>{T.home.findBtn}</span>
                 </button>
               </div>
             </form>
@@ -114,44 +113,14 @@ export function HomePage() {
         </div>
       </section>
 
-      {/* Категории
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Link to="/catalog" className="group relative overflow-hidden rounded-lg bg-secondary hover:shadow-lg transition-shadow border border-border">
-            <div className="absolute inset-0">
-              <ImageWithFallback src={Mercedes}
-                alt="Новые автомобили"
-                className="w-full h-full object-cover opacity-40 group-hover:scale-105 transition-transform duration-300" />
-            </div>
-            <div className="relative p-8">
-              <Car className="w-12 h-12 text-primary mb-3" />
-              <h3 className="text-2xl font-semibold text-foreground mb-2">Новые автомобили</h3>
-              <p className="text-muted-foreground">Последние модели с заводской гарантией</p>
-            </div>
-          </Link>
-          <Link to="/catalog" className="group relative overflow-hidden rounded-lg bg-secondary hover:shadow-lg transition-shadow border border-border">
-            <div className="absolute inset-0">
-              <ImageWithFallback src={Ford}
-                alt="С пробегом"
-                className="w-full h-full object-cover opacity-40 group-hover:scale-105 transition-transform duration-300" />
-            </div>
-            <div className="relative p-8">
-              <Car className="w-12 h-12 text-primary mb-3" />
-              <h3 className="text-2xl font-semibold text-foreground mb-2">С пробегом</h3>
-              <p className="text-muted-foreground">Проверенные автомобили по выгодной цене</p>
-            </div>
-          </Link>
-        </div>
-      </section> */}
-
       {/* Популярные модели */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 group">
         <div className="flex items-center justify-between mb-8">
           <h2 className="text-3xl font-semibold text-foreground transition-transform duration-300 group-hover:scale-105">
-            Популярные модели
+            {T.home.popularModels}
           </h2>
           <Link to="/catalog" className="text-primary hover:underline transition-transform duration-300 group-hover:scale-105">
-            Смотреть все →
+            {T.home.seeAll}
           </Link>
         </div>
         {loading ? (
@@ -178,13 +147,13 @@ export function HomePage() {
       <section className="bg-secondary border-y border-border py-16 group">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-3xl font-semibold text-center text-foreground mb-12 transition-transform duration-300 group-hover:scale-105">
-            Наши преимущества
+            {T.home.advantages}
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
-              { icon: Shield, title: 'Гарантия качества', desc: 'Все автомобили проходят тщательную проверку перед продажей' },
-              { icon: Wallet, title: 'Выгодные условия', desc: 'Гибкие программы кредитования и trade-in' },
-              { icon: Headset, title: 'Поддержка 24/7', desc: 'Наши специалисты всегда готовы помочь вам' },
+              { icon: Shield,  title: T.home.qualityTitle, desc: T.home.qualityDesc },
+              { icon: Wallet,  title: T.home.dealsTitle,   desc: T.home.dealsDesc },
+              { icon: Headset, title: T.home.supportTitle, desc: T.home.supportDesc },
             ].map(({ icon: Icon, title, desc }) => (
               <div key={title} className="text-center group/adv cursor-default">
                 <div className="inline-flex items-center justify-center w-16 h-16 bg-primary/10 rounded-full mb-4

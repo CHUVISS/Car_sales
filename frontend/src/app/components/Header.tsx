@@ -4,6 +4,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { toast } from 'sonner';
 import { ThemeToggle } from './ThemeToggle';
+import { LangToggle } from './LangToggle';
+import { useLanguage } from '../i18n/LanguageContext';
 import {
   notificationsApi,
   notificationText,
@@ -11,9 +13,7 @@ import {
   type Notification,
 } from '../api/notifications';
 
-// ────────────────────────────────────────────────────────────────────────────
 // NotificationBell
-// ────────────────────────────────────────────────────────────────────────────
 
 function NotificationItem({
   n,
@@ -22,6 +22,7 @@ function NotificationItem({
   n: Notification;
   onRead: (id: string) => void;
 }) {
+  const { lang } = useLanguage();
   const isUnread = !n.read_at;
   return (
     <Link
@@ -39,7 +40,7 @@ function NotificationItem({
       <div className="flex-1 min-w-0">
         <p className="text-sm text-foreground leading-snug">{notificationText(n)}</p>
         <p className="text-xs text-muted-foreground mt-0.5">
-          {new Date(n.created_at).toLocaleString('ru-RU', {
+          {new Date(n.created_at).toLocaleString(lang === 'ru' ? 'ru-RU' : 'en-US', {
             day: 'numeric',
             month: 'short',
             hour: '2-digit',
@@ -52,6 +53,7 @@ function NotificationItem({
 }
 
 function NotificationBell() {
+  const { T } = useLanguage();
   const [items, setItems] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -63,10 +65,8 @@ function NotificationBell() {
     } catch { /* silent */ }
   }, []);
 
-  // Load on mount
   useEffect(() => { load(); }, [load]);
 
-  // Close on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
@@ -90,7 +90,7 @@ function NotificationBell() {
       await notificationsApi.markAllRead();
       setItems(prev => prev.map(n => ({ ...n, read_at: new Date().toISOString() })));
     } catch {
-      toast.error('Ошибка');
+      toast.error(T.notifications.error);
     }
   };
 
@@ -106,7 +106,7 @@ function NotificationBell() {
       <button
         onClick={handleToggle}
         className="relative p-2 text-foreground hover:text-primary transition-colors"
-        aria-label="Уведомления"
+        aria-label={T.notifications.title}
       >
         <Bell className="w-5 h-5" />
         {unread > 0 && (
@@ -120,13 +120,13 @@ function NotificationBell() {
         <div className="absolute right-0 top-full mt-2 w-80 bg-card border border-border rounded-xl shadow-xl z-50 overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-            <span className="font-semibold text-sm text-foreground">Уведомления</span>
+            <span className="font-semibold text-sm text-foreground">{T.notifications.title}</span>
             {unread > 0 && (
               <button
                 onClick={handleMarkAllRead}
                 className="text-xs text-primary hover:underline"
               >
-                Прочитать все
+                {T.notifications.markAllRead}
               </button>
             )}
           </div>
@@ -135,7 +135,7 @@ function NotificationBell() {
           <div className="max-h-72 overflow-y-auto">
             {items.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-10">
-                Уведомлений нет
+                {T.notifications.empty}
               </p>
             ) : (
               items.map(n => (
@@ -151,7 +151,7 @@ function NotificationBell() {
               onClick={() => setOpen(false)}
               className="text-xs text-primary hover:underline"
             >
-              Мои брони →
+              {T.notifications.myBookings}
             </Link>
           </div>
         </div>
@@ -160,18 +160,17 @@ function NotificationBell() {
   );
 }
 
-// ────────────────────────────────────────────────────────────────────────────
 // Header
-// ────────────────────────────────────────────────────────────────────────────
 
 export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { T } = useLanguage();
 
   const handleLogout = async () => {
     await logout();
-    toast.success('Вы вышли из системы');
+    toast.success(T.profile.logoutSuccess);
     navigate('/');
   };
 
@@ -185,11 +184,11 @@ export function Header() {
           </Link>
 
           <nav className="hidden md:flex items-center gap-8">
-            <Link to="/catalog" className="text-foreground hover:text-primary transition-colors">Объявления</Link>
+            <Link to="/catalog" className="text-foreground hover:text-primary transition-colors">{T.nav.listings}</Link>
             <Link to="/ai" className="flex items-center gap-1.5 text-foreground hover:text-primary transition-colors">
-              <Bot className="w-4 h-4" />AI-ассистент
+              <Bot className="w-4 h-4" />{T.nav.ai}
             </Link>
-            <Link to="/about" className="text-foreground hover:text-primary transition-colors">О нас</Link>
+            <Link to="/about" className="text-foreground hover:text-primary transition-colors">{T.nav.about}</Link>
           </nav>
 
           <div className="hidden md:flex items-center gap-3">
@@ -198,6 +197,7 @@ export function Header() {
               <span>+7 (900) 123-45-67</span>
             </a>
 
+            <LangToggle />
             <ThemeToggle />
 
             {user ? (
@@ -210,7 +210,7 @@ export function Header() {
                 </Link>
                 {(user.role === 'admin' || user.role === 'manager') && (
                   <Link to="/admin" className="px-3 py-2 bg-secondary text-foreground rounded-lg hover:bg-secondary/80 text-sm transition-colors">
-                    {user.role === 'admin' ? 'Админ' : 'Менеджер'}
+                    {user.role === 'admin' ? T.nav.admin : T.nav.manager}
                   </Link>
                 )}
                 <button onClick={handleLogout} className="p-2 text-muted-foreground hover:text-destructive transition-colors">
@@ -221,7 +221,7 @@ export function Header() {
               <Link to="/profile"
                 className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity">
                 <User className="w-5 h-5" />
-                <span>Войти</span>
+                <span>{T.nav.signIn}</span>
               </Link>
             )}
           </div>
@@ -229,6 +229,7 @@ export function Header() {
           {/* Mobile controls */}
           <div className="flex items-center gap-2 md:hidden">
             {user && <NotificationBell />}
+            <LangToggle />
             <ThemeToggle />
             <button className="p-2 text-foreground" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
               <Menu className="w-6 h-6" />
@@ -239,11 +240,11 @@ export function Header() {
         {mobileMenuOpen && (
           <div className="md:hidden py-4 border-t border-border">
             <nav className="flex flex-col gap-4">
-              <Link to="/catalog" onClick={() => setMobileMenuOpen(false)} className="text-foreground hover:text-primary transition-colors">Объявления</Link>
+              <Link to="/catalog" onClick={() => setMobileMenuOpen(false)} className="text-foreground hover:text-primary transition-colors">{T.nav.listings}</Link>
               <Link to="/ai" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-1.5 text-foreground hover:text-primary transition-colors">
-                <Bot className="w-4 h-4" />AI-ассистент
+                <Bot className="w-4 h-4" />{T.nav.ai}
               </Link>
-              <Link to="/about" onClick={() => setMobileMenuOpen(false)} className="text-foreground hover:text-primary transition-colors">О нас</Link>
+              <Link to="/about" onClick={() => setMobileMenuOpen(false)} className="text-foreground hover:text-primary transition-colors">{T.nav.about}</Link>
               <a href="tel:+79001234567" className="flex items-center gap-2 text-foreground hover:text-primary transition-colors">
                 <Phone className="w-5 h-5" />
                 <span>+7 (900) 123-45-67</span>
@@ -256,18 +257,18 @@ export function Header() {
                   </Link>
                   {(user.role === 'admin' || user.role === 'manager') && (
                     <Link to="/admin" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 bg-secondary text-foreground rounded-lg w-fit text-sm">
-                      {user.role === 'admin' ? 'Админ' : 'Менеджер'}
+                      {user.role === 'admin' ? T.nav.admin : T.nav.manager}
                     </Link>
                   )}
                   <button onClick={handleLogout} className="flex items-center gap-2 text-destructive w-fit">
                     <LogOut className="w-5 h-5" />
-                    <span>Выйти</span>
+                    <span>{T.nav.signOut}</span>
                   </button>
                 </>
               ) : (
                 <Link to="/profile" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg w-fit">
                   <User className="w-5 h-5" />
-                  <span>Войти</span>
+                  <span>{T.nav.signIn}</span>
                 </Link>
               )}
             </nav>

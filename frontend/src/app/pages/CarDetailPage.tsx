@@ -8,32 +8,21 @@ import { useFavorites } from '../hooks/useFavorites';
 import { viewingsApi, type ViewingWindow } from '../api/viewings';
 import { reservationsApi } from '../api/reservations';
 import { resolveCityName } from '../api/catalog';
+import { useLanguage } from '../i18n/LanguageContext';
 
 function formatPrice(price: number): string {
   return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(price);
 }
-function formatMileage(m: number): string {
-  return `${new Intl.NumberFormat('ru-RU').format(m)} км`;
+function formatMileage(m: number, lang: string): string {
+  return `${new Intl.NumberFormat(lang === 'ru' ? 'ru-RU' : 'en-US').format(m)} ${lang === 'ru' ? 'км' : 'km'}`;
 }
-const TRANSMISSION_LABELS: Record<string, string> = { manual: 'Механика', automatic: 'Автомат', robot: 'Робот', variator: 'Вариатор' };
-const FUEL_LABELS: Record<string, string> = { petrol: 'Бензин', diesel: 'Дизель', electric: 'Электро', hybrid: 'Гибрид', gas: 'Газ' };
-const BODY_LABELS: Record<string, string> = { sedan: 'Седан', suv: 'Внедорожник', hatchback: 'Хэтчбек', wagon: 'Универсал', coupe: 'Купе', minivan: 'Минивэн', convertible: 'Кабриолет', pickup: 'Пикап' };
 
-const STATUS_LABELS: Record<string, string> = { available: 'В наличии', reserved: 'Зарезервирован', sold: 'Продан', inactive: 'Снят с продажи' };
+// Только цвета/стили — не переводятся
 const STATUS_COLORS: Record<string, string> = {
   available: 'bg-accent/15 text-accent border-accent/30',
   reserved: 'bg-primary/10 text-primary border-primary/30',
   sold: 'bg-muted text-muted-foreground border-border',
   inactive: 'bg-muted text-muted-foreground border-border',
-};
-const CONDITION_LABELS: Record<string, string> = {
-  excellent: 'Отличное состояние', good: 'Хорошее состояние', fair: 'Удовлетворительное состояние', poor: 'Плохое состояние',
-};
-const CONDITION_DESCS: Record<string, string> = {
-  excellent: 'Как новый, без дефектов',
-  good: 'Небольшие следы эксплуатации',
-  fair: 'Заметные следы эксплуатации',
-  poor: 'Требует ремонта',
 };
 const CONDITION_COLORS: Record<string, string> = {
   excellent: 'bg-accent/15 text-accent border-accent/30',
@@ -42,7 +31,6 @@ const CONDITION_COLORS: Record<string, string> = {
   poor: 'bg-destructive/10 text-destructive border-destructive/30',
 };
 
-/** Группирует окна просмотра по дате */
 function groupWindowsByDate(windows: ViewingWindow[]): Record<string, ViewingWindow[]> {
   return windows.reduce<Record<string, ViewingWindow[]>>((acc, w) => {
     const d = w.window_date;
@@ -52,8 +40,10 @@ function groupWindowsByDate(windows: ViewingWindow[]): Record<string, ViewingWin
   }, {});
 }
 
-function formatWindowDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short' });
+function formatWindowDate(dateStr: string, lang: string): string {
+  return new Date(dateStr).toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'en-US', {
+    weekday: 'short', day: 'numeric', month: 'short',
+  });
 }
 
 export function CarDetailPage() {
@@ -61,23 +51,21 @@ export function CarDetailPage() {
   const { car, loading, error } = useCar(id);
   const { isFavorite, toggle: toggleFavorite } = useFavorites();
   const navigate = useNavigate();
+  const { lang, T } = useLanguage();
 
   useEffect(() => { window.scrollTo(0, 0); }, []);
 
   const [showBookingPanel, setShowBookingPanel] = useState(false);
   const [activeSlide, setActiveSlide] = useState(0);
 
-  // Окна просмотра
   const [windows, setWindows] = useState<ViewingWindow[]>([]);
   const [windowsLoading, setWindowsLoading] = useState(false);
   const [selectedWindowId, setSelectedWindowId] = useState<string | null>(null);
 
-  // Состояние резервации
   const [reserving, setReserving] = useState(false);
   const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
   const [reservationDone, setReservationDone] = useState(false);
 
-  // Город — берём из city_name (каталог) или резолвим по city_id (детальная страница)
   const [cityName, setCityName] = useState<string | null>(null);
   useEffect(() => {
     if (!car) return;
@@ -86,7 +74,6 @@ export function CarDetailPage() {
     resolveCityName(car.city_id).then(name => setCityName(name)).catch(() => {});
   }, [car]);
 
-  // Загружаем окна просмотра при маунте — нужны и для секции «Осмотр», и для панели бронирования
   useEffect(() => {
     if (!id) return;
     setWindowsLoading(true);
@@ -97,12 +84,30 @@ export function CarDetailPage() {
       .finally(() => setWindowsLoading(false));
   }, [id]);
 
+  // Переводимые метки — вычисляются из T
+  const TRANSMISSION_LABELS = T.transmission;
+  const FUEL_LABELS = T.fuel;
+  const BODY_LABELS = T.body;
+  const STATUS_LABELS = T.status as Record<string, string>;
+  const CONDITION_LABELS: Record<string, string> = {
+    excellent: T.condition.excellent,
+    good: T.condition.good,
+    fair: T.condition.fair,
+    poor: T.condition.poor,
+  };
+  const CONDITION_DESCS: Record<string, string> = {
+    excellent: T.condition.excellentDesc,
+    good: T.condition.goodDesc,
+    fair: T.condition.fairDesc,
+    poor: T.condition.poorDesc,
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-muted-foreground">Загрузка...</p>
+          <p className="text-muted-foreground">{T.common.loading}</p>
         </div>
       </div>
     );
@@ -112,8 +117,8 @@ export function CarDetailPage() {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
-          <h1 className="text-2xl font-semibold mb-4 text-foreground">Автомобиль не найден</h1>
-          <Link to="/catalog" className="text-primary hover:underline">Вернуться в каталог</Link>
+          <h1 className="text-2xl font-semibold mb-4 text-foreground">{T.carDetail.notFound}</h1>
+          <Link to="/catalog" className="text-primary hover:underline">{T.carDetail.backToCatalog}</Link>
         </div>
       </div>
     );
@@ -135,9 +140,9 @@ export function CarDetailPage() {
     } else {
       try {
         await navigator.clipboard.writeText(url);
-        toast.success('Ссылка скопирована в буфер обмена');
+        toast.success(T.carDetail.linkCopied);
       } catch {
-        toast.error('Не удалось скопировать ссылку');
+        toast.error(T.carDetail.shareError);
       }
     }
   };
@@ -145,21 +150,18 @@ export function CarDetailPage() {
   const handleReserve = async () => {
     const token = localStorage.getItem('access_token');
     if (!token) {
-      toast.error('Для бронирования необходимо войти в аккаунт');
+      toast.error(T.carDetail.loginRequired);
       return;
     }
     setReserving(true);
     try {
-      // 1. Создаём резервацию
       const res = await reservationsApi.reserve(car.id);
 
-      // 2. Если выбрано окно — сразу бронируем
       if (selectedWindowId) {
         try {
           await reservationsApi.bookViewing(res.reservation_id, selectedWindowId);
         } catch {
-          // Не критично — запишемся позже из профиля
-          toast.info('Бронь создана, выберите время просмотра в личном кабинете');
+          toast.info(T.carDetail.viewingBooked);
         }
       }
 
@@ -167,12 +169,12 @@ export function CarDetailPage() {
         setPaymentUrl(res.payment_url);
       } else {
         setReservationDone(true);
-        toast.success('Бронирование успешно создано!');
+        toast.success(T.carDetail.reserveSuccess);
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Ошибка бронирования';
-      if (msg.includes('already reserved') || msg.includes('already reserved')) {
-        toast.error('Этот автомобиль уже зарезервирован');
+      const msg = err instanceof Error ? err.message : T.common.error;
+      if (msg.includes('already reserved')) {
+        toast.error(T.carDetail.alreadyReserved);
       } else {
         toast.error(msg);
       }
@@ -185,16 +187,18 @@ export function CarDetailPage() {
   const sortedDates = Object.keys(groupedWindows).sort();
 
   const specs = [
-    ['Марка', car.brand], ['Модель', car.model], ['Год выпуска', String(car.year)],
-    ['Пробег', formatMileage(car.mileage)],
-    ...(car.condition ? [['Состояние', CONDITION_LABELS[car.condition] ?? car.condition]] : []),
-    ...(car.body_type ? [['Тип кузова', BODY_LABELS[car.body_type] ?? car.body_type]] : []),
-    ...(car.color ? [['Цвет', car.color]] : []),
-    ...(car.engine_volume ? [['Двигатель', `${car.engine_volume} л`]] : []),
-    ...(car.engine_power ? [['Мощность', `${car.engine_power} л.с.`]] : []),
-    ...(car.fuel_type ? [['Тип топлива', FUEL_LABELS[car.fuel_type] ?? car.fuel_type]] : []),
-    ...(car.transmission ? [['Коробка передач', TRANSMISSION_LABELS[car.transmission] ?? car.transmission]] : []),
-    ...(car.vin ? [['VIN', car.vin]] : []),
+    [T.carDetail.specs.brand, car.brand],
+    [T.carDetail.specs.model, car.model],
+    [T.carDetail.specs.year, String(car.year)],
+    [T.carDetail.specs.mileage, formatMileage(car.mileage, lang)],
+    ...(car.condition ? [[T.carDetail.specs.condition, CONDITION_LABELS[car.condition] ?? car.condition]] : []),
+    ...(car.body_type ? [[T.carDetail.specs.body, BODY_LABELS[car.body_type] ?? car.body_type]] : []),
+    ...(car.color ? [[T.carDetail.specs.color, car.color]] : []),
+    ...(car.engine_volume ? [[T.carDetail.specs.engine, `${car.engine_volume} ${T.carDetail.liter}`]] : []),
+    ...(car.engine_power ? [[T.carDetail.specs.power, `${car.engine_power} ${T.carCard.hp}`]] : []),
+    ...(car.fuel_type ? [[T.carDetail.specs.fuel, FUEL_LABELS[car.fuel_type] ?? car.fuel_type]] : []),
+    ...(car.transmission ? [[T.carDetail.specs.transmission, TRANSMISSION_LABELS[car.transmission] ?? car.transmission]] : []),
+    ...(car.vin ? [[T.carDetail.specs.vin, car.vin]] : []),
   ];
 
   return (
@@ -202,7 +206,7 @@ export function CarDetailPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <button onClick={() => navigate(-1)} className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground mb-6 transition-colors">
           <ArrowLeft className="w-5 h-5" />
-          <span>Назад</span>
+          <span>{T.carDetail.back}</span>
         </button>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -211,7 +215,7 @@ export function CarDetailPage() {
             <div className="bg-card rounded-lg border border-border overflow-hidden">
               <div className="relative aspect-[16/9]">
                 <ImageWithFallback src={carImages[activeSlide]}
-                  alt={`${car.brand} ${car.model} — фото ${activeSlide + 1}`}
+                  alt={`${car.brand} ${car.model} — ${T.carDetail.photoOf} ${activeSlide + 1}`}
                   className={`w-full h-full object-cover ${car.status === 'sold' || car.status === 'inactive' ? 'brightness-75' : ''}`} />
                 {(car.status === 'sold' || car.status === 'inactive') && (
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -244,7 +248,7 @@ export function CarDetailPage() {
                   {carImages.map((src, i) => (
                     <button key={i} onClick={() => setActiveSlide(i)}
                       className={`flex-shrink-0 w-20 h-14 rounded overflow-hidden border-2 transition-colors ${i === activeSlide ? 'border-primary' : 'border-border'}`}>
-                      <ImageWithFallback src={src} alt={`Миниатюра ${i + 1}`} className="w-full h-full object-cover" />
+                      <ImageWithFallback src={src} alt={`${T.carDetail.thumbnailAlt} ${i + 1}`} className="w-full h-full object-cover" />
                     </button>
                   ))}
                 </div>
@@ -258,7 +262,7 @@ export function CarDetailPage() {
                   <div className="flex items-center gap-3 mb-2 flex-wrap">
                     <h1 className="text-3xl font-semibold text-foreground">{car.brand} {car.model}</h1>
                     {car.mileage === 0 && (
-                      <span className="px-3 py-1 bg-accent text-accent-foreground rounded-full text-sm font-medium">Новый</span>
+                      <span className="px-3 py-1 bg-accent text-accent-foreground rounded-full text-sm font-medium">{T.status.new}</span>
                     )}
                     {car.status && (
                       <span className={`px-3 py-1 rounded-full text-sm font-medium border ${STATUS_COLORS[car.status] ?? 'bg-muted text-muted-foreground border-border'}`}>
@@ -283,7 +287,7 @@ export function CarDetailPage() {
                     )}
                   </div>
                   <p className="text-muted-foreground">
-                    {car.year} год • {formatMileage(car.mileage)}
+                    {car.year} {T.carCard.year} • {formatMileage(car.mileage, lang)}
                     {cityName && <> • <MapPin className="w-3.5 h-3.5 inline-block mb-0.5 mr-0.5" />{cityName}</>}
                   </p>
                 </div>
@@ -291,14 +295,14 @@ export function CarDetailPage() {
                   <button
                     onClick={() => toggleFavorite(car.id)}
                     className="p-2 rounded-lg border border-border transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-destructive/25"
-                    title={favorite ? 'Убрать из избранного' : 'Добавить в избранное'}
+                    title={favorite ? T.carCard.removeFavorite : T.carCard.addFavorite}
                   >
                     <Heart className={`w-6 h-6 transition-colors ${favorite ? 'fill-destructive text-destructive' : 'text-muted-foreground'}`} />
                   </button>
                   <button
                     onClick={handleShare}
                     className="p-2 rounded-lg border border-border transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-blue-500/25"
-                    title="Поделиться"
+                    title={T.carDetail.share}
                   >
                     <Share2 className="w-6 h-6 text-muted-foreground" />
                   </button>
@@ -309,10 +313,10 @@ export function CarDetailPage() {
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {[
-                  ['Год', String(car.year)],
-                  ['Пробег', formatMileage(car.mileage)],
-                  ['Двигатель', car.engine_volume ? `${car.engine_volume}л` : '—'],
-                  ['Мощность', car.engine_power ? `${car.engine_power} л.с.` : '—'],
+                  [T.carDetail.specs.year, String(car.year)],
+                  [T.carDetail.specs.mileage, formatMileage(car.mileage, lang)],
+                  [T.carDetail.specs.engine, car.engine_volume ? `${car.engine_volume}${T.carDetail.liter}` : '—'],
+                  [T.carDetail.specs.power, car.engine_power ? `${car.engine_power} ${T.carCard.hp}` : '—'],
                 ].map(([label, value]) => (
                   <div key={label} className="p-4 bg-secondary rounded-lg">
                     <p className="text-sm text-muted-foreground mb-1">{label}</p>
@@ -324,7 +328,7 @@ export function CarDetailPage() {
 
             {/* Характеристики */}
             <div className="bg-card rounded-lg border border-border p-6">
-              <h2 className="text-2xl font-semibold text-foreground mb-4">Характеристики</h2>
+              <h2 className="text-2xl font-semibold text-foreground mb-4">{T.carDetail.specifications}</h2>
               <div className="space-y-3">
                 {specs.map(([label, value], i) => (
                   <div key={label} className={`flex justify-between py-3 ${i < specs.length - 1 ? 'border-b border-border' : ''}`}>
@@ -337,7 +341,7 @@ export function CarDetailPage() {
 
             {car.description && (
               <div className="bg-card rounded-lg border border-border p-6">
-                <h2 className="text-2xl font-semibold text-foreground mb-4">Описание</h2>
+                <h2 className="text-2xl font-semibold text-foreground mb-4">{T.carDetail.description}</h2>
                 <p className="text-muted-foreground leading-relaxed">{car.description}</p>
               </div>
             )}
@@ -347,7 +351,7 @@ export function CarDetailPage() {
           <div className="space-y-6">
             <div className="bg-card rounded-lg border border-border p-6 sticky top-20">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-foreground">Действия</h3>
+                <h3 className="font-semibold text-foreground">{T.carDetail.actions}</h3>
                 {car.status && (
                   <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${STATUS_COLORS[car.status] ?? 'bg-muted text-muted-foreground border-border'}`}>
                     {STATUS_LABELS[car.status] ?? car.status}
@@ -358,33 +362,26 @@ export function CarDetailPage() {
               {(car.status === 'sold' || car.status === 'inactive') ? (
                 <div className="mb-6 p-4 rounded-lg bg-muted/50 border border-border text-center">
                   <p className="font-semibold text-foreground mb-1">
-                    {car.status === 'sold' ? 'Автомобиль продан' : 'Снят с продажи'}
+                    {car.status === 'sold' ? T.carDetail.soldStatus : T.carDetail.inactiveStatus}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    {car.status === 'sold'
-                      ? 'Этот автомобиль уже нашёл своего владельца'
-                      : 'Автомобиль временно недоступен для покупки'}
+                    {car.status === 'sold' ? T.carDetail.soldDesc : T.carDetail.inactiveDesc}
                   </p>
                 </div>
               ) : reservationDone ? (
                 <div className="mb-6 p-4 rounded-lg bg-accent/10 border border-accent/30 text-center">
                   <CheckCircle className="w-8 h-8 text-accent mx-auto mb-2" />
-                  <p className="font-semibold text-foreground mb-1">Бронирование оформлено!</p>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    Детали в разделе «Мои записи» личного кабинета
-                  </p>
-                  <Link to="/profile?tab=reservations"
-                    className="text-sm text-primary hover:underline">
-                    Перейти в кабинет →
+                  <p className="font-semibold text-foreground mb-1">{T.carDetail.bookingDone}</p>
+                  <p className="text-sm text-muted-foreground mb-3">{T.carDetail.bookingDoneDesc2}</p>
+                  <Link to="/profile?tab=reservations" className="text-sm text-primary hover:underline">
+                    {T.carDetail.toProfile}
                   </Link>
                 </div>
               ) : paymentUrl ? (
                 <div className="mb-6 space-y-3">
                   <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
-                    <p className="text-sm font-medium text-foreground mb-1">Бронь создана!</p>
-                    <p className="text-xs text-muted-foreground">
-                      Внесите депозит для подтверждения. Он будет возвращён после просмотра.
-                    </p>
+                    <p className="text-sm font-medium text-foreground mb-1">{T.carDetail.paymentCreated}</p>
+                    <p className="text-xs text-muted-foreground">{T.carDetail.depositInfo}</p>
                   </div>
                   <a
                     href={paymentUrl}
@@ -393,13 +390,13 @@ export function CarDetailPage() {
                     className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-primary text-primary-foreground rounded-lg transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25"
                   >
                     <CreditCard className="w-5 h-5" />
-                    Оплатить депозит
+                    {T.carDetail.payBtn}
                   </a>
                   <button
                     onClick={() => { setPaymentUrl(null); setShowBookingPanel(false); }}
                     className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors"
                   >
-                    Сделать позже
+                    {T.carDetail.payLater}
                   </button>
                 </div>
               ) : (
@@ -409,7 +406,7 @@ export function CarDetailPage() {
                     className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-accent text-accent-foreground rounded-lg transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-accent/25"
                   >
                     <Phone className="w-5 h-5" />
-                    <span>Позвонить</span>
+                    <span>{T.carDetail.callBtn}</span>
                   </button>
                   <button
                     onClick={() => setShowBookingPanel(!showBookingPanel)}
@@ -419,10 +416,10 @@ export function CarDetailPage() {
                         : 'bg-primary text-primary-foreground hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25'
                     }`}
                     disabled={car.status === 'reserved'}
-                    title={car.status === 'reserved' ? 'Автомобиль зарезервирован' : undefined}
+                    title={car.status === 'reserved' ? T.carDetail.reservedTitle : undefined}
                   >
                     <Calendar className="w-5 h-5" />
-                    <span>{car.status === 'reserved' ? 'Зарезервирован' : 'Записаться на просмотр'}</span>
+                    <span>{car.status === 'reserved' ? T.status.reserved : T.carDetail.bookViewing}</span>
                   </button>
                 </div>
               )}
@@ -430,7 +427,7 @@ export function CarDetailPage() {
               {/* Форма бронирования */}
               {showBookingPanel && !paymentUrl && !reservationDone && (
                 <div className="pt-4 border-t border-border">
-                  <h4 className="text-sm font-semibold text-foreground mb-3">Выберите удобное время</h4>
+                  <h4 className="text-sm font-semibold text-foreground mb-3">{T.carDetail.viewingDesc}</h4>
 
                   {windowsLoading ? (
                     <div className="flex items-center justify-center py-6">
@@ -438,16 +435,13 @@ export function CarDetailPage() {
                     </div>
                   ) : windows.length === 0 ? (
                     <div className="text-center py-4">
-                      <p className="text-sm text-muted-foreground mb-3">
-                        Продавец не указал время просмотра.
-                        Вы всё равно можете создать бронь.
-                      </p>
+                      <p className="text-sm text-muted-foreground mb-3">{T.carDetail.noViewingTime}</p>
                     </div>
                   ) : (
                     <div className="space-y-3 mb-3 max-h-52 overflow-y-auto pr-1">
                       {sortedDates.map((date) => (
                         <div key={date}>
-                          <p className="text-xs text-muted-foreground mb-1.5">{formatWindowDate(date)}</p>
+                          <p className="text-xs text-muted-foreground mb-1.5">{formatWindowDate(date, lang)}</p>
                           <div className="flex flex-wrap gap-1.5">
                             {groupedWindows[date].map((w) => (
                               <button
@@ -470,8 +464,8 @@ export function CarDetailPage() {
                   )}
 
                   <div className="p-3 mb-3 rounded-lg bg-secondary/60 border border-border text-xs text-muted-foreground">
-                    <p className="font-medium text-foreground mb-0.5">Как работает бронирование?</p>
-                    <p>Будет удержан небольшой депозит, который вернётся после просмотра независимо от результата.</p>
+                    <p className="font-medium text-foreground mb-0.5">{T.carDetail.howBookingWorks}</p>
+                    <p>{T.carDetail.bookingInfo}</p>
                   </div>
 
                   <button
@@ -480,8 +474,8 @@ export function CarDetailPage() {
                     className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-primary text-primary-foreground rounded-lg transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25 disabled:opacity-50 disabled:scale-100 disabled:shadow-none"
                   >
                     {reserving
-                      ? <><Loader2 className="w-4 h-4 animate-spin" /> Создаём бронь...</>
-                      : <><CreditCard className="w-4 h-4" /> Забронировать{selectedWindowId ? '' : ' без времени'}</>
+                      ? <><Loader2 className="w-4 h-4 animate-spin" /> {T.carDetail.creating}</>
+                      : <><CreditCard className="w-4 h-4" /> {T.carDetail.reserveBtn}{selectedWindowId ? '' : T.carDetail.withoutTime}</>
                     }
                   </button>
                 </div>
@@ -489,7 +483,7 @@ export function CarDetailPage() {
 
               {/* Продавец */}
               <div className="mt-6 pt-6 border-t border-border">
-                <h4 className="font-semibold text-foreground mb-3">Продавец</h4>
+                <h4 className="font-semibold text-foreground mb-3">{T.carDetail.seller}</h4>
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-12 h-12 bg-primary rounded-full flex items-center justify-center text-primary-foreground text-lg font-semibold select-none">
                     {car.seller_name
@@ -498,11 +492,10 @@ export function CarDetailPage() {
                   </div>
                   <div>
                     <p className="font-semibold text-foreground">
-                      {car.seller_name ?? 'Частный продавец'}
+                      {car.seller_name ?? T.carDetail.privateSeller}
                     </p>
                     {car.seller_phone && (
-                      <a href={`tel:${car.seller_phone}`}
-                        className="text-sm text-primary hover:underline">
+                      <a href={`tel:${car.seller_phone}`} className="text-sm text-primary hover:underline">
                         {car.seller_phone}
                       </a>
                     )}
@@ -512,15 +505,15 @@ export function CarDetailPage() {
 
               {/* Способы оплаты */}
               <div className="mt-6 pt-6 border-t border-border">
-                <h4 className="font-semibold text-foreground mb-3">Способы оплаты</h4>
+                <h4 className="font-semibold text-foreground mb-3">{T.carDetail.paymentMethods}</h4>
                 {(car.accepts_cash || car.accepts_transfer) ? (
                   <div className="space-y-2">
                     {car.accepts_cash && (
                       <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-secondary border border-border">
                         <Banknote className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                         <div>
-                          <p className="text-sm font-medium text-foreground">Наличные</p>
-                          <p className="text-xs text-muted-foreground">Оплата при передаче автомобиля</p>
+                          <p className="text-sm font-medium text-foreground">{T.carDetail.cash}</p>
+                          <p className="text-xs text-muted-foreground">{T.carDetail.cashDesc}</p>
                         </div>
                       </div>
                     )}
@@ -528,23 +521,23 @@ export function CarDetailPage() {
                       <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-secondary border border-border">
                         <ArrowRightLeft className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                         <div>
-                          <p className="text-sm font-medium text-foreground">Банковский перевод</p>
-                          <p className="text-xs text-muted-foreground">Перевод на счёт продавца</p>
+                          <p className="text-sm font-medium text-foreground">{T.carDetail.transfer}</p>
+                          <p className="text-xs text-muted-foreground">{T.carDetail.transferDesc}</p>
                         </div>
                       </div>
                     )}
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">Не указано</p>
+                  <p className="text-sm text-muted-foreground">{T.carDetail.notSpecified}</p>
                 )}
               </div>
 
               {/* Осмотр автомобиля */}
               <div className="mt-6 pt-6 border-t border-border">
-                <h4 className="font-semibold text-foreground mb-3">Осмотр автомобиля</h4>
+                <h4 className="font-semibold text-foreground mb-3">{T.carDetail.viewingSection}</h4>
 
                 {car.viewing_enabled === false ? (
-                  <p className="text-sm text-muted-foreground">Продавец не предусмотрел осмотр</p>
+                  <p className="text-sm text-muted-foreground">{T.carDetail.viewingDisabled}</p>
                 ) : windowsLoading ? (
                   <div className="space-y-2">
                     <div className="h-3.5 bg-secondary rounded animate-pulse w-3/4" />
@@ -556,7 +549,7 @@ export function CarDetailPage() {
                     <div className="space-y-1">
                       {sortedDates.slice(0, 4).map(date => (
                         <div key={date} className="flex items-center gap-2 text-sm">
-                          <span className="text-muted-foreground w-20 flex-shrink-0">{formatWindowDate(date)}</span>
+                          <span className="text-muted-foreground w-20 flex-shrink-0">{formatWindowDate(date, lang)}</span>
                           <span className="text-foreground font-medium">
                             {groupedWindows[date].map(w => `${w.time_from.slice(0, 5)}–${w.time_to.slice(0, 5)}`).join(', ')}
                           </span>
@@ -564,26 +557,24 @@ export function CarDetailPage() {
                       ))}
                       {sortedDates.length > 4 && (
                         <p className="text-xs text-muted-foreground">
-                          и ещё {sortedDates.length - 4} {sortedDates.length - 4 === 1 ? 'день' : 'дня'}…
+                          {T.carDetail.moreSlots} {sortedDates.length - 4}…
                         </p>
                       )}
                     </div>
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">Расписание просмотров не указано</p>
+                  <p className="text-sm text-muted-foreground">{T.carDetail.noSchedule}</p>
                 )}
 
                 {/* Город + адрес осмотра */}
                 <div className="flex items-start gap-2 mt-3">
                   <MapPin className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
                   <div className="text-sm">
-                    {cityName && (
-                      <p className="font-medium text-foreground">{cityName}</p>
-                    )}
+                    {cityName && <p className="font-medium text-foreground">{cityName}</p>}
                     {car.sale_address ? (
                       <p className="text-muted-foreground">{car.sale_address}</p>
                     ) : (
-                      <p className="text-muted-foreground">Точный адрес будет раскрыт после бронирования</p>
+                      <p className="text-muted-foreground">{T.carDetail.addressAfterBooking}</p>
                     )}
                   </div>
                 </div>

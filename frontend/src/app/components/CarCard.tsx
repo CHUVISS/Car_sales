@@ -2,15 +2,9 @@ import { Link } from 'react-router';
 import { Heart, Eye } from 'lucide-react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { useFavorites } from '../hooks/useFavorites';
+import { useLanguage } from '../i18n/LanguageContext';
 
 type CarStatus = 'available' | 'reserved' | 'sold' | 'inactive';
-
-const STATUS_LABELS: Record<CarStatus, string> = {
-  available: 'В наличии',
-  reserved: 'Зарезервирован',
-  sold: 'Продан',
-  inactive: 'Снят с продажи',
-};
 
 interface Car {
   id: string;
@@ -39,11 +33,9 @@ interface CarCardProps { car: Car; }
 function formatPrice(price: number): string {
   return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(price);
 }
-function formatMileage(m: number): string {
-  return `${new Intl.NumberFormat('ru-RU').format(m)} км`;
+function formatMileage(m: number, lang: string): string {
+  return `${new Intl.NumberFormat(lang === 'ru' ? 'ru-RU' : 'en-US').format(m)} км`;
 }
-const TRANSMISSION_LABELS: Record<string, string> = { automatic: 'Автомат', manual: 'Механика' };
-const FUEL_LABELS: Record<string, string> = { petrol: 'Бензин', diesel: 'Дизель', electric: 'Электро', hybrid: 'Гибрид', gas: 'Газ' };
 
 function getImageSrc(img: string, carId: string): string {
   if (img.startsWith('http') || img.startsWith('/uploads')) return img;
@@ -61,8 +53,28 @@ function getImageSrc(img: string, carId: string): string {
 
 export function CarCard({ car }: CarCardProps) {
   const { isFavorite, toggle } = useFavorites();
+  const { lang, T } = useLanguage();
   const favorite = isFavorite(car.id);
   const imageSrc = getImageSrc(car.images[0] ?? '', car.id);
+
+  const STATUS_LABELS: Record<CarStatus, string> = {
+    available: T.status.available,
+    reserved: T.status.reserved,
+    sold: T.status.sold,
+    inactive: T.status.inactive,
+  };
+
+  const TRANSMISSION_LABELS: Record<string, string> = {
+    automatic: T.transmission.automatic,
+    manual: T.transmission.manual,
+  };
+  const FUEL_LABELS: Record<string, string> = {
+    petrol: T.fuel.petrol,
+    diesel: T.fuel.diesel,
+    electric: T.fuel.electric,
+    hybrid: T.fuel.hybrid,
+    gas: T.fuel.gas,
+  };
 
   return (
     <Link
@@ -81,7 +93,7 @@ export function CarCard({ car }: CarCardProps) {
         <div className="absolute top-3 left-3 flex flex-col gap-1.5">
           {car.isNew && (
             <span className="px-2.5 py-1 bg-accent text-accent-foreground rounded-full text-xs font-medium">
-              Новый
+              {T.status.new}
             </span>
           )}
           {car.status && car.status !== 'available' && (
@@ -97,7 +109,7 @@ export function CarCard({ car }: CarCardProps) {
         <button
           onClick={e => { e.preventDefault(); toggle(car.id); }}
           className="absolute top-3 right-3 p-2 bg-card/90 rounded-full hover:bg-card transition-colors"
-          title={favorite ? 'Убрать из избранного' : 'Добавить в избранное'}
+          title={favorite ? T.carCard.removeFavorite : T.carCard.addFavorite}
         >
           <Heart className={`w-5 h-5 transition-colors ${favorite ? 'fill-destructive text-destructive' : 'text-foreground'}`} />
         </button>
@@ -105,14 +117,14 @@ export function CarCard({ car }: CarCardProps) {
 
       <div className="p-4">
         <h3 className="text-lg font-semibold text-foreground mb-1">{car.brand} {car.model}</h3>
-        <p className="text-sm text-muted-foreground mb-3">{car.year} год • {formatMileage(car.mileage)}</p>
+        <p className="text-sm text-muted-foreground mb-3">{car.year} • {formatMileage(car.mileage, lang)}</p>
         <div className="flex flex-wrap gap-2 mb-3 text-xs text-muted-foreground">
           {car.engineVolume > 0 && <span>{car.engineVolume}л</span>}
           {car.engineVolume > 0 && <span>•</span>}
           <span>{TRANSMISSION_LABELS[car.transmission]}</span>
           <span>•</span>
           <span>{FUEL_LABELS[car.fuel]}</span>
-          {car.power > 0 && <><span>•</span><span>{car.power} л.с.</span></>}
+          {car.power > 0 && <><span>•</span><span>{car.power} {T.carCard.hp}</span></>}
         </div>
         <div className="flex items-center justify-between">
           <p className="text-2xl font-semibold text-foreground">{formatPrice(car.price)}</p>

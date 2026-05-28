@@ -4,6 +4,7 @@ import { Heart, Trash2, ShoppingBag, AlertTriangle } from 'lucide-react';
 import { carsApi, type Car } from '../api/cars';
 import { useFavorites } from '../hooks/useFavorites';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
+import { useLanguage } from '../i18n/LanguageContext';
 
 function formatPrice(p: string | number): string {
   return new Intl.NumberFormat('ru-RU', {
@@ -11,19 +12,10 @@ function formatPrice(p: string | number): string {
     minimumFractionDigits: 0, maximumFractionDigits: 0,
   }).format(Number(p));
 }
-function formatMileage(m: number): string {
-  return `${new Intl.NumberFormat('ru-RU').format(m)} км`;
+function formatMileage(m: number, lang: string): string {
+  return `${new Intl.NumberFormat(lang === 'ru' ? 'ru-RU' : 'en-US').format(m)} км`;
 }
 
-const FUEL_LABELS: Record<string, string> = {
-  petrol: 'Бензин', diesel: 'Дизель', electric: 'Электро', hybrid: 'Гибрид', gas: 'Газ',
-};
-const TRANSMISSION_LABELS: Record<string, string> = {
-  manual: 'Механика', automatic: 'Автомат', robot: 'Робот', variator: 'Вариатор',
-};
-const STATUS_LABELS: Record<string, string> = {
-  available: 'Доступен', reserved: 'Зарезервирован', sold: 'Продан', inactive: 'Неактивен',
-};
 const STATUS_COLORS: Record<string, string> = {
   available: 'bg-accent/10 text-accent',
   reserved: 'bg-primary/10 text-primary',
@@ -34,6 +26,7 @@ const STATUS_COLORS: Record<string, string> = {
 export function FavoritesPage() {
   useEffect(() => { window.scrollTo(0, 0); }, []);
   const { ids, toggle, clear } = useFavorites();
+  const { lang, T } = useLanguage();
   const [cars, setCars] = useState<Car[]>([]);
   const [loading, setLoading] = useState(false);
   const [notFound, setNotFound] = useState<string[]>([]);
@@ -56,11 +49,20 @@ export function FavoritesPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ids.join(',')]);
 
+  const FUEL_LABELS: Record<string, string> = T.fuel;
+  const TRANSMISSION_LABELS: Record<string, string> = T.transmission;
+  const STATUS_LABELS: Record<string, string> = {
+    available: T.status.available,
+    reserved: T.status.reserved,
+    sold: T.status.sold,
+    inactive: T.status.inactive,
+  };
+
   if (loading) {
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-semibold text-foreground">Избранное</h2>
+          <h2 className="text-2xl font-semibold text-foreground">{T.favorites.title}</h2>
         </div>
         <div className="grid grid-cols-1 gap-4">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -84,16 +86,14 @@ export function FavoritesPage() {
         <div className="w-20 h-20 bg-secondary rounded-full flex items-center justify-center mx-auto mb-5">
           <Heart className="w-10 h-10 text-muted-foreground opacity-40" />
         </div>
-        <h3 className="text-xl font-semibold text-foreground mb-2">Список избранного пуст</h3>
-        <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
-          Добавляйте понравившиеся автомобили в избранное, нажимая на ♥ в карточке
-        </p>
+        <h3 className="text-xl font-semibold text-foreground mb-2">{T.favorites.empty}</h3>
+        <p className="text-muted-foreground mb-6 max-w-sm mx-auto">{T.favorites.emptyDesc}</p>
         <Link
           to="/catalog"
           className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-lg transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25"
         >
           <ShoppingBag className="w-5 h-5" />
-          Перейти в каталог
+          {T.favorites.toCatalog}
         </Link>
       </div>
     );
@@ -103,16 +103,16 @@ export function FavoritesPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-semibold text-foreground">
-          Избранное{' '}
+          {T.favorites.title}{' '}
           <span className="text-muted-foreground text-lg font-normal">({cars.length})</span>
         </h2>
         {cars.length > 0 && (
           <button
-            onClick={() => { if (confirm('Очистить весь список избранного?')) clear(); }}
+            onClick={() => { if (confirm(T.favorites.clearConfirm)) clear(); }}
             className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-destructive transition-colors"
           >
             <Trash2 className="w-4 h-4" />
-            Очистить всё
+            {T.favorites.clearAll}
           </button>
         )}
       </div>
@@ -122,13 +122,13 @@ export function FavoritesPage() {
         <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm text-yellow-600 dark:text-yellow-400">
             <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-            <span>{notFound.length} авто больше не доступно в каталоге</span>
+            <span>{notFound.length} {T.favorites.unavailableWarning}</span>
           </div>
           <button
             onClick={() => notFound.forEach(id => toggle(id))}
             className="text-xs text-yellow-600 dark:text-yellow-400 underline hover:no-underline flex-shrink-0"
           >
-            Убрать из списка
+            {T.favorites.removeUnavailable}
           </button>
         </div>
       )}
@@ -169,7 +169,7 @@ export function FavoritesPage() {
                       <button
                         onClick={() => toggle(car.id)}
                         className="flex-shrink-0 p-1.5 hover:bg-destructive/10 rounded-lg transition-colors"
-                        title="Убрать из избранного"
+                        title={T.favorites.removeFavorite}
                       >
                         <Heart className="w-5 h-5 fill-destructive text-destructive" />
                       </button>
@@ -177,7 +177,7 @@ export function FavoritesPage() {
 
                     <div className="flex items-center gap-2 flex-wrap mb-2">
                       <span className="text-sm text-muted-foreground">
-                        {car.year} г. • {formatMileage(car.mileage)}
+                        {car.year} г. • {formatMileage(car.mileage, lang)}
                       </span>
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[car.status] ?? 'bg-secondary text-muted-foreground'}`}>
                         {STATUS_LABELS[car.status] ?? car.status}
@@ -201,7 +201,7 @@ export function FavoritesPage() {
                       to={`/car/${car.id}`}
                       className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25 flex-shrink-0"
                     >
-                      Подробнее
+                      {T.favorites.moreDetails}
                     </Link>
                   </div>
                 </div>

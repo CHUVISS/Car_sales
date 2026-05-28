@@ -74,7 +74,7 @@ export const catalogApi = {
     api.get<GeoCity[]>('/geo/cities'),
 };
 
-// ── City-by-ID resolver (module-level cache, fetched once per session) ────────
+// City-by-ID resolver (module-level cache, fetched once per session)
 let _allCitiesCache: GeoCity[] | null = null;
 let _fetchingCities: Promise<GeoCity[]> | null = null;
 

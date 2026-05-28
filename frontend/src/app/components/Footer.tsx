@@ -1,7 +1,9 @@
 import { Link } from 'react-router';
 import { Car, Phone, Mail, MapPin } from 'lucide-react';
+import { useLanguage } from '../i18n/LanguageContext';
 
 export function Footer() {
+  const { T } = useLanguage();
   return (
     <footer className="bg-foreground text-background mt-auto dark:bg-card dark:text-foreground dark:border-t dark:border-border">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -11,23 +13,21 @@ export function Footer() {
               <Car className="w-8 h-8" />
               <span className="text-xl font-semibold">FastAuto</span>
             </div>
-            <p className="text-sm opacity-70">
-              Ваш надежный партнер в мире автомобилей. Широкий выбор новых и подержанных автомобилей.
-            </p>
+            <p className="text-sm opacity-70">{T.footer.tagline}</p>
           </div>
 
           <div>
-            <h4 className="font-semibold mb-4">Навигация</h4>
+            <h4 className="font-semibold mb-4">{T.footer.navigation}</h4>
             <nav className="flex flex-col gap-2">
-              <Link to="/catalog" className="text-sm opacity-70 hover:opacity-100 transition-opacity">Каталог</Link>
-              <Link to="/catalog?isNew=true" className="text-sm opacity-70 hover:opacity-100 transition-opacity">Новые авто</Link>
-              <Link to="/catalog?isNew=false" className="text-sm opacity-70 hover:opacity-100 transition-opacity">С пробегом</Link>
-              <Link to="/about" className="text-sm opacity-70 hover:opacity-100 transition-opacity">О нас</Link>
+              <Link to="/catalog" className="text-sm opacity-70 hover:opacity-100 transition-opacity">{T.footer.catalog}</Link>
+              <Link to="/catalog?isNew=true" className="text-sm opacity-70 hover:opacity-100 transition-opacity">{T.footer.newCars}</Link>
+              <Link to="/catalog?isNew=false" className="text-sm opacity-70 hover:opacity-100 transition-opacity">{T.footer.usedCars}</Link>
+              <Link to="/about" className="text-sm opacity-70 hover:opacity-100 transition-opacity">{T.nav.about}</Link>
             </nav>
           </div>
 
           <div>
-            <h4 className="font-semibold mb-4">Контакты</h4>
+            <h4 className="font-semibold mb-4">{T.footer.contacts}</h4>
             <div className="flex flex-col gap-3">
               <a href="tel:+79001234567" className="flex items-center gap-2 text-sm opacity-70 hover:opacity-100 transition-opacity">
                 <Phone className="w-4 h-4" />
@@ -45,16 +45,16 @@ export function Footer() {
           </div>
 
           <div>
-            <h4 className="font-semibold mb-4">Режим работы</h4>
+            <h4 className="font-semibold mb-4">{T.footer.hours}</h4>
             <div className="text-sm opacity-70 space-y-1">
-              <p>Пн-Пт: 9:00 - 20:00</p>
-              <p>Сб-Вс: 10:00 - 18:00</p>
+              <p>{T.footer.weekdays}</p>
+              <p>{T.footer.weekend}</p>
             </div>
           </div>
         </div>
 
         <div className="border-t border-current/20 mt-8 pt-8 text-center text-sm opacity-70">
-          <p>© 2026 FastAuto. Все права защищены.</p>
+          <p>{T.footer.copyright}</p>
         </div>
       </div>
     </footer>

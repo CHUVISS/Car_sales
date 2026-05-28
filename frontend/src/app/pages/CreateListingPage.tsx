@@ -16,22 +16,15 @@ import {
   type MyListingImage,
 } from '../api/catalog';
 import { viewingsApi } from '../api/viewings';
-
-const CONDITION_OPTIONS: { value: string; label: string; desc: string }[] = [
-  { value: 'excellent', label: 'Отличное', desc: 'Как новый, без дефектов' },
-  { value: 'good', label: 'Хорошее', desc: 'Небольшие следы эксплуатации' },
-  { value: 'fair', label: 'Удовлетворительное', desc: 'Заметные следы эксплуатации' },
-  { value: 'poor', label: 'Плохое', desc: 'Требует ремонта' },
-];
-
-const WEEK_DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
-const TIME_SLOTS = ['08:00','09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00'];
+import { useLanguage } from '../i18n/LanguageContext';
 
 const inputCls = 'w-full px-4 py-2.5 bg-secondary text-foreground placeholder:text-muted-foreground rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary border border-border focus:border-primary transition-colors';
 const labelCls = 'block text-sm font-medium text-foreground mb-1.5';
 
+const TIME_SLOTS = ['08:00','09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00'];
+
 function SearchSelect<T extends { id: string }>({
-  options, value, onChange, getLabel, placeholder, searchPlaceholder, disabled, loading,
+  options, value, onChange, getLabel, placeholder, searchPlaceholder, disabled, loading, noResults,
 }: {
   options: T[];
   value: string;
@@ -41,6 +34,7 @@ function SearchSelect<T extends { id: string }>({
   searchPlaceholder?: string;
   disabled?: boolean;
   loading?: boolean;
+  noResults?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
@@ -68,7 +62,7 @@ function SearchSelect<T extends { id: string }>({
         className={`${inputCls} flex items-center justify-between gap-2 text-left ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
       >
         <span className={selected ? 'text-foreground' : 'text-muted-foreground'}>
-          {loading ? 'Загрузка...' : selected ? getLabel(selected) : placeholder}
+          {loading ? <Loader2 className="w-4 h-4 animate-spin inline-block" /> : selected ? getLabel(selected) : placeholder}
         </span>
         {loading
           ? <Loader2 className="w-4 h-4 animate-spin flex-shrink-0 text-muted-foreground" />
@@ -86,7 +80,7 @@ function SearchSelect<T extends { id: string }>({
                   type="text"
                   value={q}
                   onChange={e => setQ(e.target.value)}
-                  placeholder={searchPlaceholder ?? 'Поиск...'}
+                  placeholder={searchPlaceholder}
                   className="flex-1 text-sm bg-transparent outline-none text-foreground placeholder:text-muted-foreground"
                 />
               </div>
@@ -94,7 +88,7 @@ function SearchSelect<T extends { id: string }>({
           )}
           <ul className="overflow-y-auto">
             {filtered.length === 0 ? (
-              <li className="px-3 py-3 text-sm text-muted-foreground text-center">Ничего не найдено</li>
+              <li className="px-3 py-3 text-sm text-muted-foreground text-center">{noResults}</li>
             ) : (
               filtered.map(item => (
                 <li key={item.id}>
@@ -120,8 +114,13 @@ export function CreateListingPage() {
   const isEdit = Boolean(editId);
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const { T } = useLanguage();
+  const L = T.listing;
 
-  const STEPS = ['Автомобиль', 'Данные', 'Фото'];
+  const STEPS = L.steps;
+  const CONDITION_OPTIONS = L.conditionOptions;
+  const WEEK_DAYS = L.weekDays;
+
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [editLoading, setEditLoading] = useState(isEdit);
@@ -179,7 +178,6 @@ export function CreateListingPage() {
   // Step 3 — images
   const [images, setImages] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
-  // Уже загруженные фото (только в режиме редактирования)
   const [existingImages, setExistingImages] = useState<MyListingImage[]>([]);
   const [deletingImageId, setDeletingImageId] = useState<string | null>(null);
 
@@ -218,12 +216,10 @@ export function CreateListingPage() {
       setColors(cols);
       setCities(cts);
       if (listing.modification_id) setOriginalModId(listing.modification_id);
-      // Загружаем существующие фото
       if (listing.images && listing.images.length > 0) {
         setExistingImages([...listing.images].sort((a, b) => a.sort_order - b.sort_order));
       }
 
-      // Pre-fill cascade: mark → model → generations
       setSelectedMark(listing.mark_id);
       try {
         setModelsLoading(true);
@@ -240,9 +236,10 @@ export function CreateListingPage() {
         setGensLoading(false);
       }
     }).catch(() => {
-      toast.error('Не удалось загрузить объявление');
+      toast.error(L.errorLoad);
       navigate('/profile?tab=drafts');
     }).finally(() => setEditLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editId]);
 
   // Mark search debounce
@@ -301,9 +298,9 @@ export function CreateListingPage() {
     try {
       await listingsApi.deleteImage(editId, image.id);
       setExistingImages(prev => prev.filter(img => img.id !== image.id));
-      toast.success('Фото удалено');
+      toast.success(L.photoDeleted);
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Не удалось удалить фото');
+      toast.error(err instanceof Error ? err.message : L.photoDeleteError);
     } finally {
       setDeletingImageId(null);
     }
@@ -349,11 +346,11 @@ export function CreateListingPage() {
     const modId = selectedMod || originalModId;
     const hasId = vin.trim().length === 17 || licensePlate.trim().length > 0;
     if (!modId || !year || !price || !mileage || !condition || !selectedColor || !selectedCity || !hasId) {
-      toast.error('Заполните все обязательные поля');
+      toast.error(L.fillRequired);
       return;
     }
     if (!acceptsCash && !acceptsTransfer) {
-      toast.error('Выберите хотя бы один способ оплаты');
+      toast.error(L.paymentRequired);
       return;
     }
     setSubmitting(true);
@@ -378,11 +375,11 @@ export function CreateListingPage() {
           try {
             await listingsApi.uploadImages(editId, images);
           } catch {
-            toast.error('Новые фото не удалось загрузить');
+            toast.error(L.photosErrorEdit);
           }
         }
         await saveViewingWindows(editId);
-        toast.success('Изменения сохранены');
+        toast.success(L.savedSuccess);
         navigate('/profile?tab=drafts');
       } else {
         const listing = await listingsApi.create({
@@ -405,20 +402,20 @@ export function CreateListingPage() {
           try {
             await listingsApi.uploadImages(listing.id, images);
           } catch {
-            toast.error('Фото не удалось загрузить, но объявление создано');
+            toast.error(L.photosErrorButCreated);
           }
         }
         await saveViewingWindows(listing.id);
         try {
           await listingsApi.publish(listing.id);
-          toast.success('Объявление отправлено на модерацию!');
+          toast.success(L.publishedSuccess);
         } catch {
-          toast.success('Объявление сохранено в черновиках');
+          toast.success(L.savedToDrafts);
         }
         navigate('/profile');
       }
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : isEdit ? 'Ошибка сохранения' : 'Ошибка создания объявления');
+      toast.error(err instanceof Error ? err.message : isEdit ? L.errorSave : L.errorCreate);
     } finally {
       setSubmitting(false);
     }
@@ -436,10 +433,10 @@ export function CreateListingPage() {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center px-4">
         <div className="text-center max-w-sm">
-          <h1 className="text-2xl font-semibold text-foreground mb-3">Войдите в аккаунт</h1>
-          <p className="text-muted-foreground mb-6">Для создания объявления необходимо войти в систему</p>
+          <h1 className="text-2xl font-semibold text-foreground mb-3">{L.loginRequired}</h1>
+          <p className="text-muted-foreground mb-6">{L.loginRequiredDesc}</p>
           <Link to="/profile" className="inline-block px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity">
-            Войти
+            {T.profile.signIn}
           </Link>
         </div>
       </div>
@@ -454,7 +451,6 @@ export function CreateListingPage() {
 
   const modLabel = (m: CatalogModification) => m.name ?? m.group_name ?? m.id;
 
-  // In edit mode, can proceed with step 1 if modification was pre-loaded OR newly selected
   const canGoNext0 = Boolean(selectedMod || originalModId);
   const hasIdentifier = vin.trim().length === 17 || licensePlate.trim().length > 0;
   const hasPaymentMethod = acceptsCash || acceptsTransfer;
@@ -468,7 +464,7 @@ export function CreateListingPage() {
     <div className="min-h-screen bg-background">
       <div className="max-w-2xl mx-auto px-4 sm:px-6 py-10">
         <h1 className="text-3xl font-semibold text-foreground mb-8">
-          {isEdit ? 'Редактировать объявление' : 'Подать объявление'}
+          {isEdit ? L.editTitle : L.createTitle}
         </h1>
 
         {/* Progress steps */}
@@ -494,74 +490,84 @@ export function CreateListingPage() {
           {step === 0 && (
             <div className="space-y-4">
               <h2 className="text-xl font-semibold text-foreground mb-4">
-                {isEdit ? 'Изменить автомобиль' : 'Выберите автомобиль'}
+                {isEdit ? L.changeCarTitle : L.selectCarTitle}
               </h2>
 
               {isEdit && originalModId && !selectedMod && (
                 <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg text-sm text-muted-foreground">
-                  Автомобиль уже выбран. Перевыберите поколение и модификацию, если хотите изменить.
+                  {L.carAlreadySelected}
                 </div>
               )}
 
               <div>
-                <label className={labelCls}>Марка *</label>
+                <label className={labelCls}>{L.mark} *</label>
                 <SearchSelect
                   options={marks}
                   value={selectedMark}
                   onChange={(id) => handleMarkChange(id)}
                   getLabel={(m) => m.cyrillic_name ?? m.name ?? m.id}
-                  placeholder="Выберите марку"
+                  placeholder={L.chooseMark}
+                  searchPlaceholder={L.searchPlaceholder}
+                  noResults={L.noResults}
                   loading={marksLoading}
                 />
               </div>
 
               <div>
-                <label className={labelCls}>Модель *</label>
+                <label className={labelCls}>{L.model} *</label>
                 <SearchSelect
                   options={models}
                   value={selectedModel}
                   onChange={(id) => handleModelChange(id)}
                   getLabel={(m) => m.name ?? m.id}
-                  placeholder={selectedMark ? 'Выберите модель' : 'Сначала выберите марку'}
+                  placeholder={selectedMark ? L.chooseModel : L.firstChooseMark}
+                  searchPlaceholder={L.searchPlaceholder}
+                  noResults={L.noResults}
                   disabled={!selectedMark || modelsLoading}
                   loading={modelsLoading}
                 />
               </div>
 
               <div>
-                <label className={labelCls}>Поколение *</label>
+                <label className={labelCls}>{L.generation} *</label>
                 <SearchSelect
                   options={generations}
                   value={selectedGen}
                   onChange={(id) => handleGenChange(id)}
                   getLabel={genLabel}
-                  placeholder={selectedModel ? 'Выберите поколение' : 'Сначала выберите модель'}
+                  placeholder={selectedModel ? L.chooseGeneration : L.firstChooseModel}
+                  searchPlaceholder={L.searchPlaceholder}
+                  noResults={L.noResults}
                   disabled={!selectedModel || gensLoading}
                   loading={gensLoading}
                 />
               </div>
 
               <div>
-                <label className={labelCls}>Комплектация *</label>
+                <label className={labelCls}>{L.configuration} *</label>
                 <SearchSelect
                   options={configurations}
                   value={selectedConf}
                   onChange={(id) => handleConfChange(id)}
                   getLabel={(c) => [c.name, c.body_type].filter(Boolean).join(', ') || c.id}
-                  placeholder={selectedGen ? 'Выберите комплектацию' : 'Сначала выберите поколение'}
+                  placeholder={selectedGen ? L.chooseConfiguration : L.firstChooseGeneration}
+                  searchPlaceholder={L.searchPlaceholder}
+                  noResults={L.noResults}
                   disabled={!selectedGen || confsLoading}
                   loading={confsLoading}
                 />
               </div>
 
               <div>
-                <label className={labelCls}>Модификация *</label>
+                <label className={labelCls}>{L.modification} *</label>
                 <SearchSelect
                   options={modifications}
                   value={selectedMod}
                   onChange={(id) => setSelectedMod(id)}
                   getLabel={modLabel}
-                  placeholder={selectedConf ? 'Выберите модификацию' : 'Сначала выберите комплектацию'}
+                  placeholder={selectedConf ? L.chooseModification : L.firstChooseConfiguration}
+                  searchPlaceholder={L.searchPlaceholder}
+                  noResults={L.noResults}
                   disabled={!selectedConf || modsLoading}
                   loading={modsLoading}
                 />
@@ -572,32 +578,32 @@ export function CreateListingPage() {
           {/* Step 2: Details */}
           {step === 1 && (
             <div className="space-y-4">
-              <h2 className="text-xl font-semibold text-foreground mb-4">Данные автомобиля</h2>
+              <h2 className="text-xl font-semibold text-foreground mb-4">{L.carDataTitle}</h2>
 
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className={labelCls}>Год выпуска *</label>
+                  <label className={labelCls}>{L.year} *</label>
                   <input type="number" min="1900" max={new Date().getFullYear()} value={year}
                     onChange={e => setYear(e.target.value)} placeholder="2020" className={inputCls} />
                 </div>
                 <div>
-                  <label className={labelCls}>Цена, ₽ *</label>
+                  <label className={labelCls}>{L.price} *</label>
                   <input type="text" inputMode="numeric"
                     value={price.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}
                     onChange={e => setPrice(e.target.value.replace(/\D/g, ''))}
-                    placeholder="1 500 000" className={inputCls} />
+                    placeholder={L.pricePlaceholder} className={inputCls} />
                 </div>
                 <div>
-                  <label className={labelCls}>Пробег, км *</label>
+                  <label className={labelCls}>{L.mileage} *</label>
                   <input type="text" inputMode="numeric"
                     value={mileage.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}
                     onChange={e => setMileage(e.target.value.replace(/\D/g, ''))}
-                    placeholder="50 000" className={inputCls} />
+                    placeholder={L.mileagePlaceholder} className={inputCls} />
                 </div>
               </div>
 
               <div>
-                <label className={labelCls}>Состояние *</label>
+                <label className={labelCls}>{L.condition} *</label>
                 <div className="grid grid-cols-2 gap-2">
                   {CONDITION_OPTIONS.map(opt => (
                     <button
@@ -619,65 +625,68 @@ export function CreateListingPage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className={labelCls}>Цвет *</label>
+                  <label className={labelCls}>{L.color}</label>
                   <SearchSelect
                     options={colors}
                     value={selectedColor}
                     onChange={(id) => setSelectedColor(id)}
                     getLabel={(c) => c.name_ru}
-                    placeholder="Выберите цвет"
+                    placeholder={L.chooseColor}
+                    searchPlaceholder={L.searchPlaceholder}
+                    noResults={L.noResults}
                   />
                 </div>
                 <div>
-                  <label className={labelCls}>Город *</label>
+                  <label className={labelCls}>{L.city}</label>
                   <SearchSelect
                     options={cities}
                     value={selectedCity}
                     onChange={(id) => setSelectedCity(id)}
                     getLabel={(c) => c.name_ru}
-                    placeholder="Выберите город"
-                    searchPlaceholder="Поиск города..."
+                    placeholder={L.chooseCity}
+                    searchPlaceholder={L.searchPlaceholder}
+                    noResults={L.noResults}
                   />
                 </div>
               </div>
 
               <div>
-                <label className={labelCls}>VIN-номер</label>
+                <label className={labelCls}>{L.vin}</label>
                 <input type="text" value={vin} onChange={e => setVin(e.target.value.toUpperCase())}
-                  placeholder="WBAXXXXXXXXXXXXXXX" maxLength={17} className={inputCls} />
+                  placeholder={L.vinPlaceholder} maxLength={17} className={inputCls} />
                 {vin.length > 0 && vin.length < 17 && (
-                  <p className="text-xs text-destructive mt-1">VIN должен содержать 17 символов ({vin.length}/17)</p>
+                  <p className="text-xs text-destructive mt-1">{L.vinError} ({vin.length}/17)</p>
                 )}
               </div>
 
               <div>
                 <label className={labelCls}>
-                  Гос. номер{!vin.trim() ? ' *' : ''}
-                  <span className="text-xs font-normal text-muted-foreground ml-1">(обязателен если VIN не указан)</span>
+                  {L.plateMandatory}{!vin.trim() ? ' *' : ''}
+                  <span className="text-xs font-normal text-muted-foreground ml-1">{L.plateNote}</span>
                 </label>
                 <input
                   type="text"
                   value={licensePlate}
                   onChange={e => setLicensePlate(e.target.value.toUpperCase())}
-                  placeholder="А123БВ777"
+                  placeholder={L.platePlaceholder}
                   maxLength={10}
                   className={inputCls}
                 />
                 {!hasIdentifier && (vin.length > 0 || licensePlate.length > 0) && (
-                  <p className="text-xs text-destructive mt-1">Укажите VIN (17 символов) или гос. номер</p>
+                  <p className="text-xs text-destructive mt-1">{L.plateIdentifierError}</p>
                 )}
               </div>
 
               <div>
-                <label className={labelCls}>Описание</label>
+                <label className={labelCls}>{L.description}</label>
                 <textarea value={description} onChange={e => setDescription(e.target.value)}
-                  rows={4} placeholder="Расскажите об автомобиле подробнее..."
+                  rows={4} placeholder={L.descriptionPlaceholder}
                   className={inputCls + ' resize-none'} />
               </div>
 
               <div className="pt-2 border-t border-border">
-                <label className={labelCls}>Расписание просмотров</label>
-                <p className="text-xs text-muted-foreground mb-3">Выберите дни недели, когда покупатели могут посмотреть авто</p>
+                <label className={labelCls}>{L.viewingSchedule}</label>
+                <p className="text-xs text-muted-foreground mb-3">{L.viewingDaysDesc}</p>
                 <div className="flex gap-1.5 mb-4">
                   {WEEK_DAYS.map((day, i) => (
                     <button key={i} type="button" onClick={() => toggleDay(i)}
@@ -690,14 +699,14 @@ export function CreateListingPage() {
                   <div className="space-y-3">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs text-muted-foreground mb-1">С</label>
+                        <label className="block text-xs text-muted-foreground mb-1">{L.timeFrom}</label>
                         <select value={viewingFrom} onChange={e => setViewingFrom(e.target.value)}
                           className={inputCls + ' appearance-none cursor-pointer'}>
                           {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
                         </select>
                       </div>
                       <div>
-                        <label className="block text-xs text-muted-foreground mb-1">До</label>
+                        <label className="block text-xs text-muted-foreground mb-1">{L.timeTo}</label>
                         <select value={viewingTo} onChange={e => setViewingTo(e.target.value)}
                           className={inputCls + ' appearance-none cursor-pointer'}>
                           {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
@@ -706,16 +715,16 @@ export function CreateListingPage() {
                     </div>
                     <div>
                       <label className={labelCls}>
-                        Адрес просмотра <span className="text-destructive">*</span>
+                        {L.viewingAddress} <span className="text-destructive">*</span>
                       </label>
                       <input
                         type="text"
                         value={saleAddress}
                         onChange={e => setSaleAddress(e.target.value)}
-                        placeholder="Москва, ул. Примерная, 1 — адрес для встречи с покупателем"
+                        placeholder={L.viewingAddressPlaceholder}
                         className={inputCls}
                       />
-                      <p className="text-xs text-muted-foreground mt-1">Адрес будет показан покупателю только после внесения залога</p>
+                      <p className="text-xs text-muted-foreground mt-1">{L.viewingAddressNote}</p>
                     </div>
                   </div>
                 )}
@@ -723,9 +732,9 @@ export function CreateListingPage() {
 
               <div className="pt-2 border-t border-border">
                 <label className={labelCls}>
-                  Способы оплаты <span className="text-destructive">*</span>
+                  {L.paymentMethods} <span className="text-destructive">*</span>
                 </label>
-                <p className="text-xs text-muted-foreground mb-3">Выберите хотя бы один вариант оплаты при продаже</p>
+                <p className="text-xs text-muted-foreground mb-3">{L.paymentMethodsNote}</p>
                 <div className="flex gap-4">
                   <label className="flex items-center gap-2 cursor-pointer select-none">
                     <input
@@ -734,7 +743,7 @@ export function CreateListingPage() {
                       onChange={e => setAcceptsCash(e.target.checked)}
                       className="w-4 h-4 accent-primary rounded"
                     />
-                    <span className="text-sm text-foreground">Наличные</span>
+                    <span className="text-sm text-foreground">{L.cash}</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer select-none">
                     <input
@@ -743,11 +752,11 @@ export function CreateListingPage() {
                       onChange={e => setAcceptsTransfer(e.target.checked)}
                       className="w-4 h-4 accent-primary rounded"
                     />
-                    <span className="text-sm text-foreground">Перевод</span>
+                    <span className="text-sm text-foreground">{L.transfer}</span>
                   </label>
                 </div>
                 {!hasPaymentMethod && (
-                  <p className="text-xs text-destructive mt-1.5">Выберите хотя бы один способ оплаты</p>
+                  <p className="text-xs text-destructive mt-1.5">{L.paymentRequired}</p>
                 )}
               </div>
             </div>
@@ -756,12 +765,12 @@ export function CreateListingPage() {
           {/* Step 3: Photos */}
           {step === 2 && (
             <div className="space-y-6">
-              <h2 className="text-xl font-semibold text-foreground mb-4">Фотографии</h2>
+              <h2 className="text-xl font-semibold text-foreground mb-4">{L.photos}</h2>
 
-              {/* Существующие фото (режим редактирования) */}
+              {/* Existing photos (edit mode) */}
               {isEdit && existingImages.length > 0 && (
                 <div>
-                  <label className={labelCls}>Загруженные фото ({existingImages.length})</label>
+                  <label className={labelCls}>{L.existingPhotosLabel} ({existingImages.length})</label>
                   <div className="grid grid-cols-4 gap-2">
                     {existingImages.map((img) => (
                       <div key={img.id} className="relative aspect-square rounded-lg overflow-hidden group bg-secondary">
@@ -773,7 +782,7 @@ export function CreateListingPage() {
                         />
                         {img.is_primary && (
                           <span className="absolute bottom-1 left-1 flex items-center gap-0.5 text-[10px] bg-black/60 text-yellow-300 px-1.5 py-0.5 rounded">
-                            <Star className="w-2.5 h-2.5" /> Главное
+                            <Star className="w-2.5 h-2.5" /> {L.mainPhotoLabel}
                           </span>
                         )}
                         <button
@@ -781,7 +790,7 @@ export function CreateListingPage() {
                           onClick={() => handleExistingImageDelete(img)}
                           disabled={deletingImageId === img.id}
                           className="absolute top-1 right-1 w-7 h-7 bg-black/70 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-60"
-                          title="Удалить фото"
+                          title={L.deletePhoto}
                         >
                           {deletingImageId === img.id
                             ? <Loader2 className="w-3.5 h-3.5 text-white animate-spin" />
@@ -794,16 +803,16 @@ export function CreateListingPage() {
                 </div>
               )}
 
-              {/* Загрузка новых фото */}
+              {/* Upload new photos */}
               <div>
                 <label className={labelCls}>
-                  {isEdit ? 'Добавить фото' : 'Фото автомобиля (до 10 штук)'}
+                  {isEdit ? L.addPhotos : L.carsUpTo}
                 </label>
                 <label className="flex flex-col items-center justify-center gap-3 p-8 border-2 border-dashed border-border rounded-xl cursor-pointer hover:border-primary/50 transition-colors group">
                   <Upload className="w-8 h-8 text-muted-foreground group-hover:text-primary transition-colors" />
                   <div className="text-center">
-                    <p className="text-sm font-medium text-foreground">Нажмите для загрузки</p>
-                    <p className="text-xs text-muted-foreground">JPG, PNG — до 10 МБ каждый</p>
+                    <p className="text-sm font-medium text-foreground">{L.clickToUpload}</p>
+                    <p className="text-xs text-muted-foreground">{L.photoTypes}</p>
                   </div>
                   <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageAdd} />
                 </label>
@@ -821,7 +830,7 @@ export function CreateListingPage() {
                           <X className="w-3.5 h-3.5 text-white" />
                         </button>
                         {i === 0 && !isEdit && (
-                          <span className="absolute bottom-1 left-1 text-[10px] bg-black/60 text-white px-1.5 py-0.5 rounded">Главное</span>
+                          <span className="absolute bottom-1 left-1 text-[10px] bg-black/60 text-white px-1.5 py-0.5 rounded">{L.mainPhotoLabel}</span>
                         )}
                       </div>
                     ))}
@@ -831,10 +840,8 @@ export function CreateListingPage() {
 
               {!isEdit && (
                 <div className="p-4 bg-secondary/50 rounded-xl border border-border">
-                  <p className="text-sm font-medium text-foreground mb-1">Что будет после отправки?</p>
-                  <p className="text-sm text-muted-foreground">
-                    Объявление отправится на модерацию. После проверки оно появится в каталоге.
-                  </p>
+                  <p className="text-sm font-medium text-foreground mb-1">{L.afterSubmitTitle}</p>
+                  <p className="text-sm text-muted-foreground">{L.afterSubmitDesc}</p>
                 </div>
               )}
             </div>
@@ -847,7 +854,7 @@ export function CreateListingPage() {
               onClick={() => step === 0 ? navigate(isEdit ? '/profile?tab=drafts' : -1 as never) : setStep(s => s - 1)}
               className="px-5 py-2.5 text-sm text-foreground border border-border rounded-lg hover:bg-secondary transition-colors"
             >
-              {step === 0 ? 'Отмена' : 'Назад'}
+              {step === 0 ? L.cancel : L.prevStep}
             </button>
 
             {step < 2 ? (
@@ -857,7 +864,7 @@ export function CreateListingPage() {
                 disabled={step === 0 ? !canGoNext0 : !canGoNext1}
                 className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-40"
               >
-                Далее
+                {L.next}
               </button>
             ) : (
               <button
@@ -868,8 +875,8 @@ export function CreateListingPage() {
               >
                 {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
                 {submitting
-                  ? (isEdit ? 'Сохранение...' : 'Публикация...')
-                  : (isEdit ? 'Сохранить изменения' : 'Опубликовать')}
+                  ? (isEdit ? L.saving : L.publishing)
+                  : (isEdit ? L.saveChanges : L.submitBtn)}
               </button>
             )}
           </div>
