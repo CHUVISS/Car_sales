@@ -614,6 +614,21 @@ const ru = {
     home: 'На главную',
   },
 
+  // 5xx
+  serverError: {
+    title: 'Что-то пошло не так',
+    desc: 'Произошла ошибка на нашей стороне. Попробуйте обновить страницу или зайдите позже.',
+    retry: 'Обновить страницу',
+    home: 'На главную',
+    details: 'Подробности ошибки',
+    codes: {
+      500: 'Внутренняя ошибка сервера',
+      502: 'Ошибка шлюза',
+      503: 'Сервис временно недоступен',
+      504: 'Превышено время ожидания',
+    },
+  },
+
   // Редактирование / Создание объявления
   listing: {
     editTitle: 'Редактировать объявление',
@@ -1513,6 +1528,20 @@ const en: typeof ru = {
     title: 'Page not found',
     desc: 'Unfortunately, the requested page does not exist',
     home: 'Go to homepage',
+  },
+
+  serverError: {
+    title: 'Something went wrong',
+    desc: 'An error occurred on our side. Try refreshing the page or come back later.',
+    retry: 'Refresh page',
+    home: 'Go to homepage',
+    details: 'Error details',
+    codes: {
+      500: 'Internal Server Error',
+      502: 'Bad Gateway',
+      503: 'Service Unavailable',
+      504: 'Gateway Timeout',
+    },
   },
 
   listing: {

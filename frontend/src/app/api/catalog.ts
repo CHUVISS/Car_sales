@@ -1,4 +1,4 @@
-import { api } from './client';
+import { api, resolveImageUrl } from './client';
 
 export interface CatalogMark {
   id: string;
@@ -143,6 +143,18 @@ export interface ListingCreateBody {
   accepts_transfer?: boolean;
 }
 
+function resolveListingImages(listing: MyListing): MyListing {
+  if (!listing.images) return listing;
+  return {
+    ...listing,
+    images: listing.images.map(img => ({
+      ...img,
+      url: resolveImageUrl(img.url),
+      thumbnail_url: resolveImageUrl(img.thumbnail_url),
+    })),
+  };
+}
+
 export const listingsApi = {
   create: (body: ListingCreateBody) =>
     api.post<{ id: string }>('/listings', body),
@@ -168,9 +180,10 @@ export const listingsApi = {
   publish: (listingId: string) =>
     api.post<{ id: string; status: string }>(`/listings/${listingId}/publish`, {}),
 
-  my: () => api.get<MyListing[]>('/listings/my'),
+  my: () => api.get<MyListing[]>('/listings/my').then(list => list.map(resolveListingImages)),
 
-  get: (listingId: string) => api.get<MyListing>(`/listings/${listingId}`),
+  get: (listingId: string) =>
+    api.get<MyListing>(`/listings/${listingId}`).then(resolveListingImages),
 
   update: (listingId: string, body: Partial<ListingCreateBody>) =>
     api.patch<MyListing>(`/listings/${listingId}`, body),
