@@ -4,6 +4,7 @@ import {
   Send, Bot, User, Plus, Trash2, MessageSquare,
   ChevronLeft, Loader2, Car, Zap, AlertCircle,
 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import {
   streamChat, getConversations, getConversation, deleteConversation,
   type AiMessage, type AiConversation,
@@ -19,6 +20,51 @@ interface LocalMessage {
   isStreaming?: boolean;
   isToolCall?: boolean;
   toolName?: string;
+}
+
+function AiMarkdown({ content }: { content: string }) {
+  return (
+    <ReactMarkdown
+      components={{
+        // Параграфы
+        p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
+        // Жирный
+        strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+        // Курсив
+        em: ({ children }) => <em className="italic">{children}</em>,
+        // Заголовки
+        h1: ({ children }) => <p className="font-bold text-base mb-1">{children}</p>,
+        h2: ({ children }) => <p className="font-semibold text-sm mb-1">{children}</p>,
+        h3: ({ children }) => <p className="font-semibold text-sm mb-0.5">{children}</p>,
+        // Ненумерованный список
+        ul: ({ children }) => <ul className="my-1.5 space-y-0.5 pl-1">{children}</ul>,
+        li: ({ children }) => (
+          <li className="flex gap-2">
+            <span className="mt-1.5 flex-shrink-0 w-1.5 h-1.5 rounded-full bg-current opacity-60" />
+            <span>{children}</span>
+          </li>
+        ),
+        // Нумерованный список
+        ol: ({ children }) => <ol className="my-1.5 space-y-0.5 pl-1 list-decimal list-inside">{children}</ol>,
+        // Код inline
+        code: ({ children }) => (
+          <code className="px-1.5 py-0.5 bg-black/10 dark:bg-white/10 rounded text-[0.8em] font-mono">
+            {children}
+          </code>
+        ),
+        // Блок кода
+        pre: ({ children }) => (
+          <pre className="my-2 p-3 bg-black/10 dark:bg-white/10 rounded-xl text-xs font-mono overflow-x-auto leading-relaxed">
+            {children}
+          </pre>
+        ),
+        // Горизонтальная линия
+        hr: () => <hr className="my-2 border-current opacity-20" />,
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
 }
 
 function MessageBubble({ msg }: { msg: LocalMessage }) {
@@ -44,14 +90,26 @@ function MessageBubble({ msg }: { msg: LocalMessage }) {
         {isUser ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
       </div>
       <div className={`max-w-[75%] ${isUser ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
-        <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
+        <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${
           isUser
-            ? 'bg-primary text-primary-foreground rounded-tr-sm'
+            ? 'bg-primary text-primary-foreground rounded-tr-sm whitespace-pre-wrap'
             : 'bg-card border border-border text-foreground rounded-tl-sm'
         }`}>
-          {msg.content || (msg.isStreaming ? <span className="inline-block w-2 h-4 bg-current animate-pulse rounded-sm" /> : '...')}
-          {msg.isStreaming && msg.content && (
-            <span className="inline-block w-2 h-4 bg-current animate-pulse rounded-sm ml-0.5 align-middle" />
+          {isUser ? (
+            msg.content || (msg.isStreaming
+              ? <span className="inline-block w-2 h-4 bg-current animate-pulse rounded-sm" />
+              : '...')
+          ) : (
+            msg.content
+              ? <>
+                  <AiMarkdown content={msg.content} />
+                  {msg.isStreaming && (
+                    <span className="inline-block w-2 h-4 bg-current animate-pulse rounded-sm ml-0.5 align-middle" />
+                  )}
+                </>
+              : msg.isStreaming
+                ? <span className="inline-block w-2 h-4 bg-current animate-pulse rounded-sm" />
+                : '...'
           )}
         </div>
       </div>
