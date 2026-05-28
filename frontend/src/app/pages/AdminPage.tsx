@@ -352,6 +352,74 @@ function CarFilterPanel({ filters, onChange, onReset, availableBrands, brandsLoa
   );
 }
 
+// FormSearchSelect — single-select dropdown with inline search (used in car create form)
+
+function FormSearchSelect<T extends { id: string }>({
+  options, value, onChange, getLabel, placeholder, searchPlaceholder, disabled, loading, noResults,
+}: {
+  options: T[];
+  value: string;
+  onChange: (id: string) => void;
+  getLabel: (item: T) => string;
+  placeholder: string;
+  searchPlaceholder?: string;
+  disabled?: boolean;
+  loading?: boolean;
+  noResults?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+  const selected = options.find(o => o.id === value);
+  const filtered = q.trim() ? options.filter(o => getLabel(o).toLowerCase().includes(q.toLowerCase())) : options;
+  return (
+    <div ref={ref} className="relative">
+      <button type="button" disabled={disabled || loading}
+        onClick={() => { setOpen(o => !o); setQ(''); }}
+        className={`${inputCls} flex items-center justify-between gap-2 text-left ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}>
+        <span className={selected ? 'text-foreground' : 'text-muted-foreground'}>
+          {loading ? <Loader2 className="w-4 h-4 animate-spin inline-block" /> : selected ? getLabel(selected) : placeholder}
+        </span>
+        {loading
+          ? <Loader2 className="w-4 h-4 animate-spin flex-shrink-0 text-muted-foreground" />
+          : <ChevronDown className={`w-4 h-4 flex-shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />}
+      </button>
+      {open && !loading && (
+        <div className="absolute top-full left-0 right-0 mt-1 bg-background border border-border rounded-lg shadow-lg z-50 max-h-60 overflow-hidden flex flex-col">
+          {options.length > 6 && (
+            <div className="p-2 border-b border-border flex-shrink-0">
+              <div className="flex items-center gap-2 px-2 py-1.5 bg-secondary rounded-md">
+                <Search className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                <input autoFocus type="text" value={q} onChange={e => setQ(e.target.value)}
+                  placeholder={searchPlaceholder}
+                  className="flex-1 text-sm bg-transparent outline-none text-foreground placeholder:text-muted-foreground" />
+              </div>
+            </div>
+          )}
+          <ul className="overflow-y-auto">
+            {filtered.length === 0
+              ? <li className="px-3 py-3 text-sm text-muted-foreground text-center">{noResults}</li>
+              : filtered.map(item => (
+                <li key={item.id}>
+                  <button type="button"
+                    onClick={() => { onChange(item.id); setOpen(false); setQ(''); }}
+                    className={`w-full text-left px-3 py-2 text-sm hover:bg-secondary transition-colors ${item.id === value ? 'text-primary font-medium' : 'text-foreground'}`}>
+                    {getLabel(item)}
+                  </button>
+                </li>
+              ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // StatsTab
 
 function StatsTab({ stats, loading }: { stats: DashboardStats | null; loading: boolean }) {
@@ -392,8 +460,10 @@ function StatsTab({ stats, loading }: { stats: DashboardStats | null; loading: b
 
 // CarTableRow
 
+type AdminCarDisplay = Omit<AdminCar, 'price' | 'mileage'> & { price: string; mileage: string };
+
 function CarTableRow({ car, onEdit, onDelete, onStatusChange, onRowClick, carStatusLabels }: {
-  car: AdminCar; onEdit: (car: AdminCar) => void;
+  car: AdminCarDisplay; onEdit: (car: AdminCarDisplay) => void;
   onDelete: (id: string, name: string) => void;
   onStatusChange: (id: string, status: string) => void;
   onRowClick: (id: string) => void;
@@ -445,6 +515,7 @@ function CarsTab() {
 
   // Catalog cascade state
   const [marks, setMarks] = useState<CatalogMark[]>([]);
+  const [marksLoading, setMarksLoading] = useState(true);
   const [availableModels, setAvailableModels] = useState<CatalogModel[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [availableGens, setAvailableGens] = useState<CatalogGeneration[]>([]);
@@ -474,7 +545,25 @@ function CarsTab() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
 
-  useEffect(() => { catalogApi.searchMarks('').then(setMarks).catch(() => {}); }, []);
+  // Form cascade state (create mode only)
+  const [formMarkId, setFormMarkId] = useState('');
+  const [formModelId, setFormModelId] = useState('');
+  const [formGenId, setFormGenId] = useState('');
+  const [formConfId, setFormConfId] = useState('');
+  const [formModId, setFormModId] = useState('');
+  const [formModels, setFormModels] = useState<CatalogModel[]>([]);
+  const [formGens, setFormGens] = useState<CatalogGeneration[]>([]);
+  const [formConfs, setFormConfs] = useState<CatalogConfiguration[]>([]);
+  const [formMods, setFormMods] = useState<CatalogModification[]>([]);
+  const [fmLoading, setFmLoading] = useState(false);
+  const [fgLoading, setFgLoading] = useState(false);
+  const [fcLoading, setFcLoading] = useState(false);
+  const [fmoLoading, setFmoLoading] = useState(false);
+
+  useEffect(() => {
+    setMarksLoading(true);
+    catalogApi.searchMarks('').then(setMarks).catch(() => {}).finally(() => setMarksLoading(false));
+  }, []);
 
   useEffect(() => {
     if (filters.brands.length === 0) { setAvailableModels([]); return; }
@@ -633,8 +722,49 @@ function CarsTab() {
   };
   const clearFiles = () => { previews.forEach(url => URL.revokeObjectURL(url)); setSelectedFiles([]); setPreviews([]); };
 
-  const openCreate = () => { setEditCar(null); setForm(emptyForm); clearFiles(); setShowForm(true); };
-  const openEdit = (car: AdminCar) => {
+  const resetFormCascade = () => {
+    setFormMarkId(''); setFormModelId(''); setFormGenId(''); setFormConfId(''); setFormModId('');
+    setFormModels([]); setFormGens([]); setFormConfs([]); setFormMods([]);
+  };
+
+  const onFormMarkChange = (id: string) => {
+    setFormMarkId(id); setFormModelId(''); setFormModels([]);
+    setFormGenId(''); setFormGens([]); setFormConfId(''); setFormConfs([]);
+    setFormModId(''); setFormMods([]);
+    const m = marks.find(x => x.id === id);
+    setForm(p => ({ ...p, brand: m ? (m.name ?? m.cyrillic_name ?? '') : '' }));
+    if (!id) return;
+    setFmLoading(true);
+    catalogApi.getModels(id).then(setFormModels).catch(() => setFormModels([])).finally(() => setFmLoading(false));
+  };
+
+  const onFormModelChange = (id: string) => {
+    setFormModelId(id); setFormGenId(''); setFormGens([]);
+    setFormConfId(''); setFormConfs([]); setFormModId(''); setFormMods([]);
+    const m = formModels.find(x => x.id === id);
+    setForm(p => ({ ...p, model: m?.name ?? '' }));
+    if (!id) return;
+    setFgLoading(true);
+    catalogApi.getGenerations(id).then(setFormGens).catch(() => setFormGens([])).finally(() => setFgLoading(false));
+  };
+
+  const onFormGenChange = (id: string) => {
+    setFormGenId(id); setFormConfId(''); setFormConfs([]); setFormModId(''); setFormMods([]);
+    if (!id) return;
+    setFcLoading(true);
+    catalogApi.getConfigurations(id).then(setFormConfs).catch(() => setFormConfs([])).finally(() => setFcLoading(false));
+  };
+
+  const onFormConfChange = (id: string) => {
+    setFormConfId(id); setFormModId(''); setFormMods([]);
+    if (!id) return;
+    setFmoLoading(true);
+    catalogApi.getModifications(id).then(setFormMods).catch(() => setFormMods([])).finally(() => setFmoLoading(false));
+  };
+
+  const openCreate = () => { setEditCar(null); setForm(emptyForm); clearFiles(); resetFormCascade(); setShowForm(true); };
+  const openEdit = (displayCar: AdminCarDisplay) => {
+    const car = allCars.find(c => c.id === displayCar.id) ?? (displayCar as unknown as AdminCar);
     setEditCar(car);
     const c = car as AdminCar & { viewing_days?: string[]; viewing_time_from?: string; viewing_time_to?: string; viewing_address?: string };
     setForm({ brand: car.brand, model: car.model, year: String(car.year), price: String(car.price), mileage: String(car.mileage), color: car.color ?? '', fuel_type: car.fuel_type ?? '', transmission: car.transmission ?? '', body_type: car.body_type ?? '', engine_volume: car.engine_volume ?? '', engine_power: String(car.engine_power ?? ''), description: car.description ?? '', vin: car.vin ?? '', viewing_days: c.viewing_days ?? [], viewing_time_from: c.viewing_time_from ?? '09:00', viewing_time_to: c.viewing_time_to ?? '20:00', viewing_address: c.viewing_address ?? '' });
@@ -643,6 +773,8 @@ function CarsTab() {
 
   const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setSaving(true);
+    void selectedFiles; // to be passed to upload API when implemented
     toast.error(A.carCreateEditError);
     setSaving(false);
   };
@@ -872,10 +1004,72 @@ function CarsTab() {
       {showForm && (
         <Modal title={editCar ? A.carFormEdit : A.carFormCreate} onClose={() => setShowForm(false)} size="lg">
           <form onSubmit={handleSave} className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
+            {/* Create mode: catalog cascade Mark → Model → Generation → Configuration → Modification */}
+            {!editCar && (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-muted-foreground">{A.carFormBrand} *</label>
+                  <FormSearchSelect
+                    options={marks} value={formMarkId} onChange={onFormMarkChange}
+                    getLabel={(m) => m.name ?? m.cyrillic_name ?? m.id}
+                    placeholder={T.listing.chooseMark} searchPlaceholder={T.listing.searchPlaceholder}
+                    noResults={T.listing.noResults} loading={marks.length === 0 && marksLoading} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-muted-foreground">{A.carFormModel} *</label>
+                  <FormSearchSelect
+                    options={formModels} value={formModelId} onChange={onFormModelChange}
+                    getLabel={(m) => m.name ?? m.id}
+                    placeholder={formMarkId ? T.listing.chooseModel : T.listing.firstChooseMark}
+                    searchPlaceholder={T.listing.searchPlaceholder} noResults={T.listing.noResults}
+                    disabled={!formMarkId} loading={fmLoading} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-muted-foreground">{T.listing.generation} *</label>
+                  <FormSearchSelect
+                    options={formGens} value={formGenId} onChange={onFormGenChange}
+                    getLabel={(g) => g.name ?? `${g.year_from ?? ''}–${g.year_to ?? '...'}`}
+                    placeholder={formModelId ? T.listing.chooseGeneration : T.listing.firstChooseModel}
+                    searchPlaceholder={T.listing.searchPlaceholder} noResults={T.listing.noResults}
+                    disabled={!formModelId} loading={fgLoading} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-muted-foreground">{T.listing.configuration} *</label>
+                  <FormSearchSelect
+                    options={formConfs} value={formConfId} onChange={onFormConfChange}
+                    getLabel={(c) => c.name ?? c.id}
+                    placeholder={formGenId ? T.listing.chooseConfiguration : T.listing.firstChooseGeneration}
+                    searchPlaceholder={T.listing.searchPlaceholder} noResults={T.listing.noResults}
+                    disabled={!formGenId} loading={fcLoading} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-muted-foreground">{T.listing.modification} *</label>
+                  <FormSearchSelect
+                    options={formMods} value={formModId} onChange={setFormModId}
+                    getLabel={(m) => m.name ?? m.group_name ?? m.id}
+                    placeholder={formConfId ? T.listing.chooseModification : T.listing.firstChooseConfiguration}
+                    searchPlaceholder={T.listing.searchPlaceholder} noResults={T.listing.noResults}
+                    disabled={!formConfId} loading={fmoLoading} />
+                </div>
+              </div>
+            )}
+
+            {/* Edit mode: plain text inputs for brand/model */}
+            {editCar && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-muted-foreground">{A.carFormBrand}</label>
+                  <input type="text" required value={form.brand} onChange={e => setForm(p => ({ ...p, brand: e.target.value }))} className={inputCls} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-muted-foreground">{A.carFormModel}</label>
+                  <input type="text" required value={form.model} onChange={e => setForm(p => ({ ...p, model: e.target.value }))} className={inputCls} />
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-3">
               {([
-                ['brand', A.carFormBrand, 'text', true],
-                ['model', A.carFormModel, 'text', true],
                 ['year', A.carFormYear, 'number', true],
                 ['price', A.carFormPrice, 'number', true],
                 ['mileage', A.carFormMileage, 'number', false],
