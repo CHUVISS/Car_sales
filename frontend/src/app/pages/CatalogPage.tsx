@@ -5,6 +5,7 @@ import { carsApi, formatCatalogId } from '../api/cars';
 import { catalogApi } from '../api/catalog';
 import type { CatalogMark, CatalogModel, CatalogGeneration, CatalogConfiguration, CatalogModification } from '../api/catalog';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
+import { CarImagePlaceholder } from '../components/CarImagePlaceholder';
 import { useFavorites } from '../hooks/useFavorites';
 import type { CarFilters, FuelType, Transmission, Car as CarType } from '../api/cars';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -184,7 +185,7 @@ function GridCard({ car }: { car: CarType }) {
           <ImageWithFallback src={img.url} alt={`${car.brand} ${car.model}`}
             className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 ${isSoldOrInactive ? 'brightness-75' : ''}`} />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-muted-foreground opacity-30 text-4xl">🚗</div>
+          <CarImagePlaceholder />
         )}
         <div className="absolute top-2.5 left-2.5 flex flex-col gap-1">
           {car.mileage === 0 && <span className="px-2 py-0.5 bg-accent text-accent-foreground rounded-full text-xs font-medium">{T.status.new}</span>}
@@ -255,7 +256,7 @@ function ListRow({ car }: { car: CarType }) {
           <ImageWithFallback src={img.thumbnail_url} alt={`${car.brand} ${car.model}`}
             className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 ${isSoldOrInactive ? 'brightness-75' : ''}`} />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-muted-foreground opacity-30 text-4xl">🚗</div>
+          <CarImagePlaceholder />
         )}
         {car.images.length > 1 && (
           <span className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/60 text-white text-[10px] rounded backdrop-blur-sm">

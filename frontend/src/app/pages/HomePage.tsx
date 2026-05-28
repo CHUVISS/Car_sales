@@ -1,14 +1,70 @@
 import { Link, useNavigate } from 'react-router';
-import { Search, Shield, Wallet, Headset } from 'lucide-react';
-import { CarCard } from '../components/CarCard';
-import { useState, useEffect } from 'react';
+import { Search, Shield, Wallet, Headset, Heart } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
+import { CarImagePlaceholder } from '../components/CarImagePlaceholder';
 import { toast } from 'sonner';
-import { useCars } from '../hooks/useCars';
+import { carsApi, type Car, formatCatalogId } from '../api/cars';
+import { catalogApi, type CatalogMark } from '../api/catalog';
 import { messagesApi } from '../api/messages';
 import { useLanguage } from '../i18n/LanguageContext';
+import { useFavorites } from '../hooks/useFavorites';
 
-const ALL_BRANDS = ['Audi', 'BMW', 'Hyundai', 'Kia', 'Lexus', 'Mazda', 'Mercedes-Benz', 'Nissan', 'Skoda', 'Tesla', 'Toyota', 'Volkswagen'];
+function formatPrice(p: number) {
+  return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(p);
+}
+function formatMileage(m: number) {
+  return `${new Intl.NumberFormat('ru-RU').format(m)} км`;
+}
+function markLabel(m: CatalogMark) {
+  return m.name ?? m.cyrillic_name ?? formatCatalogId(m.id);
+}
+
+/** Карточка авто для главной страницы (использует CarType.images напрямую) */
+function HomeCarCard({ car }: { car: Car }) {
+  const { isFavorite, toggle } = useFavorites();
+  const fav = isFavorite(car.id);
+  const img = car.images.find(i => i.is_primary) ?? car.images[0];
+  const isSoldOrInactive = car.status === 'sold' || car.status === 'inactive';
+
+  return (
+    <Link
+      to={`/car/${car.id}`}
+      className="group block bg-card rounded-lg border border-border overflow-hidden transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25"
+    >
+      <div className="relative aspect-[4/3] bg-secondary overflow-hidden">
+        {img ? (
+          <ImageWithFallback
+            src={img.url}
+            alt={`${car.brand} ${car.model}`}
+            className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 ${isSoldOrInactive ? 'brightness-75' : ''}`}
+          />
+        ) : (
+          <CarImagePlaceholder />
+        )}
+        <button
+          onClick={e => { e.preventDefault(); toggle(car.id); }}
+          className="absolute top-2.5 right-2.5 p-1.5 bg-card/90 rounded-full hover:bg-card transition-colors"
+        >
+          <Heart className={`w-4 h-4 ${fav ? 'fill-destructive text-destructive' : 'text-foreground'}`} />
+        </button>
+        {car.images.length > 1 && (
+          <span className="absolute bottom-2 right-2 px-1.5 py-0.5 bg-black/60 text-white text-[10px] rounded backdrop-blur-sm">
+            {car.images.length} фото
+          </span>
+        )}
+      </div>
+      <div className="p-4">
+        <h3 className="font-semibold text-foreground mb-0.5">{car.brand} {car.model}</h3>
+        <p className="text-sm text-muted-foreground mb-3">
+          {car.year} • {formatMileage(car.mileage)}
+          {car.engine_volume ? ` • ${car.engine_volume}л` : ''}
+        </p>
+        <p className="text-xl font-semibold text-foreground">{formatPrice(Number(car.price))}</p>
+      </div>
+    </Link>
+  );
+}
 
 const inputCls = "w-full px-4 py-3 bg-secondary text-foreground placeholder:text-muted-foreground rounded-lg outline-none focus:ring-2 focus:ring-primary border border-transparent focus:border-primary";
 
@@ -16,34 +72,90 @@ export function HomePage() {
   useEffect(() => { window.scrollTo(0, 0); }, []);
   const navigate = useNavigate();
   const { T } = useLanguage();
-  const [searchBrand, setSearchBrand] = useState('');
+
+  // ─── Поиск ────────────────────────────────────────────────────────────────
+  const [searchQuery, setSearchQuery] = useState('');
+  const [marks, setMarks] = useState<CatalogMark[]>([]);
+  const [suggestions, setSuggestions] = useState<CatalogMark[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
+
+  // Загружаем все марки один раз
+  useEffect(() => {
+    catalogApi.searchMarks('').then(setMarks).catch(() => {});
+  }, []);
+
+  // Фильтруем подсказки по вводу
+  useEffect(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) { setSuggestions([]); return; }
+    setSuggestions(
+      marks.filter(m => markLabel(m).toLowerCase().includes(q)).slice(0, 8)
+    );
+  }, [searchQuery, marks]);
+
+  // Закрываем подсказки при клике снаружи
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    const q = searchQuery.trim();
+    if (!q) { navigate('/catalog'); return; }
+    // Ищем точное совпадение или первую подсказку
+    const match = marks.find(m => markLabel(m).toLowerCase() === q.toLowerCase()) ?? suggestions[0];
+    if (match) {
+      navigate(`/catalog?brands=${encodeURIComponent(markLabel(match))}`);
+    } else {
+      navigate(`/catalog`);
+    }
+  };
+
+  const selectSuggestion = (m: CatalogMark) => {
+    setSearchQuery(markLabel(m));
+    setShowSuggestions(false);
+    navigate(`/catalog?brands=${encodeURIComponent(markLabel(m))}`);
+  };
+
+  // ─── Машины ───────────────────────────────────────────────────────────────
+  const [cars, setCars] = useState<Car[]>([]);
+  const [loadingCars, setLoadingCars] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingCars(true);
+    carsApi.list({ limit: 6 })
+      .then(async res => {
+        if (cancelled) return;
+        setCars(res.data);
+        setLoadingCars(false);
+        // Подгружаем фото в фоне
+        const details = await Promise.allSettled(res.data.map(c => carsApi.get(c.id)));
+        if (cancelled) return;
+        setCars(res.data.map((c, i) => {
+          const r = details[i];
+          return r.status === 'fulfilled' && r.value.images.length > 0
+            ? { ...c, images: r.value.images }
+            : c;
+        }));
+      })
+      .catch(() => { if (!cancelled) setLoadingCars(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  // ─── Форма обратной связи ─────────────────────────────────────────────────
   const [formName, setFormName] = useState('');
   const [formPhone, setFormPhone] = useState('');
   const [formComment, setFormComment] = useState('');
   const [formEmail, setFormEmail] = useState('');
   const [submitting, setSubmitting] = useState(false);
-
-  const { cars, loading } = useCars({ limit: 6, sort_by: 'date_desc' });
-
-  const adaptedCars = cars.map(car => ({
-    id: car.id, brand: car.brand, model: car.model, year: car.year,
-    price: Number(car.price), mileage: car.mileage,
-    transmission: (car.transmission === 'automatic' || car.transmission === 'robot' || car.transmission === 'variator') ? 'automatic' as const : 'manual' as const,
-    fuel: (car.fuel_type ?? 'petrol') as 'petrol' | 'diesel' | 'electric' | 'hybrid',
-    color: car.color ?? '', engineVolume: Number(car.engine_volume ?? 0),
-    drive: 'front' as const,
-    body: (car.body_type ?? 'sedan') as 'sedan' | 'suv' | 'hatchback' | 'wagon' | 'coupe' | 'minivan',
-    power: car.engine_power ?? 0,
-    images: car.images.length > 0 ? car.images.map(img => img.url) : ['placeholder'],
-    description: car.description ?? '',
-    isNew: car.status === 'available' && car.mileage === 0,
-    createdAt: car.created_at, vin: car.vin ?? undefined,
-  }));
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    navigate(searchBrand ? `/catalog?brand=${searchBrand}` : '/catalog');
-  };
 
   const handleLeadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,21 +202,43 @@ export function HomePage() {
             <p className="text-lg opacity-90 mb-8 transition-transform duration-300 group-hover:scale-105 origin-left">
               {T.home.heroSubtitle}
             </p>
-            <form onSubmit={handleSearch} className="bg-card rounded-lg p-4 shadow-lg border border-border transition-all duration-300 group-hover:shadow-[0_0_24px_6px_hsl(var(--primary)/0.25)]">
+
+            {/* Поиск */}
+            <form
+              onSubmit={handleSearch}
+              className="bg-card rounded-lg p-4 shadow-lg border border-border transition-all duration-300 group-hover:shadow-[0_0_24px_6px_hsl(var(--primary)/0.25)]"
+            >
               <div className="flex flex-col md:flex-row gap-3">
-                <div className="flex-1">
-                  <select
-                    value={searchBrand}
-                    onChange={e => setSearchBrand(e.target.value)}
-                    className="w-full px-4 py-3 bg-secondary text-foreground rounded-lg outline-none focus:ring-2 focus:ring-primary border border-border transition-all duration-200 focus:scale-[1.02]"
-                  >
-                    <option value="">{T.home.allBrands}</option>
-                    {ALL_BRANDS.map(brand => <option key={brand} value={brand}>{brand}</option>)}
-                  </select>
+                <div ref={searchRef} className="flex-1 relative">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={e => { setSearchQuery(e.target.value); setShowSuggestions(true); }}
+                    onFocus={() => setShowSuggestions(true)}
+                    placeholder={T.home.allBrands}
+                    className="w-full px-4 py-3 bg-secondary text-foreground placeholder:text-muted-foreground rounded-lg outline-none focus:ring-2 focus:ring-primary border border-border transition-all duration-200"
+                  />
+                  {showSuggestions && suggestions.length > 0 && (
+                    <ul className="absolute z-50 left-0 right-0 top-full mt-1 bg-card border border-border rounded-lg shadow-lg overflow-hidden">
+                      {suggestions.map(m => (
+                        <li key={m.id}>
+                          <button
+                            type="button"
+                            onMouseDown={() => selectSuggestion(m)}
+                            className="w-full text-left px-4 py-2.5 text-sm text-foreground hover:bg-secondary transition-colors"
+                          >
+                            {markLabel(m)}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
-                <button type="submit"
-                  className="px-8 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-all duration-200 flex items-center justify-center gap-2 hover:scale-105 active:scale-95">
-                  <Search className="w-5 h-5 transition-transform duration-200 group-hover:scale-110" />
+                <button
+                  type="submit"
+                  className="px-8 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-all duration-200 flex items-center justify-center gap-2 hover:scale-105 active:scale-95"
+                >
+                  <Search className="w-5 h-5" />
                   <span>{T.home.findBtn}</span>
                 </button>
               </div>
@@ -123,7 +257,7 @@ export function HomePage() {
             {T.home.seeAll}
           </Link>
         </div>
-        {loading ? (
+        {loadingCars ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="bg-card rounded-lg border border-border overflow-hidden">
@@ -138,7 +272,7 @@ export function HomePage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {adaptedCars.map(car => <CarCard key={car.id} car={car} />)}
+            {cars.map(car => <HomeCarCard key={car.id} car={car} />)}
           </div>
         )}
       </section>

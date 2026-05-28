@@ -25,6 +25,7 @@ import {
 } from '../api/tickets';
 import { useLanguage } from '../i18n/LanguageContext';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
+import { CarImagePlaceholder } from '../components/CarImagePlaceholder';
 
 function formatModelId(markId: string, modelId: string): string {
   const prefix = markId.toLowerCase().replace(/-/g, '_') + '_';
@@ -1302,8 +1303,8 @@ function ListingCard({ listing, actions }: { listing: MyListing; actions?: React
               className="w-24 h-16 object-cover rounded-lg"
             />
           ) : (
-            <div className="w-24 h-16 rounded-lg bg-secondary flex items-center justify-center">
-              <Car className="w-6 h-6 text-muted-foreground" />
+            <div className="w-24 h-16 rounded-lg overflow-hidden">
+              <CarImagePlaceholder />
             </div>
           )}
         </Link>

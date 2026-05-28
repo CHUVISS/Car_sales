@@ -4,6 +4,7 @@ import { Heart, Trash2, ShoppingBag, AlertTriangle } from 'lucide-react';
 import { carsApi, type Car } from '../api/cars';
 import { useFavorites } from '../hooks/useFavorites';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
+import { CarImagePlaceholder } from '../components/CarImagePlaceholder';
 import { useLanguage } from '../i18n/LanguageContext';
 
 function formatPrice(p: string | number): string {
@@ -152,7 +153,7 @@ export function FavoritesPage() {
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-muted-foreground/30 text-4xl">🚗</div>
+                      <CarImagePlaceholder />
                     )}
                   </div>
                 </Link>
