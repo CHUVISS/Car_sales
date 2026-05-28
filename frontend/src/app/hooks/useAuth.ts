@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { authApi, type UserPublic } from '../api/auth';
+import { dispatchFavoritesReload } from '../contexts/FavoritesContext';
 
 export function useAuth() {
   const [user, setUser] = useState<UserPublic | null>(null);
@@ -26,6 +27,7 @@ export function useAuth() {
     localStorage.setItem('refresh_token', tokens.refresh_token ?? '');
     const me = await authApi.me();
     setUser(me);
+    dispatchFavoritesReload(); // загрузить избранное этого пользователя
     return me;
   }, []);
 
@@ -40,6 +42,7 @@ export function useAuth() {
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     setUser(null);
+    dispatchFavoritesReload(); // очистить избранное (нет токена → setIds([]))
   }, []);
 
   return { user, loading, login, register, logout };

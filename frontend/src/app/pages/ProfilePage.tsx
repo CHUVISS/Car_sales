@@ -24,6 +24,7 @@ import {
   type TicketType,
 } from '../api/tickets';
 import { useLanguage } from '../i18n/LanguageContext';
+import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 
 function formatModelId(markId: string, modelId: string): string {
   const prefix = markId.toLowerCase().replace(/-/g, '_') + '_';
@@ -1249,7 +1250,19 @@ function useMyListings() {
 
   const load = async () => {
     setLoading(true);
-    try { setListings(await listingsApi.my()); }
+    try {
+      const list = await listingsApi.my();
+      setListings(list);
+      // Batch-fetch full details to get images (my() endpoint doesn't return them)
+      const details = await Promise.allSettled(list.map(l => listingsApi.get(l.id)));
+      setListings(list.map((l, i) => {
+        const result = details[i];
+        if (result.status === 'fulfilled' && result.value.images?.length) {
+          return { ...l, images: result.value.images };
+        }
+        return l;
+      }));
+    }
     catch { setListings([]); }
     finally { setLoading(false); }
   };
@@ -1275,34 +1288,52 @@ function ListingCard({ listing, actions }: { listing: MyListing; actions?: React
 
   const dateFmt = lang === 'ru' ? 'ru-RU' : 'en-US';
 
+  const primaryImage = listing.images?.find(img => img.is_primary) ?? listing.images?.[0];
+
   return (
     <div className="bg-card rounded-lg border border-border p-5 transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <Link to={`/car/${listing.id}`}
-              className="font-semibold text-foreground hover:text-primary transition-colors truncate">
-              {formatCatalogId(listing.mark_id)} {formatModelId(listing.mark_id, listing.model_id)} {listing.year}
-            </Link>
-            <span className={`flex-shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${LISTING_STATUS_COLORS[listing.status] ?? 'bg-secondary text-muted-foreground'}`}>
-              {LISTING_STATUS_LABELS[listing.status] ?? listing.status}
-            </span>
-          </div>
-          <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground flex-wrap">
-            <span className="font-medium text-foreground">{formatPrice(listing.price)}</span>
-            <span>•</span>
-            <span>{formatMileage(listing.mileage, lang)}</span>
-            <span>•</span>
-            <span>{new Date(listing.created_at).toLocaleDateString(dateFmt, { day: 'numeric', month: 'long', year: 'numeric' })}</span>
-          </div>
-          {listing.description && (
-            <p className="text-sm text-muted-foreground mt-2 line-clamp-2">{listing.description}</p>
+      <div className="flex items-start gap-4">
+        {/* Thumbnail */}
+        <Link to={`/car/${listing.id}`} className="flex-shrink-0">
+          {primaryImage ? (
+            <ImageWithFallback
+              src={primaryImage.thumbnail_url || primaryImage.url}
+              alt=""
+              className="w-24 h-16 object-cover rounded-lg"
+            />
+          ) : (
+            <div className="w-24 h-16 rounded-lg bg-secondary flex items-center justify-center">
+              <Car className="w-6 h-6 text-muted-foreground" />
+            </div>
           )}
-        </div>
-        <Link to={`/car/${listing.id}`}
-          className="p-2 text-muted-foreground hover:text-primary transition-colors flex-shrink-0" title={T.common.more}>
-          <ExternalLink className="w-4 h-4" />
         </Link>
+        <div className="flex items-start justify-between gap-3 flex-1 min-w-0">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Link to={`/car/${listing.id}`}
+                className="font-semibold text-foreground hover:text-primary transition-colors truncate">
+                {formatCatalogId(listing.mark_id)} {formatModelId(listing.mark_id, listing.model_id)} {listing.year}
+              </Link>
+              <span className={`flex-shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${LISTING_STATUS_COLORS[listing.status] ?? 'bg-secondary text-muted-foreground'}`}>
+                {LISTING_STATUS_LABELS[listing.status] ?? listing.status}
+              </span>
+            </div>
+            <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground flex-wrap">
+              <span className="font-medium text-foreground">{formatPrice(listing.price)}</span>
+              <span>•</span>
+              <span>{formatMileage(listing.mileage, lang)}</span>
+              <span>•</span>
+              <span>{new Date(listing.created_at).toLocaleDateString(dateFmt, { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+            </div>
+            {listing.description && (
+              <p className="text-sm text-muted-foreground mt-2 line-clamp-2">{listing.description}</p>
+            )}
+          </div>
+          <Link to={`/car/${listing.id}`}
+            className="p-2 text-muted-foreground hover:text-primary transition-colors flex-shrink-0" title={T.common.more}>
+            <ExternalLink className="w-4 h-4" />
+          </Link>
+        </div>
       </div>
       {actions && <div className="flex gap-2 mt-4 pt-4 border-t border-border">{actions}</div>}
     </div>

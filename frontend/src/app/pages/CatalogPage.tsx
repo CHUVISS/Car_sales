@@ -10,6 +10,19 @@ import type { CarFilters, FuelType, Transmission, Car as CarType } from '../api/
 import { useLanguage } from '../i18n/LanguageContext';
 
 const PAGE_SIZE = 30;
+
+/** Batch-fetch full listing details to attach images (list endpoint returns none). */
+async function enrichWithImages(cars: CarType[]): Promise<CarType[]> {
+  if (cars.length === 0) return cars;
+  const results = await Promise.allSettled(cars.map(c => carsApi.get(c.id)));
+  return cars.map((c, i) => {
+    const r = results[i];
+    if (r.status === 'fulfilled' && r.value.images.length > 0) {
+      return { ...c, images: r.value.images };
+    }
+    return c;
+  });
+}
 const ALL_COLORS = ['Белый', 'Синий', 'Серый', 'Красный', 'Серебристый', 'Черный'];
 
 function markLabel(m: CatalogMark) { return m.name ?? m.cyrillic_name ?? formatCatalogId(m.id); }
@@ -509,9 +522,17 @@ export function CatalogPage() {
     let cancelled = false;
     setLoading(true); setError(null); setAllCars([]); setNextCursor(null); setHasMore(false);
     carsApi.list({ ...apiFilters, limit: PAGE_SIZE })
-      .then(res => { if (cancelled) return; setAllCars(res.data); setNextCursor(res.next_cursor); setHasMore(res.next_cursor !== null); })
-      .catch(e => { if (!cancelled) setError(e.message); })
-      .finally(() => { if (!cancelled) setLoading(false); });
+      .then(async res => {
+        if (cancelled) return;
+        setAllCars(res.data);
+        setNextCursor(res.next_cursor);
+        setHasMore(res.next_cursor !== null);
+        setLoading(false);
+        // Enrich with images in the background
+        const enriched = await enrichWithImages(res.data);
+        if (!cancelled) setAllCars(enriched);
+      })
+      .catch(e => { if (!cancelled) { setError(e.message); setLoading(false); } });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(apiFilters)]);
@@ -520,9 +541,19 @@ export function CatalogPage() {
     if (loadingMore || !hasMore || !nextCursor) return;
     setLoadingMore(true);
     carsApi.list({ ...apiFilters, cursor: nextCursor, limit: PAGE_SIZE })
-      .then(res => { setAllCars(prev => [...prev, ...res.data]); setNextCursor(res.next_cursor); setHasMore(res.next_cursor !== null); })
-      .catch(() => {})
-      .finally(() => setLoadingMore(false));
+      .then(async res => {
+        setAllCars(prev => [...prev, ...res.data]);
+        setNextCursor(res.next_cursor);
+        setHasMore(res.next_cursor !== null);
+        setLoadingMore(false);
+        // Enrich new page with images
+        const enriched = await enrichWithImages(res.data);
+        setAllCars(prev => {
+          const enrichedIds = new Set(enriched.map(c => c.id));
+          return prev.map(c => enrichedIds.has(c.id) ? (enriched.find(e => e.id === c.id) ?? c) : c);
+        });
+      })
+      .catch(() => setLoadingMore(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadingMore, hasMore, nextCursor, JSON.stringify(apiFilters)]);
 
