@@ -25,6 +25,19 @@ function formatMileage(m: number, lang?: string) {
 }
 function normalizeColor(c: string) { return c.trim().toLowerCase().replace(/ё/g, 'е'); }
 
+/** Match a DB engine_type string (Russian) against an English filter key. */
+function matchesFuel(dbValue: string, filterKey: string): boolean {
+  const v = dbValue.toLowerCase();
+  switch (filterKey) {
+    case 'petrol':   return v.includes('бензин') || v === 'petrol' || v === 'gasoline';
+    case 'diesel':   return v.includes('дизел')  || v === 'diesel';
+    case 'electric': return v.includes('электр') || v === 'electric';
+    case 'hybrid':   return v.includes('гибрид') || v === 'hybrid';
+    case 'gas':      return v.includes('газ')    || v === 'gas' || v.includes('lpg') || v.includes('cng');
+    default:         return v.includes(filterKey.toLowerCase());
+  }
+}
+
 // Filter helpers
 
 function SearchableMultiSelect<T extends string>({
@@ -489,9 +502,8 @@ export function CatalogPage() {
     if (priceMax) f.price_to = Number(priceMax);
     if (yearMin) f.year_from = Number(yearMin);
     if (yearMax) f.year_to = Number(yearMax);
-    if (selectedFuels.length === 1) f.fuel_type = selectedFuels[0];
     return f;
-  }, [sortBy, selectedFuels, priceMin, priceMax, yearMin, yearMax]);
+  }, [sortBy, priceMin, priceMax, yearMin, yearMax]);
 
   useEffect(() => {
     let cancelled = false;
@@ -530,13 +542,13 @@ export function CatalogPage() {
     }
     if (selectedBrands.length > 0) result = result.filter(c => selectedBrands.includes(c.brand));
     if (selectedModels.length > 0) result = result.filter(c => selectedModels.includes(c.model));
-    if (selectedTransmissions.length > 1) result = result.filter(c => selectedTransmissions.includes(c.transmission as Transmission));
-    if (selectedFuels.length > 1) result = result.filter(c => selectedFuels.includes(c.fuel_type as FuelType));
+    if (selectedTransmissions.length > 0) result = result.filter(c => !c.transmission || selectedTransmissions.includes(c.transmission as Transmission));
+    if (selectedFuels.length > 0) result = result.filter(c => !c.fuel_type || selectedFuels.some(f => matchesFuel(c.fuel_type!, f)));
     if (selectedColors.length > 0) {
       const norm = selectedColors.map(normalizeColor);
-      result = result.filter(c => c.color && norm.includes(normalizeColor(c.color)));
+      result = result.filter(c => !c.color || norm.includes(normalizeColor(c.color)));
     }
-    if (selectedBodyTypes.length > 0) result = result.filter(c => c.body_type && selectedBodyTypes.includes(c.body_type));
+    if (selectedBodyTypes.length > 0) result = result.filter(c => c.body_type && selectedBodyTypes.some(bt => bt.toLowerCase() === c.body_type!.toLowerCase()));
     const pMin = priceMin ? Number(priceMin) : null;
     const pMax = priceMax ? Number(priceMax) : null;
     const mMin = mileageMin ? Number(mileageMin) : null;
@@ -672,9 +684,9 @@ export function CatalogPage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
           <div>
             <h1 className="text-3xl font-semibold text-foreground">{T.catalog.title}</h1>
-            <p className="text-muted-foreground mt-0.5">
+            {/* <p className="text-muted-foreground mt-0.5">
               {loading ? T.common.loading : `${filteredCars.length}${hasMore ? '+' : ''}`}
-            </p>
+            </p> */}
           </div>
           <Link to="/sell"
             className="hidden sm:flex items-center gap-2 px-4 py-2.5 bg-accent text-accent-foreground rounded-xl hover:opacity-90 transition-opacity text-sm font-medium self-start">

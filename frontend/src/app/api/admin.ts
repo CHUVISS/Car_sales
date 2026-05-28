@@ -323,10 +323,34 @@ export const adminApi = {
     if (filters.year_max != null) params.set('year_max', String(filters.year_max));
     if (filters.engine_type) params.set('engine_type', filters.engine_type);
     if (filters.body_type) params.set('body_type', filters.body_type);
-    const res = await req<{ items: Record<string, unknown>[]; next_cursor: string | null }>(
+
+    // Active listings from the public endpoint (has mark_name / model_name from JOIN)
+    const activeRes = await req<{ items: Record<string, unknown>[]; next_cursor: string | null }>(
       `/listings?${params.toString()}`
     );
-    return { data: res.items.map(mapListingRow), next_cursor: res.next_cursor };
+    const activeCars = activeRes.items.map(mapListingRow);
+    const activeIds = new Set(activeCars.map(c => c.id));
+
+    // Reserved + sold listings from the admin endpoint.
+    // The public /listings endpoint filters WHERE status = 'active', so reserved/sold cars
+    // would otherwise disappear from the admin panel the moment a buyer books them.
+    let extraCars: AdminCar[] = [];
+    try {
+      const [reservedRows, soldRows] = await Promise.all([
+        req<Record<string, unknown>[]>('/admin/listings?status=reserved'),
+        req<Record<string, unknown>[]>('/admin/listings?status=sold'),
+      ]);
+      extraCars = [...reservedRows, ...soldRows]
+        .filter(row => !activeIds.has(String(row.id)))   // deduplicate
+        .map(mapListingRow);
+    } catch {
+      // Non-admin token or endpoint unavailable — fall back to active-only list
+    }
+
+    return {
+      data: [...activeCars, ...extraCars],
+      next_cursor: activeRes.next_cursor,
+    };
   },
 
   // Admin cannot create/delete cars in the new backend

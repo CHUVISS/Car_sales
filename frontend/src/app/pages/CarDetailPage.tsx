@@ -41,7 +41,8 @@ function groupWindowsByDate(windows: ViewingWindow[]): Record<string, ViewingWin
 }
 
 function formatWindowDate(dateStr: string, lang: string): string {
-  return new Date(dateStr).toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'en-US', {
+  // Append T00:00:00 so JS treats it as LOCAL midnight, not UTC (avoids off-by-one day)
+  return new Date(`${dateStr}T00:00:00`).toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'en-US', {
     weekday: 'short', day: 'numeric', month: 'short',
   });
 }
@@ -153,17 +154,15 @@ export function CarDetailPage() {
       toast.error(T.carDetail.loginRequired);
       return;
     }
+    if (car.viewing_enabled && windows.length > 0 && !selectedWindowId) {
+      toast.error(T.carDetail.selectViewingTime ?? 'Выберите время для просмотра');
+      return;
+    }
     setReserving(true);
     try {
-      const res = await reservationsApi.reserve(car.id);
-
-      if (selectedWindowId) {
-        try {
-          await reservationsApi.bookViewing(res.reservation_id, selectedWindowId);
-        } catch {
-          toast.info(T.carDetail.viewingBooked);
-        }
-      }
+      // window_id передаётся сразу — бэкенд требует его в теле POST /reservations
+      // когда у объявления включён viewing_enabled
+      const res = await reservationsApi.reserve(car.id, selectedWindowId);
 
       if (res.payment_url) {
         setPaymentUrl(res.payment_url);

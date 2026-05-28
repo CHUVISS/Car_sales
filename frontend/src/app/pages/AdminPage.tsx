@@ -16,8 +16,9 @@ import {
   type CarOfferStatus, type MessageStatus, type CarStatus,
   type AdminListingFilters,
 } from '../api/admin';
-import { catalogApi } from '../api/catalog';
-import type { CatalogMark, CatalogModel, CatalogGeneration, CatalogConfiguration, CatalogModification } from '../api/catalog';
+import { catalogApi, listingsApi } from '../api/catalog';
+import type { CatalogMark, CatalogModel, CatalogGeneration, CatalogConfiguration, CatalogModification, CatalogColor, GeoCity } from '../api/catalog';
+import { viewingsApi } from '../api/viewings';
 import { formatCatalogId } from '../api/cars';
 import { useLanguage } from '../i18n/LanguageContext';
 
@@ -504,6 +505,7 @@ function CarTableRow({ car, onEdit, onDelete, onStatusChange, onRowClick, carSta
 // CarsTab
 
 const ADMIN_PAGE_SIZE = 20;
+const TIME_SLOTS = ['08:00','09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00'];
 
 function CarsTab() {
   const navigate = useNavigate();
@@ -545,6 +547,21 @@ function CarsTab() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
 
+  // Create-mode extra fields (from CreateListingPage)
+  const [colors, setColors] = useState<CatalogColor[]>([]);
+  const [cities, setCities] = useState<GeoCity[]>([]);
+  const [formCondition, setFormCondition] = useState('');
+  const [formColorId, setFormColorId] = useState('');
+  const [formCityId, setFormCityId] = useState('');
+  const [formVin, setFormVin] = useState('');
+  const [formLicensePlate, setFormLicensePlate] = useState('');
+  const [formSaleAddress, setFormSaleAddress] = useState('');
+  const [formAcceptsCash, setFormAcceptsCash] = useState(false);
+  const [formAcceptsTransfer, setFormAcceptsTransfer] = useState(false);
+  const [formViewingDays, setFormViewingDays] = useState<number[]>([]);
+  const [formViewingFrom, setFormViewingFrom] = useState('10:00');
+  const [formViewingTo, setFormViewingTo] = useState('18:00');
+
   // Form cascade state (create mode only)
   const [formMarkId, setFormMarkId] = useState('');
   const [formModelId, setFormModelId] = useState('');
@@ -563,6 +580,8 @@ function CarsTab() {
   useEffect(() => {
     setMarksLoading(true);
     catalogApi.searchMarks('').then(setMarks).catch(() => {}).finally(() => setMarksLoading(false));
+    catalogApi.getColors().then(setColors).catch(() => {});
+    catalogApi.getPopularCities().then(setCities).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -762,7 +781,14 @@ function CarsTab() {
     catalogApi.getModifications(id).then(setFormMods).catch(() => setFormMods([])).finally(() => setFmoLoading(false));
   };
 
-  const openCreate = () => { setEditCar(null); setForm(emptyForm); clearFiles(); resetFormCascade(); setShowForm(true); };
+  const openCreate = () => {
+    setEditCar(null); setForm(emptyForm); clearFiles(); resetFormCascade();
+    setFormCondition(''); setFormColorId(''); setFormCityId('');
+    setFormVin(''); setFormLicensePlate(''); setFormSaleAddress('');
+    setFormAcceptsCash(false); setFormAcceptsTransfer(false);
+    setFormViewingDays([]); setFormViewingFrom('10:00'); setFormViewingTo('18:00');
+    setShowForm(true);
+  };
   const openEdit = (displayCar: AdminCarDisplay) => {
     const car = allCars.find(c => c.id === displayCar.id) ?? (displayCar as unknown as AdminCar);
     setEditCar(car);
@@ -771,12 +797,80 @@ function CarsTab() {
     clearFiles(); setShowForm(true);
   };
 
+  const saveViewingWindows = async (listingId: string) => {
+    if (formViewingDays.length === 0) return;
+    const windows: Promise<unknown>[] = [];
+    for (let week = 0; week < 4; week++) {
+      for (const dayIdx of formViewingDays) {
+        const d = new Date();
+        const jsDay = (dayIdx + 1) % 7;
+        const diff = (jsDay - d.getDay() + 7) % 7 || 7;
+        d.setDate(d.getDate() + diff + week * 7);
+        windows.push(
+          viewingsApi.createWindow(listingId, {
+            window_date: d.toISOString().slice(0, 10),
+            time_from: formViewingFrom,
+            time_to: formViewingTo,
+          }).catch(() => null)
+        );
+      }
+    }
+    await Promise.all(windows);
+  };
+
   const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setSaving(true);
-    void selectedFiles; // to be passed to upload API when implemented
-    toast.error(A.carCreateEditError);
-    setSaving(false);
+    if (!editCar) {
+      // Create mode — use listingsApi
+      if (!formModId) { toast.error(T.listing.chooseModification); return; }
+      if (!form.year || !form.price || !form.mileage) { toast.error(T.listing.fillRequired); return; }
+      if (!formCondition) { toast.error(T.listing.fillRequired); return; }
+      if (!formColorId) { toast.error(T.listing.fillRequired); return; }
+      if (!formCityId) { toast.error(T.listing.fillRequired); return; }
+      if (!formVin.trim() && !formLicensePlate.trim()) { toast.error(T.listing.fillRequired); return; }
+      if (!formAcceptsCash && !formAcceptsTransfer) { toast.error(T.listing.paymentRequired); return; }
+      const viewingEnabled = formViewingDays.length > 0;
+      if (viewingEnabled && !formSaleAddress.trim()) { toast.error(T.listing.fillRequired); return; }
+      setSaving(true);
+      try {
+        const listing = await listingsApi.create({
+          modification_id: formModId,
+          year: Number(form.year),
+          price: Number(form.price),
+          mileage: Number(form.mileage),
+          condition: formCondition as 'excellent' | 'good' | 'fair' | 'poor',
+          color_id: formColorId,
+          city_id: formCityId,
+          vin: formVin.trim() || undefined,
+          license_plate: formLicensePlate.trim() || undefined,
+          description: form.description.trim() || undefined,
+          viewing_enabled: viewingEnabled,
+          sale_address: formSaleAddress.trim() || undefined,
+          accepts_cash: formAcceptsCash,
+          accepts_transfer: formAcceptsTransfer,
+        });
+        if (selectedFiles.length > 0) {
+          try { await listingsApi.uploadImages(listing.id, selectedFiles); }
+          catch { toast.error(T.listing.photosErrorButCreated); }
+        }
+        await saveViewingWindows(listing.id);
+        try {
+          await listingsApi.publish(listing.id);
+          toast.success(T.listing.publishedSuccess);
+        } catch {
+          toast.success(T.listing.savedToDrafts);
+        }
+        setShowForm(false);
+        handleReload();
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : T.listing.errorCreate);
+      } finally {
+        setSaving(false);
+      }
+    } else {
+      // Edit mode — not supported via new API
+      toast.error(A.carCreateEditError);
+    }
   };
 
   const handleDelete = (id: string, name: string) => {
@@ -1068,109 +1162,280 @@ function CarsTab() {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-3">
+            {/* Year / Price / Mileage — common fields */}
+            <div className="grid grid-cols-3 gap-3">
               {([
                 ['year', A.carFormYear, 'number', true],
                 ['price', A.carFormPrice, 'number', true],
                 ['mileage', A.carFormMileage, 'number', false],
-                ['color', A.carFormColor, 'text', false],
-                ['engine_volume', A.carFormVolume, 'number', false],
-                ['engine_power', A.carFormPower, 'number', false],
-                ['vin', A.carFormVin, 'text', false],
               ] as const).map(([key, label, type, required]) => (
                 <div key={key}>
                   <label className="block text-xs font-semibold mb-1 text-muted-foreground">{label}</label>
                   <input type={type} required={required} value={form[key]} onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))} className={inputCls} />
                 </div>
               ))}
-              <div>
-                <label className="block text-xs font-semibold mb-1 text-muted-foreground">{A.carFormFuel}</label>
-                <select value={form.fuel_type} onChange={e => setForm(p => ({ ...p, fuel_type: e.target.value }))} className={selectCls}>
-                  <option value="">{A.carFormNotSpecified}</option>
-                  {Object.entries(T.fuel).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold mb-1 text-muted-foreground">{A.carFormGearbox}</label>
-                <select value={form.transmission} onChange={e => setForm(p => ({ ...p, transmission: e.target.value }))} className={selectCls}>
-                  <option value="">{A.carFormNotSpecified}</option>
-                  {Object.entries(T.transmission).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold mb-1 text-muted-foreground">{A.carFormBody}</label>
-                <select value={form.body_type} onChange={e => setForm(p => ({ ...p, body_type: e.target.value }))} className={selectCls}>
-                  <option value="">{A.carFormNotSpecified}</option>
-                  {Object.entries(T.body).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                </select>
-              </div>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold mb-1 text-muted-foreground">{A.carFormPhotos}</label>
-              <div className="border-2 border-dashed border-border rounded-lg p-4 text-center hover:bg-secondary/30 transition-colors cursor-pointer"
-                onClick={() => document.getElementById('car-images-input')?.click()}
-                onDragOver={e => e.preventDefault()} onDrop={handleDrop}>
-                <input id="car-images-input" type="file" multiple accept="image/*" className="hidden" onChange={handleFilesChange} />
-                <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">{A.carFormPhotosDrop}</p>
-                <p className="text-xs text-muted-foreground/60 mt-1">{A.carFormPhotosTypes}</p>
-              </div>
-              {previews.length > 0 && (
-                <>
-                  <div className="grid grid-cols-3 gap-2 mt-3">
-                    {previews.map((src, i) => (
-                      <div key={i} className="relative aspect-square rounded-lg overflow-hidden bg-secondary group">
-                        <img src={src} alt="" className="w-full h-full object-cover" />
-                        <button type="button" onClick={() => removeFile(i)}
-                          className="absolute top-1 right-1 p-1 bg-destructive text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  <button type="button" onClick={clearFiles} className="text-xs text-destructive hover:underline mt-2">{A.carFormClearPhotosPrefix} ({previews.length})</button>
-                </>
-              )}
-            </div>
-            <div>
-              <label className="block text-xs font-semibold mb-1 text-muted-foreground">{A.carFormDescription}</label>
-              <textarea value={form.description} rows={3} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} className={inputCls + ' resize-none'} />
             </div>
 
-            <div className="pt-2 border-t border-border">
-              <p className="text-sm font-semibold text-foreground mb-3">{A.carFormViewings}</p>
-              <div className="space-y-3">
+            {/* Create mode: full CreateListingPage-style fields */}
+            {!editCar && (
+              <div className="space-y-4">
+                {/* Condition */}
                 <div>
-                  <label className="block text-xs font-semibold mb-2 text-muted-foreground">{A.carFormViewingDays}</label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {WEEK_DAYS.map(day => {
-                      const active = form.viewing_days.includes(day);
-                      return (
-                        <button key={day} type="button"
-                          onClick={() => setForm(p => ({ ...p, viewing_days: active ? p.viewing_days.filter(d => d !== day) : [...p.viewing_days, day] }))}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${active ? 'bg-primary text-primary-foreground border-primary' : 'bg-secondary text-muted-foreground border-border hover:bg-secondary/80'}`}>
-                          {day}
-                        </button>
-                      );
-                    })}
+                  <label className="block text-xs font-semibold mb-2 text-muted-foreground">{T.listing.condition} *</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {T.listing.conditionOptions.map((opt: { value: string; label: string; desc: string }) => (
+                      <button key={opt.value} type="button" onClick={() => setFormCondition(opt.value)}
+                        className={`flex flex-col items-start px-3 py-2 rounded-lg border text-left transition-colors ${formCondition === opt.value ? 'bg-primary/10 border-primary text-primary' : 'bg-secondary border-border text-foreground hover:bg-secondary/80'}`}>
+                        <span className="text-xs font-semibold">{opt.label}</span>
+                        <span className="text-xs text-muted-foreground">{opt.desc}</span>
+                      </button>
+                    ))}
                   </div>
                 </div>
+
+                {/* Color */}
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-muted-foreground">{A.carFormColor} *</label>
+                  <FormSearchSelect
+                    options={colors} value={formColorId}
+                    onChange={id => setFormColorId(id)}
+                    getLabel={c => c.name_ru}
+                    placeholder={T.listing.chooseColor}
+                    searchPlaceholder={T.listing.searchPlaceholder}
+                    noResults={T.listing.noResults} />
+                </div>
+
+                {/* City */}
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-muted-foreground">{T.listing.city}</label>
+                  <FormSearchSelect
+                    options={cities} value={formCityId}
+                    onChange={id => setFormCityId(id)}
+                    getLabel={c => c.name_ru}
+                    placeholder={T.listing.chooseCity}
+                    searchPlaceholder={T.listing.searchPlaceholder}
+                    noResults={T.listing.noResults} />
+                </div>
+
+                {/* VIN + License Plate */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold mb-1 text-muted-foreground">{A.carFormTimeFrom}</label>
-                    <input type="time" value={form.viewing_time_from} onChange={e => setForm(p => ({ ...p, viewing_time_from: e.target.value }))} className={inputCls} />
+                    <label className="block text-xs font-semibold mb-1 text-muted-foreground">{A.carFormVin}</label>
+                    <input type="text" maxLength={17} value={formVin} onChange={e => setFormVin(e.target.value.toUpperCase())} className={inputCls} placeholder="WBAXXXXXXXXXXXXXXX" />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold mb-1 text-muted-foreground">{A.carFormTimeTo}</label>
-                    <input type="time" value={form.viewing_time_to} onChange={e => setForm(p => ({ ...p, viewing_time_to: e.target.value }))} className={inputCls} />
+                    <label className="block text-xs font-semibold mb-1 text-muted-foreground">{T.listing.plate}</label>
+                    <input type="text" value={formLicensePlate} onChange={e => setFormLicensePlate(e.target.value.toUpperCase())} className={inputCls} placeholder={T.listing.platePlaceholder} />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground -mt-2">{T.listing.identifierError}</p>
+
+                {/* Payment methods */}
+                <div>
+                  <label className="block text-xs font-semibold mb-2 text-muted-foreground">{T.listing.paymentMethods} *</label>
+                  <div className="flex gap-3">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <div onClick={() => setFormAcceptsCash(v => !v)}
+                        className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${formAcceptsCash ? 'bg-primary border-primary' : 'border-border'}`}>
+                        {formAcceptsCash && <Check className="w-3 h-3 text-white" />}
+                      </div>
+                      <span className="text-sm text-foreground">{T.listing.cash}</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <div onClick={() => setFormAcceptsTransfer(v => !v)}
+                        className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${formAcceptsTransfer ? 'bg-primary border-primary' : 'border-border'}`}>
+                        {formAcceptsTransfer && <Check className="w-3 h-3 text-white" />}
+                      </div>
+                      <span className="text-sm text-foreground">{T.listing.transfer}</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Description */}
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-muted-foreground">{A.carFormDescription}</label>
+                  <textarea value={form.description} rows={3} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} className={inputCls + ' resize-none'} />
+                </div>
+
+                {/* Viewing schedule */}
+                <div className="pt-2 border-t border-border">
+                  <p className="text-sm font-semibold text-foreground mb-1">{A.carFormViewings}</p>
+                  <p className="text-xs text-muted-foreground mb-3">{T.listing.viewingDaysDesc}</p>
+                  <div className="space-y-3">
+                    <div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {WEEK_DAYS.map((day, idx) => {
+                          const active = formViewingDays.includes(idx);
+                          return (
+                            <button key={day} type="button"
+                              onClick={() => setFormViewingDays(prev => active ? prev.filter(d => d !== idx) : [...prev, idx])}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${active ? 'bg-primary text-primary-foreground border-primary' : 'bg-secondary text-muted-foreground border-border hover:bg-secondary/80'}`}>
+                              {day}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    {formViewingDays.length > 0 && (
+                      <>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-semibold mb-1 text-muted-foreground">{A.carFormTimeFrom}</label>
+                            <select value={formViewingFrom} onChange={e => setFormViewingFrom(e.target.value)} className={selectCls}>
+                              {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold mb-1 text-muted-foreground">{A.carFormTimeTo}</label>
+                            <select value={formViewingTo} onChange={e => setFormViewingTo(e.target.value)} className={selectCls}>
+                              {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold mb-1 text-muted-foreground">{T.listing.saleAddress} *</label>
+                          <input type="text" placeholder={T.listing.saleAddressPlaceholder} value={formSaleAddress} onChange={e => setFormSaleAddress(e.target.value)} className={inputCls} />
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Photos */}
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-muted-foreground">{A.carFormPhotos}</label>
+                  <div className="border-2 border-dashed border-border rounded-lg p-4 text-center hover:bg-secondary/30 transition-colors cursor-pointer"
+                    onClick={() => document.getElementById('car-images-input')?.click()}
+                    onDragOver={e => e.preventDefault()} onDrop={handleDrop}>
+                    <input id="car-images-input" type="file" multiple accept="image/*" className="hidden" onChange={handleFilesChange} />
+                    <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">{A.carFormPhotosDrop}</p>
+                    <p className="text-xs text-muted-foreground/60 mt-1">{A.carFormPhotosTypes}</p>
+                  </div>
+                  {previews.length > 0 && (
+                    <>
+                      <div className="grid grid-cols-4 gap-2 mt-3">
+                        {previews.map((src, i) => (
+                          <div key={i} className="relative aspect-square rounded-lg overflow-hidden bg-secondary group">
+                            <img src={src} alt="" className="w-full h-full object-cover" />
+                            <button type="button" onClick={() => removeFile(i)}
+                              className="absolute top-1 right-1 p-1 bg-destructive text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <button type="button" onClick={clearFiles} className="text-xs text-destructive hover:underline mt-2">{A.carFormClearPhotosPrefix} ({previews.length})</button>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Edit mode: keep old fields */}
+            {editCar && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  {([
+                    ['color', A.carFormColor, 'text'],
+                    ['engine_volume', A.carFormVolume, 'number'],
+                    ['engine_power', A.carFormPower, 'number'],
+                    ['vin', A.carFormVin, 'text'],
+                  ] as const).map(([key, label, type]) => (
+                    <div key={key}>
+                      <label className="block text-xs font-semibold mb-1 text-muted-foreground">{label}</label>
+                      <input type={type} value={form[key]} onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))} className={inputCls} />
+                    </div>
+                  ))}
+                  <div>
+                    <label className="block text-xs font-semibold mb-1 text-muted-foreground">{A.carFormFuel}</label>
+                    <select value={form.fuel_type} onChange={e => setForm(p => ({ ...p, fuel_type: e.target.value }))} className={selectCls}>
+                      <option value="">{A.carFormNotSpecified}</option>
+                      {Object.entries(T.fuel).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1 text-muted-foreground">{A.carFormGearbox}</label>
+                    <select value={form.transmission} onChange={e => setForm(p => ({ ...p, transmission: e.target.value }))} className={selectCls}>
+                      <option value="">{A.carFormNotSpecified}</option>
+                      {Object.entries(T.transmission).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1 text-muted-foreground">{A.carFormBody}</label>
+                    <select value={form.body_type} onChange={e => setForm(p => ({ ...p, body_type: e.target.value }))} className={selectCls}>
+                      <option value="">{A.carFormNotSpecified}</option>
+                      {Object.entries(T.body).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                    </select>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold mb-1 text-muted-foreground">{A.carFormViewingAddress}</label>
-                  <input type="text" placeholder={A.carFormViewingAddressPlaceholder} value={form.viewing_address} onChange={e => setForm(p => ({ ...p, viewing_address: e.target.value }))} className={inputCls} />
+                  <label className="block text-xs font-semibold mb-1 text-muted-foreground">{A.carFormPhotos}</label>
+                  <div className="border-2 border-dashed border-border rounded-lg p-4 text-center hover:bg-secondary/30 transition-colors cursor-pointer"
+                    onClick={() => document.getElementById('car-images-input')?.click()}
+                    onDragOver={e => e.preventDefault()} onDrop={handleDrop}>
+                    <input id="car-images-input" type="file" multiple accept="image/*" className="hidden" onChange={handleFilesChange} />
+                    <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">{A.carFormPhotosDrop}</p>
+                    <p className="text-xs text-muted-foreground/60 mt-1">{A.carFormPhotosTypes}</p>
+                  </div>
+                  {previews.length > 0 && (
+                    <>
+                      <div className="grid grid-cols-3 gap-2 mt-3">
+                        {previews.map((src, i) => (
+                          <div key={i} className="relative aspect-square rounded-lg overflow-hidden bg-secondary group">
+                            <img src={src} alt="" className="w-full h-full object-cover" />
+                            <button type="button" onClick={() => removeFile(i)}
+                              className="absolute top-1 right-1 p-1 bg-destructive text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <button type="button" onClick={clearFiles} className="text-xs text-destructive hover:underline mt-2">{A.carFormClearPhotosPrefix} ({previews.length})</button>
+                    </>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-muted-foreground">{A.carFormDescription}</label>
+                  <textarea value={form.description} rows={3} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} className={inputCls + ' resize-none'} />
+                </div>
+                <div className="pt-2 border-t border-border">
+                  <p className="text-sm font-semibold text-foreground mb-3">{A.carFormViewings}</p>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-semibold mb-2 text-muted-foreground">{A.carFormViewingDays}</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {WEEK_DAYS.map(day => {
+                          const active = form.viewing_days.includes(day);
+                          return (
+                            <button key={day} type="button"
+                              onClick={() => setForm(p => ({ ...p, viewing_days: active ? p.viewing_days.filter(d => d !== day) : [...p.viewing_days, day] }))}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${active ? 'bg-primary text-primary-foreground border-primary' : 'bg-secondary text-muted-foreground border-border hover:bg-secondary/80'}`}>
+                              {day}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold mb-1 text-muted-foreground">{A.carFormTimeFrom}</label>
+                        <input type="time" value={form.viewing_time_from} onChange={e => setForm(p => ({ ...p, viewing_time_from: e.target.value }))} className={inputCls} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold mb-1 text-muted-foreground">{A.carFormTimeTo}</label>
+                        <input type="time" value={form.viewing_time_to} onChange={e => setForm(p => ({ ...p, viewing_time_to: e.target.value }))} className={inputCls} />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold mb-1 text-muted-foreground">{A.carFormViewingAddress}</label>
+                      <input type="text" placeholder={A.carFormViewingAddressPlaceholder} value={form.viewing_address} onChange={e => setForm(p => ({ ...p, viewing_address: e.target.value }))} className={inputCls} />
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             <div className="flex gap-3 pt-2 sticky bottom-0 bg-card/95 backdrop-blur py-2 border-t border-border">
               <button type="button" onClick={() => setShowForm(false)} className="flex-1 px-4 py-2 bg-secondary text-foreground rounded-lg text-sm hover:bg-secondary/80 transition-colors">{A.cancel}</button>
