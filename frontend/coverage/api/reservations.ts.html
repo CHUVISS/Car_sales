@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">62.5% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/8</span>
+                <span class='fraction'>5/8</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">50% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/0</span>
+                <span class='fraction'>1/2</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">57.14% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/7</span>
+                <span class='fraction'>4/7</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">62.5% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/8</span>
+                <span class='fraction'>5/8</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line low'></div>
+    <div class='status-line medium'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -152,7 +152,11 @@
 <a name='L87'></a><a href='#L87'>87</a>
 <a name='L88'></a><a href='#L88'>88</a>
 <a name='L89'></a><a href='#L89'>89</a>
-<a name='L90'></a><a href='#L90'>90</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L90'></a><a href='#L90'>90</a>
+<a name='L91'></a><a href='#L91'>91</a>
+<a name='L92'></a><a href='#L92'>92</a>
+<a name='L93'></a><a href='#L93'>93</a>
+<a name='L94'></a><a href='#L94'>94</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -200,32 +204,36 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -292,18 +300,22 @@ export interface BookViewingResponse {
   window_id: string;
 }
 &nbsp;
-export const reservationsApi = <span class="cstat-no" title="statement not covered" >{</span>
-  /** Создать бронь (возвращает ссылку на оплату депозита) */
-<span class="fstat-no" title="function not covered" >  reserve: (l</span>isting_id: string) =&gt;
-<span class="cstat-no" title="statement not covered" >    api.post&lt;ReserveResponse&gt;('/reservations', { listing_id }),</span>
+export const reservationsApi = {
+  /** Создать бронь (возвращает ссылку на оплату депозита).
+   *  window_id обязателен когда у объявления включён viewing_enabled. */
+  reserve: (listing_id: string, window_id?: string | null) =&gt;
+    api.post&lt;ReserveResponse&gt;('/reservations', {
+      listing_id,
+      ...(window_id ? <span class="branch-0 cbranch-no" title="branch not covered" >{ window_id } </span>: {}),
+    }),
 &nbsp;
   /** Мои брони (buyer + seller) */
-<span class="fstat-no" title="function not covered" >  my: () =&gt;</span>
-<span class="cstat-no" title="statement not covered" >    api.get&lt;Reservation[]&gt;('/reservations/my'),</span>
+  my: () =&gt;
+    api.get&lt;Reservation[]&gt;('/reservations/my'),
 &nbsp;
   /** Деталь брони */
-<span class="fstat-no" title="function not covered" >  get: (i</span>d: string) =&gt;
-<span class="cstat-no" title="statement not covered" >    api.get&lt;Reservation&gt;(`/reservations/${id}`),</span>
+  get: (id: string) =&gt;
+    api.get&lt;Reservation&gt;(`/reservations/${id}`),
 &nbsp;
   /** Записаться на конкретное окно просмотра */
 <span class="fstat-no" title="function not covered" >  bookViewing: (r</span>eservation_id: string, window_id: string) =&gt;
@@ -313,8 +325,8 @@ export const reservationsApi = <span class="cstat-no" title="statement not cover
     ),
 &nbsp;
   /** Отметить исход просмотра */
-<span class="fstat-no" title="function not covered" >  markOutcome: (r</span>eservation_id: string, result: ReservationOutcome) =&gt;
-<span class="cstat-no" title="statement not covered" >    api.post&lt;{ status: string; outcome: string }&gt;(</span>
+  markOutcome: (reservation_id: string, result: ReservationOutcome) =&gt;
+    api.post&lt;{ status: string; outcome: string }&gt;(
       `/reservations/${reservation_id}/outcome`,
       { result }
     ),
@@ -337,7 +349,7 @@ export const reservationsApi = <span class="cstat-no" title="statement not cover
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-05-27T19:39:10.946Z
+                at 2026-05-28T17:11:46.834Z
             </div>
         <script src="../prettify.js"></script>
         <script>

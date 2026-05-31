@@ -10,6 +10,7 @@ import {
 } from '../api/ai';
 import { useAuth } from '../hooks/useAuth';
 import { toast } from 'sonner';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface LocalMessage {
   id: string;
@@ -20,14 +21,8 @@ interface LocalMessage {
   toolName?: string;
 }
 
-const SUGGESTIONS = [
-  'Покажи доступные седаны до 3 млн рублей',
-  'Какие электромобили есть в наличии?',
-  'Есть ли BMW или Mercedes с пробегом?',
-  'Что посоветуешь для семьи с детьми?',
-];
-
 function MessageBubble({ msg }: { msg: LocalMessage }) {
+  const { T } = useLanguage();
   const isUser = msg.role === 'user';
 
   if (msg.isToolCall) {
@@ -35,7 +30,7 @@ function MessageBubble({ msg }: { msg: LocalMessage }) {
       <div className="flex justify-center my-1">
         <div className="flex items-center gap-2 px-3 py-1.5 bg-secondary rounded-full text-xs text-muted-foreground">
           <Loader2 className="w-3 h-3 animate-spin" />
-          <span>Поиск в каталоге{msg.toolName ? `: ${msg.toolName}` : ''}...</span>
+          <span>{T.ai.searching}{msg.toolName ? `: ${msg.toolName}` : ''}...</span>
         </div>
       </div>
     );
@@ -65,17 +60,16 @@ function MessageBubble({ msg }: { msg: LocalMessage }) {
 }
 
 function EmptyState({ onSuggestion }: { onSuggestion: (s: string) => void }) {
+  const { T } = useLanguage();
   return (
     <div className="flex flex-col items-center justify-center h-full px-6 py-12 text-center">
       <div className="w-16 h-16 bg-foreground rounded-2xl flex items-center justify-center mb-6 rotate-3">
         <Car className="w-8 h-8 text-background" />
       </div>
-      <h2 className="text-2xl font-semibold text-foreground mb-2">AI-ассистент</h2>
-      <p className="text-muted-foreground mb-8 max-w-sm">
-        Задайте вопрос о наших автомобилях — найду подходящие варианты из каталога
-      </p>
+      <h2 className="text-2xl font-semibold text-foreground mb-2">{T.ai.title}</h2>
+      <p className="text-muted-foreground mb-8 max-w-sm">{T.ai.subtitle}</p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-lg">
-        {SUGGESTIONS.map(s => (
+        {T.ai.suggestions.map((s: string) => (
           <button key={s} onClick={() => onSuggestion(s)}
             className="text-left px-4 py-3 bg-card border border-border rounded-xl text-sm hover:border-foreground hover:shadow-sm transition-all duration-200 group">
             <div className="flex items-start gap-2">
@@ -100,6 +94,7 @@ function Sidebar({
   collapsed: boolean;
   onToggle: () => void;
 }) {
+  const { T } = useLanguage();
   return (
     <aside className={`flex flex-col bg-card border-r border-border transition-all duration-300 ${
       collapsed ? 'w-0 overflow-hidden' : 'w-64'
@@ -108,12 +103,12 @@ function Sidebar({
         <button onClick={onNew}
           className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-foreground text-background rounded-xl text-sm font-medium hover:opacity-90 transition-opacity">
           <Plus className="w-4 h-4" />
-          Новый диалог
+          {T.ai.newChat}
         </button>
       </div>
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
         {conversations.length === 0 && (
-          <p className="text-xs text-muted-foreground text-center py-8 px-4">Диалогов пока нет</p>
+          <p className="text-xs text-muted-foreground text-center py-8 px-4">{T.ai.noChats}</p>
         )}
         {conversations.map(conv => (
           <div key={conv.id}
@@ -122,7 +117,7 @@ function Sidebar({
             }`}
             onClick={() => onSelect(conv.id)}>
             <MessageSquare className="w-4 h-4 flex-shrink-0 opacity-60" />
-            <span className="text-sm truncate flex-1">{conv.title ?? 'Новый диалог'}</span>
+            <span className="text-sm truncate flex-1">{conv.title ?? T.ai.newDialog}</span>
             <button
               onClick={e => { e.stopPropagation(); onDelete(conv.id); }}
               className={`opacity-0 group-hover:opacity-100 p-1 rounded transition-all ${
@@ -139,6 +134,7 @@ function Sidebar({
 
 export function AiPage() {
   const { user, loading: authLoading } = useAuth();
+  const { T } = useLanguage();
   const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -171,11 +167,11 @@ export function AiPage() {
       setMessages(conv.messages.map((m: AiMessage) => ({ id: m.id, role: m.role, content: m.content })));
       setActiveConversationId(id);
     } catch {
-      toast.error('Не удалось загрузить диалог');
+      toast.error(T.ai.loadError);
     } finally {
       setLoadingConversation(false);
     }
-  }, []);
+  }, [T.ai.loadError]);
 
   const startNewConversation = useCallback(() => {
     setMessages([]); setActiveConversationId(null); setInput('');
@@ -186,11 +182,11 @@ export function AiPage() {
       await deleteConversation(id);
       setConversations(prev => prev.filter(c => c.id !== id));
       if (activeConversationId === id) startNewConversation();
-      toast.success('Диалог удалён');
+      toast.success(T.ai.deleteSuccess);
     } catch {
-      toast.error('Ошибка удаления');
+      toast.error(T.ai.deleteError);
     }
-  }, [activeConversationId, startNewConversation]);
+  }, [activeConversationId, startNewConversation, T.ai.deleteSuccess, T.ai.deleteError]);
 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || isStreaming) return;
@@ -265,13 +261,11 @@ export function AiPage() {
           <div className="w-16 h-16 bg-foreground rounded-2xl flex items-center justify-center mx-auto mb-6">
             <Bot className="w-8 h-8 text-background" />
           </div>
-          <h1 className="text-2xl font-semibold text-foreground mb-3">AI-ассистент</h1>
-          <p className="text-muted-foreground mb-6">
-            Войдите в аккаунт, чтобы общаться с AI-ассистентом и получать персональные рекомендации по автомобилям
-          </p>
+          <h1 className="text-2xl font-semibold text-foreground mb-3">{T.ai.title}</h1>
+          <p className="text-muted-foreground mb-6">{T.ai.authDesc}</p>
           <div className="flex gap-3 justify-center">
-            <Link to="/profile" className="px-6 py-3 bg-foreground text-background rounded-xl hover:opacity-90 transition-opacity font-medium">Войти</Link>
-            <Link to="/catalog" className="px-6 py-3 bg-secondary text-foreground rounded-xl hover:bg-secondary/80 transition-colors border border-border">Каталог</Link>
+            <Link to="/profile" className="px-6 py-3 bg-foreground text-background rounded-xl hover:opacity-90 transition-opacity font-medium">{T.ai.signIn}</Link>
+            <Link to="/catalog" className="px-6 py-3 bg-secondary text-foreground rounded-xl hover:bg-secondary/80 transition-colors border border-border">{T.ai.toCatalog}</Link>
           </div>
         </div>
       </div>
@@ -302,13 +296,13 @@ export function AiPage() {
               <Bot className="w-4 h-4 text-background" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-foreground">AI-ассистент</p>
-              <p className="text-xs text-muted-foreground">Подбор автомобилей</p>
+              <p className="text-sm font-semibold text-foreground">{T.ai.title}</p>
+              <p className="text-xs text-muted-foreground">{T.ai.carSelection}</p>
             </div>
           </div>
           <div className="ml-auto flex items-center gap-1.5">
             <div className="w-2 h-2 bg-accent rounded-full animate-pulse" />
-            <span className="text-xs text-muted-foreground">Онлайн</span>
+            <span className="text-xs text-muted-foreground">{T.ai.online}</span>
           </div>
         </div>
 
@@ -332,7 +326,7 @@ export function AiPage() {
         <div className="px-4 pb-1 max-w-3xl mx-auto w-full">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <AlertCircle className="w-3 h-3 flex-shrink-0" />
-            <span>AI использует только данные из нашего каталога. Лимит: 5 запросов в минуту.</span>
+            <span>{T.ai.disclaimer}</span>
           </div>
         </div>
 
@@ -345,7 +339,7 @@ export function AiPage() {
                 value={input}
                 onChange={handleTextareaChange}
                 onKeyDown={handleKeyDown}
-                placeholder="Спросите об автомобилях..."
+                placeholder={T.ai.placeholder}
                 rows={1}
                 disabled={isStreaming}
                 className="flex-1 resize-none bg-transparent outline-none text-sm text-foreground placeholder:text-muted-foreground max-h-40 leading-relaxed"
@@ -360,7 +354,7 @@ export function AiPage() {
               </button>
             </div>
             <p className="text-xs text-muted-foreground text-center mt-2">
-              Enter — отправить • Shift+Enter — новая строка
+              {T.ai.enterSend}
             </p>
           </div>
         </div>

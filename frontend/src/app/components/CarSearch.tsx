@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, X, Loader2, Car } from 'lucide-react';
 import { carsApi, type Car as CarType } from '../api/cars';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface CarSearchProps {
   onSelect?: (car: CarType) => void;
@@ -9,20 +10,6 @@ interface CarSearchProps {
   variant?: 'catalog' | 'admin';
 }
 
-function formatPrice(p: string | number): string {
-  return new Intl.NumberFormat('ru-RU', {
-    style: 'currency', currency: 'RUB',
-    minimumFractionDigits: 0, maximumFractionDigits: 0,
-  }).format(Number(p));
-}
-
-function formatMileage(m: number): string {
-  return `${new Intl.NumberFormat('ru-RU').format(m)} км`;
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  available: 'Доступен', reserved: 'Зарезервирован', sold: 'Продан', inactive: 'Неактивен',
-};
 const STATUS_COLORS: Record<string, string> = {
   available: 'bg-accent/10 text-accent',
   reserved: 'bg-primary/10 text-primary',
@@ -32,10 +19,24 @@ const STATUS_COLORS: Record<string, string> = {
 
 export function CarSearch({
   onSelect,
-  placeholder = 'Поиск по марке, модели...',
+  placeholder,
   className = '',
   variant = 'catalog',
 }: CarSearchProps) {
+  const { T, lang } = useLanguage();
+  const A = T.admin;
+
+  const formatPrice = (p: string | number) =>
+    new Intl.NumberFormat(lang === 'ru' ? 'ru-RU' : 'en-US', {
+      style: 'currency', currency: 'RUB',
+      minimumFractionDigits: 0, maximumFractionDigits: 0,
+    }).format(Number(p));
+
+  const formatMileage = (m: number) =>
+    `${new Intl.NumberFormat(lang === 'ru' ? 'ru-RU' : 'en-US').format(m)} ${lang === 'ru' ? 'км' : 'km'}`;
+
+  const resolvedPlaceholder = placeholder ?? A.carSearchPlaceholder;
+
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<CarType[]>([]);
   const [loading, setLoading] = useState(false);
@@ -86,7 +87,6 @@ export function CarSearch({
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query, search]);
 
-  // Закрытие по клику вне
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       if (
@@ -133,6 +133,7 @@ export function CarSearch({
   };
 
   const isAdmin = variant === 'admin';
+  void selected; // suppress unused var warning
 
   return (
     <div className={`relative ${className}`}>
@@ -141,7 +142,7 @@ export function CarSearch({
         open
           ? 'border-foreground shadow-sm'
           : 'border-border hover:border-foreground/40'
-      } ${isAdmin ? 'bg-white' : 'bg-white'}`}>
+      } bg-white`}>
         {loading
           ? <Loader2 className="w-4 h-4 text-muted-foreground animate-spin flex-shrink-0" />
           : <Search className="w-4 h-4 text-muted-foreground flex-shrink-0" />
@@ -153,7 +154,7 @@ export function CarSearch({
           onChange={e => { setQuery(e.target.value); setSelected(null); }}
           onFocus={() => { if (results.length > 0) setOpen(true); }}
           onKeyDown={handleKeyDown}
-          placeholder={placeholder}
+          placeholder={resolvedPlaceholder}
           className="flex-1 py-2.5 text-sm bg-transparent outline-none placeholder:text-muted-foreground"
         />
         {query && (
@@ -172,8 +173,8 @@ export function CarSearch({
           {results.length === 0 && !loading ? (
             <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
               <Car className="w-8 h-8 text-muted-foreground mb-2 opacity-40" />
-              <p className="text-sm text-muted-foreground">Ничего не найдено</p>
-              <p className="text-xs text-muted-foreground mt-1">Попробуйте изменить запрос</p>
+              <p className="text-sm text-muted-foreground">{A.carSearchEmpty}</p>
+              <p className="text-xs text-muted-foreground mt-1">{A.carSearchEmptyHint}</p>
             </div>
           ) : (
             <ul className="py-1 max-h-80 overflow-y-auto">
@@ -189,7 +190,6 @@ export function CarSearch({
                         isActive ? 'bg-secondary' : 'hover:bg-secondary/50'
                       }`}
                     >
-                      {/* Thumbnail */}
                       <div className="w-12 h-9 rounded-lg overflow-hidden flex-shrink-0 bg-secondary">
                         {primaryImg ? (
                           <img
@@ -205,7 +205,6 @@ export function CarSearch({
                         )}
                       </div>
 
-                      {/* Info */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <p className="text-sm font-semibold truncate">
@@ -232,10 +231,9 @@ export function CarSearch({
                         </div>
                       </div>
 
-                      {/* Status badge (только в admin) */}
                       {isAdmin && (
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${STATUS_COLORS[car.status]}`}>
-                          {STATUS_LABELS[car.status]}
+                          {A.carStatus[car.status]}
                         </span>
                       )}
                     </button>
@@ -245,11 +243,10 @@ export function CarSearch({
             </ul>
           )}
 
-          {/* Footer hint */}
           {results.length > 0 && (
             <div className="px-3 py-2 border-t border-border bg-secondary/30">
               <p className="text-xs text-muted-foreground">
-                ↑↓ навигация • Enter выбрать • Esc закрыть
+                {A.carSearchKeyHint}
               </p>
             </div>
           )}

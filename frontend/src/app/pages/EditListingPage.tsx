@@ -6,29 +6,22 @@ import { useAuth } from '../hooks/useAuth';
 import { listingsApi, catalogApi, type CatalogColor, type GeoCity } from '../api/catalog';
 import { viewingsApi } from '../api/viewings';
 import { formatCatalogId } from '../api/cars';
-
-const CONDITION_OPTIONS = [
-  { value: 'excellent', label: 'Отличное',        desc: 'Как новый, без дефектов' },
-  { value: 'good',      label: 'Хорошее',         desc: 'Небольшие следы эксплуатации' },
-  { value: 'fair',      label: 'Удовлетворительное', desc: 'Заметные следы эксплуатации' },
-  { value: 'poor',      label: 'Плохое',           desc: 'Требует ремонта' },
-];
-
-const WEEK_DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
-const TIME_SLOTS = ['08:00','09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00'];
+import { useLanguage } from '../i18n/LanguageContext';
 
 const inputCls = 'w-full px-4 py-2.5 bg-secondary text-foreground placeholder:text-muted-foreground rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary border border-border focus:border-primary transition-colors';
 const labelCls = 'block text-sm font-medium text-foreground mb-1.5';
+
+const TIME_SLOTS = ['08:00','09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00'];
 
 export function EditListingPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
+  const { T } = useLanguage();
 
   const [pageLoading, setPageLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  // Отображаемый заголовок
   const [markLabel, setMarkLabel] = useState('');
 
   // Основные поля
@@ -68,10 +61,8 @@ export function EditListingPage() {
       catalogApi.getPopularCities(),
       viewingsApi.getAvailableSlots(id).catch(() => []),
     ]).then(([listing, cols, cts, windows]) => {
-      // Заголовок
       setMarkLabel(`${formatCatalogId(listing.mark_id)} ${formatCatalogId(listing.model_id)}`);
 
-      // Основные поля
       setYear(String(listing.year));
       setPrice(String(listing.price));
       setMileage(String(listing.mileage));
@@ -82,24 +73,18 @@ export function EditListingPage() {
       setLicensePlate(listing.license_plate ?? '');
       setDescription(listing.description ?? '');
 
-      // Контакт / сделка
       setSaleAddress(listing.sale_address ?? '');
       setAcceptsCash(listing.accepts_cash ?? false);
       setAcceptsTransfer(listing.accepts_transfer ?? false);
 
-      // Просмотры
       const viewEnabled = listing.viewing_enabled ?? false;
       setViewingEnabled(viewEnabled);
 
       if (viewEnabled && windows.length > 0) {
-        // Извлекаем уникальные дни недели из существующих окон
-        // JS: 0=Вс, 1=Пн..6=Сб → наш формат: 0=Пн..6=Вс → (jsDay + 6) % 7
         const days = [...new Set(
           windows.map(w => (new Date(w.window_date).getDay() + 6) % 7)
         )].sort();
         setViewingDays(days);
-
-        // Время из первого окна
         if (windows[0]) {
           setViewingFrom(windows[0].time_from.slice(0, 5));
           setViewingTo(windows[0].time_to.slice(0, 5));
@@ -109,9 +94,10 @@ export function EditListingPage() {
       setColors(cols);
       setCities(cts);
     }).catch(() => {
-      toast.error('Не удалось загрузить объявление');
+      toast.error(T.listing.errorLoad);
       navigate('/profile?tab=drafts');
     }).finally(() => setPageLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const hasIdentifier = vin.trim().length === 17 || licensePlate.trim().length > 0;
@@ -140,7 +126,6 @@ export function EditListingPage() {
         viewing_enabled:  viewingEnabled,
       });
 
-      // Расписание просмотров
       if (viewingEnabled && viewingDays.length > 0) {
         await viewingsApi.setSchedule(id, {
           template: viewingDays.map(d => ({
@@ -152,10 +137,10 @@ export function EditListingPage() {
         });
       }
 
-      toast.success('Изменения сохранены');
+      toast.success(T.listing.savedSuccess);
       navigate('/profile?tab=drafts');
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Ошибка сохранения');
+      toast.error(err instanceof Error ? err.message : T.listing.errorSave);
     } finally {
       setSubmitting(false);
     }
@@ -174,10 +159,13 @@ export function EditListingPage() {
     return null;
   }
 
+  const CONDITION_OPTIONS = T.listing.conditionOptions;
+  const WEEK_DAYS = T.listing.weekDays;
+
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-2xl mx-auto px-4 sm:px-6 py-10">
-        <h1 className="text-3xl font-semibold text-foreground mb-2">Редактировать объявление</h1>
+        <h1 className="text-3xl font-semibold text-foreground mb-2">{T.listing.editTitle}</h1>
         <p className="text-muted-foreground mb-8">{markLabel} · {year}</p>
 
         <form onSubmit={handleSubmit} className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-6">
@@ -185,29 +173,29 @@ export function EditListingPage() {
           {/* Год / Цена / Пробег */}
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <label className={labelCls}>Год выпуска *</label>
+              <label className={labelCls}>{T.listing.year} *</label>
               <input type="number" min="1900" max={new Date().getFullYear()} value={year}
                 onChange={e => setYear(e.target.value)} className={inputCls} />
             </div>
             <div>
-              <label className={labelCls}>Цена, ₽ *</label>
+              <label className={labelCls}>{T.listing.price} *</label>
               <input type="text" inputMode="numeric"
                 value={price.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}
                 onChange={e => setPrice(e.target.value.replace(/\D/g, ''))}
-                placeholder="1 500 000" className={inputCls} />
+                placeholder={T.listing.pricePlaceholder} className={inputCls} />
             </div>
             <div>
-              <label className={labelCls}>Пробег, км *</label>
+              <label className={labelCls}>{T.listing.mileage} *</label>
               <input type="text" inputMode="numeric"
                 value={mileage.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}
                 onChange={e => setMileage(e.target.value.replace(/\D/g, ''))}
-                placeholder="50 000" className={inputCls} />
+                placeholder={T.listing.mileagePlaceholder} className={inputCls} />
             </div>
           </div>
 
           {/* Состояние */}
           <div>
-            <label className={labelCls}>Состояние *</label>
+            <label className={labelCls}>{T.listing.condition} *</label>
             <div className="grid grid-cols-2 gap-2">
               {CONDITION_OPTIONS.map(opt => (
                 <button key={opt.value} type="button" onClick={() => setCondition(opt.value)}
@@ -222,18 +210,18 @@ export function EditListingPage() {
           {/* Цвет / Город */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className={labelCls}>Цвет *</label>
+              <label className={labelCls}>{T.listing.color}</label>
               <select value={colorId} onChange={e => setColorId(e.target.value)}
                 className={inputCls + ' appearance-none cursor-pointer'}>
-                <option value="">Выберите цвет</option>
+                <option value="">{T.listing.chooseColor}</option>
                 {colors.map(c => <option key={c.id} value={c.id}>{c.name_ru}</option>)}
               </select>
             </div>
             <div>
-              <label className={labelCls}>Город *</label>
+              <label className={labelCls}>{T.listing.city}</label>
               <select value={cityId} onChange={e => setCityId(e.target.value)}
                 className={inputCls + ' appearance-none cursor-pointer'}>
-                <option value="">Выберите город</option>
+                <option value="">{T.listing.chooseCity}</option>
                 {cities.map(c => <option key={c.id} value={c.id}>{c.name_ru}</option>)}
               </select>
             </div>
@@ -242,37 +230,37 @@ export function EditListingPage() {
           {/* VIN / Госномер */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className={labelCls}>VIN-номер</label>
+              <label className={labelCls}>{T.listing.vin}</label>
               <input type="text" value={vin}
                 onChange={e => setVin(e.target.value.toUpperCase())}
-                placeholder="WBAXXXXXXXXXXXXXXX" maxLength={17} className={inputCls} />
+                placeholder={T.listing.vinPlaceholder} maxLength={17} className={inputCls} />
               {vin.length > 0 && vin.length < 17 && (
-                <p className="text-xs text-destructive mt-1">17 символов ({vin.length}/17)</p>
+                <p className="text-xs text-destructive mt-1">{T.listing.vinError} ({vin.length}/17)</p>
               )}
             </div>
             <div>
-              <label className={labelCls}>Госномер</label>
+              <label className={labelCls}>{T.listing.plate}</label>
               <input type="text" value={licensePlate}
                 onChange={e => setLicensePlate(e.target.value.toUpperCase())}
-                placeholder="А123БВ77" className={inputCls} />
+                placeholder={T.listing.platePlaceholder} className={inputCls} />
             </div>
           </div>
           {!hasIdentifier && (
-            <p className="text-xs text-destructive -mt-4">Укажите VIN или госномер *</p>
+            <p className="text-xs text-destructive -mt-4">{T.listing.identifierError}</p>
           )}
 
           {/* Адрес сделки */}
           <div>
-            <label className={labelCls}>Адрес для сделки / осмотра</label>
+            <label className={labelCls}>{T.listing.saleAddress}</label>
             <input type="text" value={saleAddress}
               onChange={e => setSaleAddress(e.target.value)}
-              placeholder="г. Москва, ул. Автомобильная, д. 1"
+              placeholder={T.listing.saleAddressPlaceholder}
               className={inputCls} />
           </div>
 
           {/* Способы оплаты */}
           <div>
-            <label className={labelCls}>Способы оплаты</label>
+            <label className={labelCls}>{T.listing.paymentMethods}</label>
             <div className="flex flex-col gap-2">
               <label className="flex items-center gap-2.5 cursor-pointer select-none">
                 <div
@@ -280,7 +268,7 @@ export function EditListingPage() {
                   className={`w-10 h-6 rounded-full transition-colors flex-shrink-0 flex items-center px-0.5 cursor-pointer ${acceptsCash ? 'bg-primary' : 'bg-secondary border border-border'}`}>
                   <div className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${acceptsCash ? 'translate-x-4' : 'translate-x-0'}`} />
                 </div>
-                <span className="text-sm text-foreground">Наличные</span>
+                <span className="text-sm text-foreground">{T.listing.cash}</span>
               </label>
               <label className="flex items-center gap-2.5 cursor-pointer select-none">
                 <div
@@ -288,16 +276,16 @@ export function EditListingPage() {
                   className={`w-10 h-6 rounded-full transition-colors flex-shrink-0 flex items-center px-0.5 cursor-pointer ${acceptsTransfer ? 'bg-primary' : 'bg-secondary border border-border'}`}>
                   <div className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${acceptsTransfer ? 'translate-x-4' : 'translate-x-0'}`} />
                 </div>
-                <span className="text-sm text-foreground">Безналичный перевод</span>
+                <span className="text-sm text-foreground">{T.listing.transfer}</span>
               </label>
             </div>
           </div>
 
           {/* Описание */}
           <div>
-            <label className={labelCls}>Описание</label>
+            <label className={labelCls}>{T.listing.description}</label>
             <textarea value={description} onChange={e => setDescription(e.target.value)}
-              rows={4} placeholder="Расскажите об автомобиле подробнее..."
+              rows={4} placeholder={T.listing.descriptionPlaceholder}
               className={inputCls + ' resize-none'} />
           </div>
 
@@ -305,8 +293,8 @@ export function EditListingPage() {
           <div className="pt-2 border-t border-border space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-foreground">Просмотры</p>
-                <p className="text-xs text-muted-foreground">Разрешить покупателям записываться на осмотр</p>
+                <p className="text-sm font-medium text-foreground">{T.listing.viewings}</p>
+                <p className="text-xs text-muted-foreground">{T.listing.viewingsDesc}</p>
               </div>
               <div
                 onClick={() => setViewingEnabled(p => !p)}
@@ -318,7 +306,7 @@ export function EditListingPage() {
             {viewingEnabled && (
               <>
                 <div>
-                  <p className="text-xs text-muted-foreground mb-2">Дни недели</p>
+                  <p className="text-xs text-muted-foreground mb-2">{T.listing.daysLabel}</p>
                   <div className="flex gap-1.5">
                     {WEEK_DAYS.map((day, i) => (
                       <button key={i} type="button" onClick={() => toggleDay(i)}
@@ -331,14 +319,14 @@ export function EditListingPage() {
                 {viewingDays.length > 0 && (
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs text-muted-foreground mb-1">С</label>
+                      <label className="block text-xs text-muted-foreground mb-1">{T.listing.timeFrom}</label>
                       <select value={viewingFrom} onChange={e => setViewingFrom(e.target.value)}
                         className={inputCls + ' appearance-none cursor-pointer'}>
                         {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs text-muted-foreground mb-1">До</label>
+                      <label className="block text-xs text-muted-foreground mb-1">{T.listing.timeTo}</label>
                       <select value={viewingTo} onChange={e => setViewingTo(e.target.value)}
                         className={inputCls + ' appearance-none cursor-pointer'}>
                         {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
@@ -354,12 +342,12 @@ export function EditListingPage() {
           <div className="flex gap-3 pt-2 border-t border-border">
             <button type="button" onClick={() => navigate('/profile?tab=drafts')}
               className="px-5 py-2.5 text-sm border border-border rounded-lg hover:bg-secondary transition-colors">
-              Отмена
+              {T.listing.cancel}
             </button>
             <button type="submit" disabled={submitting || !canSubmit}
               className="flex items-center gap-2 px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25 disabled:opacity-50 disabled:scale-100 disabled:shadow-none">
               {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-              {submitting ? 'Сохранение...' : 'Сохранить изменения'}
+              {submitting ? T.listing.saving : T.listing.saveChanges}
             </button>
           </div>
         </form>

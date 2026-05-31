@@ -1,4 +1,4 @@
-import { api } from './client';
+import { api, resolveImageUrl } from './client';
 
 export type CarStatus = 'available' | 'reserved' | 'sold' | 'inactive';
 export type FuelType = 'petrol' | 'diesel' | 'electric' | 'hybrid' | 'gas';
@@ -211,8 +211,8 @@ function mapDetail(d: ListingDetail): Car {
     created_at: d.created_at,
     images: d.images.map(img => ({
       id: img.id,
-      url: img.url,
-      thumbnail_url: img.thumbnail_url,
+      url: resolveImageUrl(img.url),
+      thumbnail_url: resolveImageUrl(img.thumbnail_url),
       is_primary: img.is_primary,
       sort_order: img.sort_order,
     })),

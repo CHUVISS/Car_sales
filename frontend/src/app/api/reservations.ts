@@ -50,9 +50,13 @@ export interface BookViewingResponse {
 }
 
 export const reservationsApi = {
-  /** Создать бронь (возвращает ссылку на оплату депозита) */
-  reserve: (listing_id: string) =>
-    api.post<ReserveResponse>('/reservations', { listing_id }),
+  /** Создать бронь (возвращает ссылку на оплату депозита).
+   *  window_id обязателен когда у объявления включён viewing_enabled. */
+  reserve: (listing_id: string, window_id?: string | null) =>
+    api.post<ReserveResponse>('/reservations', {
+      listing_id,
+      ...(window_id ? { window_id } : {}),
+    }),
 
   /** Мои брони (buyer + seller) */
   my: () =>

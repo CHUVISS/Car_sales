@@ -5,47 +5,60 @@ import { carsApi, formatCatalogId } from '../api/cars';
 import { catalogApi } from '../api/catalog';
 import type { CatalogMark, CatalogModel, CatalogGeneration, CatalogConfiguration, CatalogModification } from '../api/catalog';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
+import { CarImagePlaceholder } from '../components/CarImagePlaceholder';
 import { useFavorites } from '../hooks/useFavorites';
 import type { CarFilters, FuelType, Transmission, Car as CarType } from '../api/cars';
+import { useLanguage } from '../i18n/LanguageContext';
 
 const PAGE_SIZE = 30;
+
+/** Batch-fetch full listing details to attach images (list endpoint returns none). */
+async function enrichWithImages(cars: CarType[]): Promise<CarType[]> {
+  if (cars.length === 0) return cars;
+  const results = await Promise.allSettled(cars.map(c => carsApi.get(c.id)));
+  return cars.map((c, i) => {
+    const r = results[i];
+    if (r.status === 'fulfilled' && r.value.images.length > 0) {
+      return { ...c, images: r.value.images };
+    }
+    return c;
+  });
+}
 const ALL_COLORS = ['Белый', 'Синий', 'Серый', 'Красный', 'Серебристый', 'Черный'];
 
 function markLabel(m: CatalogMark) { return m.name ?? m.cyrillic_name ?? formatCatalogId(m.id); }
 function modelLabel(m: CatalogModel) { return m.name ?? formatCatalogId(m.id); }
-const TRANSMISSIONS = [['automatic', 'Автомат'], ['manual', 'Механика'], ['robot', 'Робот'], ['variator', 'Вариатор']] as const;
-const FUELS = [['petrol', 'Бензин'], ['diesel', 'Дизель'], ['electric', 'Электро'], ['hybrid', 'Гибрид'], ['gas', 'Газ']] as const;
-const BODY_TYPES = ['Седан', 'Хэтчбек', 'Универсал', 'Внедорожник', 'Кроссовер', 'Купе', 'Минивэн', 'Пикап', 'Кабриолет', 'Лифтбек', 'Фургон'] as const;
 
 const inputCls = "w-full px-3 py-2 bg-secondary text-foreground placeholder:text-muted-foreground rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary border border-transparent focus:border-primary";
-
-const STATUS_LABELS: Record<string, string> = {
-  available: 'В наличии', reserved: 'Зарезервирован', sold: 'Продан', inactive: 'Снят с продажи',
-};
-const TRANSMISSION_LABELS: Record<string, string> = { automatic: 'Автомат', manual: 'Механика', robot: 'Робот', variator: 'Вариатор' };
-const FUEL_LABELS: Record<string, string> = { petrol: 'Бензин', diesel: 'Дизель', electric: 'Электро', hybrid: 'Гибрид', gas: 'Газ' };
 
 function formatPrice(p: number) {
   return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(p);
 }
-function formatMileage(m: number) {
-  return `${new Intl.NumberFormat('ru-RU').format(m)} км`;
-}
-function timeAgo(dateStr: string) {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const days = Math.floor(diff / 86400000);
-  if (days === 0) return 'Сегодня';
-  if (days === 1) return 'Вчера';
-  if (days < 7) return `${days} дн. назад`;
-  return new Date(dateStr).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+function formatMileage(m: number, lang?: string) {
+  return `${new Intl.NumberFormat(lang === 'en' ? 'en-US' : 'ru-RU').format(m)} км`;
 }
 function normalizeColor(c: string) { return c.trim().toLowerCase().replace(/ё/g, 'е'); }
+
+/** Match a DB engine_type string (Russian) against an English filter key. */
+function matchesFuel(dbValue: string, filterKey: string): boolean {
+  const v = dbValue.toLowerCase();
+  switch (filterKey) {
+    case 'petrol':   return v.includes('бензин') || v === 'petrol' || v === 'gasoline';
+    case 'diesel':   return v.includes('дизел')  || v === 'diesel';
+    case 'electric': return v.includes('электр') || v === 'electric';
+    case 'hybrid':   return v.includes('гибрид') || v === 'hybrid';
+    case 'gas':      return v.includes('газ')    || v === 'gas' || v.includes('lpg') || v.includes('cng');
+    default:         return v.includes(filterKey.toLowerCase());
+  }
+}
 
 // Filter helpers
 
 function SearchableMultiSelect<T extends string>({
-  label, options, selected, onToggle, onClear, placeholder = 'Выберите...',
+  label, options, selected, onToggle, onClear, placeholder,
 }: { label: string; options: { value: T; label: string }[]; selected: T[]; onToggle: (v: T) => void; onClear: () => void; placeholder?: string }) {
+  const { T } = useLanguage();
+  const ph = placeholder ?? T.common.selectPlaceholder;
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const ref = useRef<HTMLDivElement>(null);
@@ -55,12 +68,12 @@ function SearchableMultiSelect<T extends string>({
     return () => document.removeEventListener('mousedown', h);
   }, []);
   const filtered = options.filter(o => o.label.toLowerCase().includes(search.toLowerCase()));
-  const displayText = selected.length > 0 ? selected.map(v => options.find(o => o.value === v)?.label ?? v).join(', ') : placeholder;
+  const displayText = selected.length > 0 ? selected.map(v => options.find(o => o.value === v)?.label ?? v).join(', ') : ph;
   return (
     <div className="relative" ref={ref}>
       <div className="flex items-center justify-between mb-2">
         <h3 className="font-semibold text-foreground">{label}</h3>
-        {selected.length > 0 && <button type="button" onClick={e => { e.stopPropagation(); onClear(); }} className="text-xs text-destructive hover:underline flex items-center gap-1"><X className="w-3 h-3" />Очистить</button>}
+        {selected.length > 0 && <button type="button" onClick={e => { e.stopPropagation(); onClear(); }} className="text-xs text-destructive hover:underline flex items-center gap-1"><X className="w-3 h-3" />{T.catalog.clearFilter}</button>}
       </div>
       <button type="button" onClick={() => setIsOpen(!isOpen)}
         className={`w-full flex items-center justify-between px-3 py-2 bg-secondary rounded-lg text-sm text-left hover:bg-secondary/80 transition-colors min-h-[40px] border border-border ${selected.length > 0 ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
@@ -70,7 +83,7 @@ function SearchableMultiSelect<T extends string>({
       {isOpen && (
         <div className="absolute z-20 w-full mt-2 bg-card border border-border rounded-lg shadow-lg overflow-hidden">
           <div className="p-2 border-b border-border">
-            <input type="text" placeholder="Поиск..." value={search} onChange={e => setSearch(e.target.value)}
+            <input type="text" placeholder={T.common.searchPlaceholder} value={search} onChange={e => setSearch(e.target.value)}
               className="w-full px-3 py-2 text-sm bg-secondary text-foreground placeholder:text-muted-foreground rounded outline-none focus:ring-2 focus:ring-primary" autoFocus />
           </div>
           <div className="max-h-48 overflow-y-auto">
@@ -82,7 +95,7 @@ function SearchableMultiSelect<T extends string>({
                 <input type="checkbox" className="sr-only" checked={selected.includes(opt.value)} onChange={() => onToggle(opt.value)} />
                 <span>{opt.label}</span>
               </label>
-            )) : <div className="px-3 py-4 text-center text-sm text-muted-foreground">Ничего не найдено</div>}
+            )) : <div className="px-3 py-4 text-center text-sm text-muted-foreground">{T.common.noResults}</div>}
           </div>
         </div>
       )}
@@ -93,14 +106,14 @@ function SearchableMultiSelect<T extends string>({
 function fmtNum(s: string) { return s.replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
 
 
-const SORT_OPTIONS: { value: NonNullable<CarFilters['sort_by']>; label: string }[] = [
-  { value: 'date_desc', label: 'Новые' },
-  { value: 'date_asc', label: 'Старые' },
-  { value: 'price_asc', label: 'Дешевле' },
-  { value: 'price_desc', label: 'Дороже' },
-];
-
 function SortDropdown({ value, onChange }: { value: CarFilters['sort_by']; onChange: (v: CarFilters['sort_by']) => void }) {
+  const { T } = useLanguage();
+  const SORT_OPTIONS: { value: NonNullable<CarFilters['sort_by']>; label: string }[] = [
+    { value: 'date_desc',  label: T.catalog.sortNewest },
+    { value: 'date_asc',   label: T.catalog.sortOldest },
+    { value: 'price_asc',  label: T.catalog.sortCheapest },
+    { value: 'price_desc', label: T.catalog.sortMostExpensive },
+  ];
   const [isOpen, setIsOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -150,9 +163,20 @@ function NumberFilterInput({ placeholder, value, onChange, onConfirm, format = f
 
 function GridCard({ car }: { car: CarType }) {
   const { isFavorite, toggle } = useFavorites();
+  const { lang, T } = useLanguage();
   const fav = isFavorite(car.id);
   const img = car.images.find(i => i.is_primary) ?? car.images[0];
   const isSoldOrInactive = car.status === 'sold' || car.status === 'inactive';
+  const STATUS_LABELS: Record<string, string> = { available: T.status.available, reserved: T.status.reserved, sold: T.status.sold, inactive: T.status.inactive };
+  const TRANSMISSION_LABELS: Record<string, string> = T.transmission;
+  function timeAgo(dateStr: string) {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const days = Math.floor(diff / 86400000);
+    if (days === 0) return T.common.today;
+    if (days === 1) return T.common.yesterday;
+    if (days < 7) return `${days} ${T.common.daysAgo}`;
+    return new Date(dateStr).toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'en-US', { day: 'numeric', month: 'short' });
+  }
   return (
     <Link to={`/car/${car.id}`}
       className="group block bg-card rounded-lg border border-border overflow-hidden transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-primary/25">
@@ -161,10 +185,10 @@ function GridCard({ car }: { car: CarType }) {
           <ImageWithFallback src={img.url} alt={`${car.brand} ${car.model}`}
             className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 ${isSoldOrInactive ? 'brightness-75' : ''}`} />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-muted-foreground opacity-30 text-4xl">🚗</div>
+          <CarImagePlaceholder />
         )}
         <div className="absolute top-2.5 left-2.5 flex flex-col gap-1">
-          {car.mileage === 0 && <span className="px-2 py-0.5 bg-accent text-accent-foreground rounded-full text-xs font-medium">Новый</span>}
+          {car.mileage === 0 && <span className="px-2 py-0.5 bg-accent text-accent-foreground rounded-full text-xs font-medium">{T.status.new}</span>}
           {car.status && car.status !== 'available' && (
             <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${car.status === 'reserved' ? 'bg-primary/90 text-primary-foreground' : 'bg-black/60 text-white backdrop-blur-sm'}`}>
               {STATUS_LABELS[car.status] ?? car.status}
@@ -177,14 +201,14 @@ function GridCard({ car }: { car: CarType }) {
         </button>
         {car.images.length > 1 && (
           <span className="absolute bottom-2 right-2 px-1.5 py-0.5 bg-black/60 text-white text-[10px] rounded backdrop-blur-sm">
-            {car.images.length} фото
+            {car.images.length} {T.common.photos}
           </span>
         )}
       </div>
       <div className="p-4">
         <h3 className="font-semibold text-foreground mb-0.5">{car.brand} {car.model}</h3>
         <p className="text-sm text-muted-foreground mb-3">
-          {car.year} • {formatMileage(car.mileage)}
+          {car.year} • {formatMileage(car.mileage, lang)}
           {car.engine_volume ? ` • ${car.engine_volume}л` : ''}
           {car.transmission ? ` • ${TRANSMISSION_LABELS[car.transmission] ?? car.transmission}` : ''}
         </p>
@@ -199,9 +223,21 @@ function GridCard({ car }: { car: CarType }) {
 
 function ListRow({ car }: { car: CarType }) {
   const { isFavorite, toggle } = useFavorites();
+  const { lang, T } = useLanguage();
   const fav = isFavorite(car.id);
   const img = car.images.find(i => i.is_primary) ?? car.images[0];
   const isSoldOrInactive = car.status === 'sold' || car.status === 'inactive';
+  const STATUS_LABELS: Record<string, string> = { available: T.status.available, reserved: T.status.reserved, sold: T.status.sold, inactive: T.status.inactive };
+  const TRANSMISSION_LABELS: Record<string, string> = T.transmission;
+  const FUEL_LABELS: Record<string, string> = T.fuel;
+  function timeAgo(dateStr: string) {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const days = Math.floor(diff / 86400000);
+    if (days === 0) return T.common.today;
+    if (days === 1) return T.common.yesterday;
+    if (days < 7) return `${days} ${T.common.daysAgo}`;
+    return new Date(dateStr).toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'en-US', { day: 'numeric', month: 'short' });
+  }
   const specs = [
     car.engine_volume && `${car.engine_volume}л`,
     car.engine_power && `${car.engine_power} л.с.`,
@@ -220,11 +256,11 @@ function ListRow({ car }: { car: CarType }) {
           <ImageWithFallback src={img.thumbnail_url} alt={`${car.brand} ${car.model}`}
             className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 ${isSoldOrInactive ? 'brightness-75' : ''}`} />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-muted-foreground opacity-30 text-4xl">🚗</div>
+          <CarImagePlaceholder />
         )}
         {car.images.length > 1 && (
           <span className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/60 text-white text-[10px] rounded backdrop-blur-sm">
-            {car.images.length} фото
+            {car.images.length} {T.common.photos}
           </span>
         )}
       </div>
@@ -234,7 +270,7 @@ function ListRow({ car }: { car: CarType }) {
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="font-semibold text-foreground">{car.brand} {car.model} {car.year}</h3>
-            {car.mileage === 0 && <span className="px-2 py-0.5 bg-accent text-accent-foreground rounded-full text-xs font-medium">Новый</span>}
+            {car.mileage === 0 && <span className="px-2 py-0.5 bg-accent text-accent-foreground rounded-full text-xs font-medium">{T.status.new}</span>}
             {car.status && car.status !== 'available' && (
               <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                 car.status === 'reserved' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
@@ -249,7 +285,7 @@ function ListRow({ car }: { car: CarType }) {
           </button>
         </div>
 
-        <p className="text-sm text-muted-foreground mt-1">{formatMileage(car.mileage)}</p>
+        <p className="text-sm text-muted-foreground mt-1">{formatMileage(car.mileage, lang)}</p>
 
         {specs.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-2">
@@ -275,6 +311,7 @@ function ListRow({ car }: { car: CarType }) {
 // Inline search
 
 function BoardSearch({ cars, onSelect }: { cars: CarType[]; onSelect: (car: CarType | null) => void }) {
+  const { T } = useLanguage();
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [hi, setHi] = useState(-1);
@@ -304,7 +341,7 @@ function BoardSearch({ cars, onSelect }: { cars: CarType[]; onSelect: (car: CarT
             else if (e.key === 'Enter' && hi >= 0 && filtered[hi]) { e.preventDefault(); handleSelect(filtered[hi]); }
             else if (e.key === 'Escape') { setIsOpen(false); setHi(-1); }
           }}
-          placeholder="Поиск по марке или модели..."
+          placeholder={T.catalog.searchCatalog}
           className="w-full pl-10 pr-10 py-2.5 bg-secondary text-foreground placeholder:text-muted-foreground rounded-xl outline-none focus:ring-2 focus:ring-primary text-sm border border-border focus:border-primary"
         />
         {query && <button type="button" onClick={() => { setQuery(''); onSelect(null); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>}
@@ -338,8 +375,22 @@ export function CatalogPage() {
   useEffect(() => { window.scrollTo(0, 0); }, []);
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { T } = useLanguage();
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+
+  const TRANSMISSIONS = [
+    ['automatic', T.transmission.automatic], ['manual', T.transmission.manual],
+    ['robot', T.transmission.robot], ['variator', T.transmission.variator],
+  ] as const;
+  const FUELS = [
+    ['petrol', T.fuel.petrol], ['diesel', T.fuel.diesel],
+    ['electric', T.fuel.electric], ['hybrid', T.fuel.hybrid], ['gas', T.fuel.gas],
+  ] as const;
+  const BODY_TYPES = [
+    T.body.sedan, 'Хэтчбек', 'Универсал', T.body.suv, 'Кроссовер',
+    T.body.coupe, T.body.minivan, T.body.pickup, T.body.convertible, 'Лифтбек', 'Фургон',
+  ] as const;
 
   const [displayPriceMin, setDisplayPriceMin] = useState('');
   const [displayPriceMax, setDisplayPriceMax] = useState('');
@@ -465,17 +516,24 @@ export function CatalogPage() {
     if (priceMax) f.price_to = Number(priceMax);
     if (yearMin) f.year_from = Number(yearMin);
     if (yearMax) f.year_to = Number(yearMax);
-    if (selectedFuels.length === 1) f.fuel_type = selectedFuels[0];
     return f;
-  }, [sortBy, selectedFuels, priceMin, priceMax, yearMin, yearMax]);
+  }, [sortBy, priceMin, priceMax, yearMin, yearMax]);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true); setError(null); setAllCars([]); setNextCursor(null); setHasMore(false);
     carsApi.list({ ...apiFilters, limit: PAGE_SIZE })
-      .then(res => { if (cancelled) return; setAllCars(res.data); setNextCursor(res.next_cursor); setHasMore(res.next_cursor !== null); })
-      .catch(e => { if (!cancelled) setError(e.message); })
-      .finally(() => { if (!cancelled) setLoading(false); });
+      .then(async res => {
+        if (cancelled) return;
+        setAllCars(res.data);
+        setNextCursor(res.next_cursor);
+        setHasMore(res.next_cursor !== null);
+        setLoading(false);
+        // Enrich with images in the background
+        const enriched = await enrichWithImages(res.data);
+        if (!cancelled) setAllCars(enriched);
+      })
+      .catch(e => { if (!cancelled) { setError(e.message); setLoading(false); } });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(apiFilters)]);
@@ -484,9 +542,19 @@ export function CatalogPage() {
     if (loadingMore || !hasMore || !nextCursor) return;
     setLoadingMore(true);
     carsApi.list({ ...apiFilters, cursor: nextCursor, limit: PAGE_SIZE })
-      .then(res => { setAllCars(prev => [...prev, ...res.data]); setNextCursor(res.next_cursor); setHasMore(res.next_cursor !== null); })
-      .catch(() => {})
-      .finally(() => setLoadingMore(false));
+      .then(async res => {
+        setAllCars(prev => [...prev, ...res.data]);
+        setNextCursor(res.next_cursor);
+        setHasMore(res.next_cursor !== null);
+        setLoadingMore(false);
+        // Enrich new page with images
+        const enriched = await enrichWithImages(res.data);
+        setAllCars(prev => {
+          const enrichedIds = new Set(enriched.map(c => c.id));
+          return prev.map(c => enrichedIds.has(c.id) ? (enriched.find(e => e.id === c.id) ?? c) : c);
+        });
+      })
+      .catch(() => setLoadingMore(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadingMore, hasMore, nextCursor, JSON.stringify(apiFilters)]);
 
@@ -506,13 +574,13 @@ export function CatalogPage() {
     }
     if (selectedBrands.length > 0) result = result.filter(c => selectedBrands.includes(c.brand));
     if (selectedModels.length > 0) result = result.filter(c => selectedModels.includes(c.model));
-    if (selectedTransmissions.length > 1) result = result.filter(c => selectedTransmissions.includes(c.transmission as Transmission));
-    if (selectedFuels.length > 1) result = result.filter(c => selectedFuels.includes(c.fuel_type as FuelType));
+    if (selectedTransmissions.length > 0) result = result.filter(c => !c.transmission || selectedTransmissions.includes(c.transmission as Transmission));
+    if (selectedFuels.length > 0) result = result.filter(c => !c.fuel_type || selectedFuels.some(f => matchesFuel(c.fuel_type!, f)));
     if (selectedColors.length > 0) {
       const norm = selectedColors.map(normalizeColor);
-      result = result.filter(c => c.color && norm.includes(normalizeColor(c.color)));
+      result = result.filter(c => !c.color || norm.includes(normalizeColor(c.color)));
     }
-    if (selectedBodyTypes.length > 0) result = result.filter(c => c.body_type && selectedBodyTypes.includes(c.body_type));
+    if (selectedBodyTypes.length > 0) result = result.filter(c => c.body_type && selectedBodyTypes.some(bt => bt.toLowerCase() === c.body_type!.toLowerCase()));
     const pMin = priceMin ? Number(priceMin) : null;
     const pMax = priceMax ? Number(priceMax) : null;
     const mMin = mileageMin ? Number(mileageMin) : null;
@@ -550,67 +618,64 @@ export function CatalogPage() {
   const filtersPanel = (
     <div className="bg-card rounded-xl border border-border p-5 space-y-5">
       <div>
-        <h3 className="font-semibold text-foreground mb-2">Цена, ₽</h3>
+        <h3 className="font-semibold text-foreground mb-2">{T.catalog.price}</h3>
         <div className="flex gap-2">
-          <NumberFilterInput placeholder="От" value={displayPriceMin} onChange={setDisplayPriceMin} onConfirm={setPriceMin} format />
-          <NumberFilterInput placeholder="До" value={displayPriceMax} onChange={setDisplayPriceMax} onConfirm={setPriceMax} format />
+          <NumberFilterInput placeholder={T.common.from} value={displayPriceMin} onChange={setDisplayPriceMin} onConfirm={setPriceMin} format />
+          <NumberFilterInput placeholder={T.common.to} value={displayPriceMax} onChange={setDisplayPriceMax} onConfirm={setPriceMax} format />
         </div>
       </div>
       <div>
-        <h3 className="font-semibold text-foreground mb-2">Год выпуска</h3>
+        <h3 className="font-semibold text-foreground mb-2">{T.catalog.year}</h3>
         <div className="flex gap-2">
-          <NumberFilterInput placeholder="От" value={displayYearMin} onChange={setDisplayYearMin} onConfirm={setYearMin} />
-          <NumberFilterInput placeholder="До" value={displayYearMax} onChange={setDisplayYearMax} onConfirm={setYearMax} />
+          <NumberFilterInput placeholder={T.common.from} value={displayYearMin} onChange={setDisplayYearMin} onConfirm={setYearMin} />
+          <NumberFilterInput placeholder={T.common.to} value={displayYearMax} onChange={setDisplayYearMax} onConfirm={setYearMax} />
         </div>
       </div>
       <div>
-        <h3 className="font-semibold text-foreground mb-2">Пробег, км</h3>
+        <h3 className="font-semibold text-foreground mb-2">{T.catalog.mileage}</h3>
         <div className="flex gap-2">
-          <NumberFilterInput placeholder="От" value={displayMileageMin} onChange={setDisplayMileageMin} onConfirm={setMileageMin} format />
-          <NumberFilterInput placeholder="До" value={displayMileageMax} onChange={setDisplayMileageMax} onConfirm={setMileageMax} format />
+          <NumberFilterInput placeholder={T.common.from} value={displayMileageMin} onChange={setDisplayMileageMin} onConfirm={setMileageMin} format />
+          <NumberFilterInput placeholder={T.common.to} value={displayMileageMax} onChange={setDisplayMileageMax} onConfirm={setMileageMax} format />
         </div>
       </div>
-      <SearchableMultiSelect label="Марка" options={marks.map(m => ({ value: markLabel(m), label: markLabel(m) }))} selected={selectedBrands} onToggle={v => setSelectedBrands(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])} onClear={() => { setSelectedBrands([]); setSelectedModels([]); }} placeholder="Все марки" />
+      <SearchableMultiSelect label={T.catalog.brand} options={marks.map(m => ({ value: markLabel(m), label: markLabel(m) }))} selected={selectedBrands} onToggle={v => setSelectedBrands(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])} onClear={() => { setSelectedBrands([]); setSelectedModels([]); }} />
       {selectedBrands.length > 0 && availableModels.length > 0 && (
-        <SearchableMultiSelect label="Модель" options={availableModels.map(m => ({ value: modelLabel(m), label: modelLabel(m) }))} selected={selectedModels} onToggle={v => setSelectedModels(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])} onClear={() => setSelectedModels([])} placeholder="Все модели" />
+        <SearchableMultiSelect label={T.catalog.model} options={availableModels.map(m => ({ value: modelLabel(m), label: modelLabel(m) }))} selected={selectedModels} onToggle={v => setSelectedModels(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])} onClear={() => setSelectedModels([])} />
       )}
       {selectedModels.length === 1 && availableGens.length > 0 && (
         <SearchableMultiSelect
-          label="Поколение"
+          label={T.catalog.generation}
           options={availableGens.map(g => ({ value: g.id, label: g.name ?? `${g.year_from ?? ''}–${g.year_to ?? '...'}` }))}
           selected={selectedGenIds}
           onToggle={v => setSelectedGenIds(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])}
           onClear={() => setSelectedGenIds([])}
-          placeholder="Любое"
         />
       )}
       {selectedGenIds.length > 0 && availableConfs.length > 0 && (
         <SearchableMultiSelect
-          label="Комплектация"
+          label={T.catalog.configuration}
           options={availableConfs.map(c => ({ value: c.id, label: c.name ?? c.id }))}
           selected={selectedConfIds}
           onToggle={v => setSelectedConfIds(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])}
           onClear={() => setSelectedConfIds([])}
-          placeholder="Любая"
         />
       )}
       {selectedConfIds.length > 0 && availableModifs.length > 0 && (
         <SearchableMultiSelect
-          label="Модификация"
+          label={T.catalog.modification}
           options={availableModifs.map(m => ({ value: m.id, label: m.name ?? m.group_name ?? m.id }))}
           selected={selectedModifIds}
           onToggle={v => setSelectedModifIds(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])}
           onClear={() => setSelectedModifIds([])}
-          placeholder="Любая"
         />
       )}
-      <SearchableMultiSelect label="Коробка передач" options={TRANSMISSIONS.map(([v, l]) => ({ value: v, label: l }))} selected={selectedTransmissions} onToggle={v => setSelectedTransmissions(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])} onClear={() => setSelectedTransmissions([])} placeholder="Любая" />
-      <SearchableMultiSelect label="Тип топлива" options={FUELS.map(([v, l]) => ({ value: v as FuelType, label: l }))} selected={selectedFuels} onToggle={v => setSelectedFuels(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])} onClear={() => setSelectedFuels([])} placeholder="Любой" />
-      <SearchableMultiSelect label="Кузов" options={BODY_TYPES.map(b => ({ value: b, label: b }))} selected={selectedBodyTypes} onToggle={v => setSelectedBodyTypes(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])} onClear={() => setSelectedBodyTypes([])} placeholder="Любой кузов" />
-      <SearchableMultiSelect label="Цвет" options={ALL_COLORS.map(c => ({ value: c, label: c }))} selected={selectedColors} onToggle={v => setSelectedColors(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])} onClear={() => setSelectedColors([])} placeholder="Любой цвет" />
+      <SearchableMultiSelect label={T.catalog.transmission} options={TRANSMISSIONS.map(([v, l]) => ({ value: v as Transmission, label: l }))} selected={selectedTransmissions} onToggle={v => setSelectedTransmissions(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])} onClear={() => setSelectedTransmissions([])} />
+      <SearchableMultiSelect label={T.catalog.fuelType} options={FUELS.map(([v, l]) => ({ value: v as FuelType, label: l }))} selected={selectedFuels} onToggle={v => setSelectedFuels(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])} onClear={() => setSelectedFuels([])} />
+      <SearchableMultiSelect label={T.catalog.bodyType} options={BODY_TYPES.map(b => ({ value: b, label: b }))} selected={selectedBodyTypes} onToggle={v => setSelectedBodyTypes(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])} onClear={() => setSelectedBodyTypes([])} />
+      <SearchableMultiSelect label={T.catalog.color} options={ALL_COLORS.map(c => ({ value: c, label: c }))} selected={selectedColors} onToggle={v => setSelectedColors(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])} onClear={() => setSelectedColors([])} />
       {hasActiveFilters && (
         <button onClick={resetFilters} className="w-full px-4 py-2 text-sm text-destructive hover:bg-destructive/10 rounded-lg transition-colors border border-destructive/30">
-          Сбросить фильтры
+          {T.catalog.resetFilters}
         </button>
       )}
     </div>
@@ -650,14 +715,14 @@ export function CatalogPage() {
         {/* Title row */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
           <div>
-            <h1 className="text-3xl font-semibold text-foreground">Доска объявлений</h1>
-            <p className="text-muted-foreground mt-0.5">
-              {loading ? 'Загрузка...' : `${filteredCars.length} объявлений${hasMore ? '+' : ''}`}
-            </p>
+            <h1 className="text-3xl font-semibold text-foreground">{T.catalog.title}</h1>
+            {/* <p className="text-muted-foreground mt-0.5">
+              {loading ? T.common.loading : `${filteredCars.length}${hasMore ? '+' : ''}`}
+            </p> */}
           </div>
           <Link to="/sell"
             className="hidden sm:flex items-center gap-2 px-4 py-2.5 bg-accent text-accent-foreground rounded-xl hover:opacity-90 transition-opacity text-sm font-medium self-start">
-            <Plus className="w-4 h-4" /> Создать объявление
+            <Plus className="w-4 h-4" /> {T.catalog.createListing}
           </Link>
         </div>
 
@@ -673,7 +738,7 @@ export function CatalogPage() {
               <div className="absolute inset-0 bg-black/60" onClick={() => setMobileFiltersOpen(false)} />
               <div className="absolute right-0 top-0 bottom-0 w-80 max-w-full bg-background border-l border-border p-5 overflow-y-auto">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-xl font-semibold text-foreground">Фильтры</h2>
+                  <h2 className="text-xl font-semibold text-foreground">{T.catalog.filters}</h2>
                   <button onClick={() => setMobileFiltersOpen(false)} className="p-2 hover:bg-secondary rounded-lg transition-colors">
                     <X className="w-5 h-5 text-foreground" />
                   </button>
@@ -714,7 +779,7 @@ export function CatalogPage() {
             {error && (
               <div className="text-center py-16">
                 <p className="text-destructive mb-4">Ошибка загрузки: {error}</p>
-                <button onClick={() => window.location.reload()} className="px-6 py-2.5 bg-primary text-primary-foreground rounded-lg hover:opacity-90">Попробовать снова</button>
+                <button onClick={() => window.location.reload()} className="px-6 py-2.5 bg-primary text-primary-foreground rounded-lg hover:opacity-90">{T.common.reset}</button>
               </div>
             )}
 
@@ -758,7 +823,7 @@ export function CatalogPage() {
 
                 {!hasMore && allCars.length > PAGE_SIZE && (
                   <p className="text-center text-sm text-muted-foreground mt-8 pb-4">
-                    Все {allCars.length} объявлений загружены
+                    {allCars.length}
                   </p>
                 )}
               </>
@@ -767,9 +832,9 @@ export function CatalogPage() {
             {!loading && !error && filteredCars.length === 0 && (
               <div className="text-center py-20">
                 <p className="text-4xl mb-4">🔍</p>
-                <h3 className="text-xl font-semibold text-foreground mb-2">Ничего не найдено</h3>
-                <p className="text-muted-foreground mb-6">По вашему запросу объявлений нет</p>
-                <button onClick={resetFilters} className="px-6 py-2.5 bg-primary text-primary-foreground rounded-lg hover:opacity-90">Сбросить фильтры</button>
+                <h3 className="text-xl font-semibold text-foreground mb-2">{T.catalog.noResults}</h3>
+                <p className="text-muted-foreground mb-6">{T.catalog.noResultsDesc}</p>
+                <button onClick={resetFilters} className="px-6 py-2.5 bg-primary text-primary-foreground rounded-lg hover:opacity-90">{T.catalog.resetFilters}</button>
               </div>
             )}
           </div>
