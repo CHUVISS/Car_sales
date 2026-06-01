@@ -39,6 +39,6 @@ export function notificationText(n: Notification): string {
   return base;
 }
 
-export function notificationHref(n: Notification): string {
+export function notificationHref(_n: Notification): string {
   return '/profile?tab=reservations';
 }

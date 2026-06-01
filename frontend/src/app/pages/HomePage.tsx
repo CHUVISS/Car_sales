@@ -3,10 +3,8 @@ import { Search, Shield, Wallet, Headset, Heart } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 import { CarImagePlaceholder } from '../components/CarImagePlaceholder';
-import { toast } from 'sonner';
 import { carsApi, type Car, formatCatalogId } from '../api/cars';
 import { catalogApi, type CatalogMark } from '../api/catalog';
-import { messagesApi } from '../api/messages';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useFavorites } from '../hooks/useFavorites';
 
@@ -66,7 +64,6 @@ function HomeCarCard({ car }: { car: Car }) {
   );
 }
 
-const inputCls = "w-full px-4 py-3 bg-secondary text-foreground placeholder:text-muted-foreground rounded-lg outline-none focus:ring-2 focus:ring-primary border border-transparent focus:border-primary";
 
 export function HomePage() {
   useEffect(() => { window.scrollTo(0, 0); }, []);
@@ -149,39 +146,6 @@ export function HomePage() {
       .catch(() => { if (!cancelled) setLoadingCars(false); });
     return () => { cancelled = true; };
   }, []);
-
-  // ─── Форма обратной связи ─────────────────────────────────────────────────
-  const [formName, setFormName] = useState('');
-  const [formPhone, setFormPhone] = useState('');
-  const [formComment, setFormComment] = useState('');
-  const [formEmail, setFormEmail] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-
-  const handleLeadSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formEmail) { toast.error(T.home.emailRequired); return; }
-    if (!localStorage.getItem('access_token')) {
-      toast.error(T.home.loginRequired, {
-        action: { label: T.nav.signIn, onClick: () => navigate('/auth') },
-      });
-      return;
-    }
-    setSubmitting(true);
-    try {
-      await messagesApi.send({
-        name: formName, email: formEmail,
-        phone: formPhone || undefined,
-        body: formComment || 'Заявка с главной страницы',
-        message_type: 'callback',
-      });
-      toast.success(T.home.requestSuccess);
-      setFormName(''); setFormPhone(''); setFormComment(''); setFormEmail('');
-    } catch {
-      toast.error(T.home.requestError);
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-background">

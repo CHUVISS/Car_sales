@@ -13,7 +13,7 @@ import {
   type AdminUser, type AdminCar, type AdminCarOffer,
   type AdminMessage, type DashboardStats,
   type UserCreate, type UserRole, type UserStatus,
-  type CarOfferStatus, type MessageStatus, type CarStatus,
+  type CarOfferStatus, type MessageStatus,
   type AdminListingFilters,
 } from '../api/admin';
 import { catalogApi, listingsApi } from '../api/catalog';
