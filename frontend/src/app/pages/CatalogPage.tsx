@@ -253,7 +253,7 @@ function ListRow({ car }: { car: CarType }) {
       {/* Фото */}
       <div className="relative w-44 flex-shrink-0 rounded-lg overflow-hidden bg-secondary self-stretch min-h-[110px]">
         {img ? (
-          <ImageWithFallback src={img.thumbnail_url} alt={`${car.brand} ${car.model}`}
+          <ImageWithFallback src={img.url || img.thumbnail_url} alt={`${car.brand} ${car.model}`}
             className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 ${isSoldOrInactive ? 'brightness-75' : ''}`} />
         ) : (
           <CarImagePlaceholder />
@@ -377,7 +377,14 @@ export function CatalogPage() {
   const navigate = useNavigate();
   const { T } = useLanguage();
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>(
+    () => (localStorage.getItem('catalogViewMode') as 'grid' | 'list') ?? 'grid'
+  );
+
+  const handleSetViewMode = useCallback((mode: 'grid' | 'list') => {
+    setViewMode(mode);
+    localStorage.setItem('catalogViewMode', mode);
+  }, []);
 
   const TRANSMISSIONS = [
     ['automatic', T.transmission.automatic], ['manual', T.transmission.manual],
@@ -765,11 +772,11 @@ export function CatalogPage() {
               </button>
               <SortDropdown value={sortBy} onChange={setSortBy} />
               <div className="flex items-center border border-border rounded-lg overflow-hidden flex-shrink-0">
-                <button onClick={() => setViewMode('grid')} title="Сетка"
+                <button onClick={() => handleSetViewMode('grid')} title="Сетка"
                   className={`p-2.5 transition-colors ${viewMode === 'grid' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground hover:text-foreground'}`}>
                   <LayoutGrid className="w-4 h-4" />
                 </button>
-                <button onClick={() => setViewMode('list')} title="Список"
+                <button onClick={() => handleSetViewMode('list')} title="Список"
                   className={`p-2.5 transition-colors ${viewMode === 'list' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground hover:text-foreground'}`}>
                   <List className="w-4 h-4" />
                 </button>

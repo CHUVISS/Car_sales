@@ -1,14 +1,17 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import {
   Send, Bot, User, Plus, Trash2, MessageSquare,
-  ChevronLeft, Loader2, Car, Zap, AlertCircle,
+  ChevronLeft, Loader2, Car, Zap, AlertCircle, Eye, ChevronDown,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import {
   streamChat, getConversations, getConversation, deleteConversation,
   type AiMessage, type AiConversation,
 } from '../api/ai';
+import { carsApi, type Car as CarType } from '../api/cars';
+import { CarImagePlaceholder } from '../components/CarImagePlaceholder';
+import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 import { useAuth } from '../hooks/useAuth';
 import { toast } from 'sonner';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -20,6 +23,96 @@ interface LocalMessage {
   isStreaming?: boolean;
   isToolCall?: boolean;
   toolName?: string;
+  carPreviews?: CarType[];
+}
+
+const YEAR_RE = /\(((?:19|20)\d{2})\)/gi;
+const PRICE_RE = /[Цц]ена[:\s]+([\d\s]+)\s*(?:руб|₽)/gi;
+
+function parseCarMentions(content: string): Array<{ year: number; price: number }> {
+  const years: number[] = [];
+  const prices: number[] = [];
+  YEAR_RE.lastIndex = 0;
+  PRICE_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = YEAR_RE.exec(content)) !== null) years.push(parseInt(m[1], 10));
+  while ((m = PRICE_RE.exec(content)) !== null) {
+    const p = parseInt(m[1].replace(/\s/g, ''), 10);
+    if (!isNaN(p) && p > 0) prices.push(p);
+  }
+  const count = Math.min(years.length, prices.length);
+  return Array.from({ length: count }, (_, i) => ({ year: years[i], price: prices[i] }));
+}
+
+async function fetchCarsByMentions(content: string): Promise<CarType[]> {
+  const mentions = parseCarMentions(content);
+  if (mentions.length === 0) return [];
+  const results = await Promise.allSettled(
+    mentions.map(async ({ year, price }) => {
+      const res = await carsApi.list({ year_from: year, year_to: year, price_from: price, price_to: price, limit: 5 });
+      if (res.data.length === 0) return null;
+      for (const row of res.data) {
+        const full = await carsApi.get(row.id).catch(() => null);
+        if (full && full.images.length > 0) return full;
+      }
+      return carsApi.get(res.data[0].id).catch(() => null);
+    })
+  );
+  const cars: CarType[] = [];
+  const seen = new Set<string>();
+  for (const r of results) {
+    if (r.status === 'fulfilled' && r.value && !seen.has(r.value.id)) {
+      seen.add(r.value.id);
+      cars.push(r.value);
+    }
+  }
+  return cars;
+}
+
+function formatCarPrice(price: number): string {
+  return new Intl.NumberFormat('ru-RU', {
+    style: 'currency', currency: 'RUB',
+    minimumFractionDigits: 0, maximumFractionDigits: 0,
+  }).format(price);
+}
+
+function CarPreviewCard({ car }: { car: CarType }) {
+  const img = car.images.find(i => i.is_primary) || car.images[0];
+  const src = img?.url || img?.thumbnail_url || '';
+  return (
+    <Link
+      to={`/car/${car.id}`}
+      className="group flex gap-3 bg-background border border-border rounded-xl p-2.5
+        transition-all duration-200 hover:scale-[1.02] hover:shadow-md hover:shadow-primary/20
+        hover:border-foreground/30 overflow-hidden"
+    >
+      <div className="w-20 h-16 rounded-lg overflow-hidden flex-shrink-0 bg-secondary">
+        {src ? (
+          <ImageWithFallback
+            src={src}
+            alt={`${car.brand} ${car.model}`}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+          />
+        ) : (
+          <CarImagePlaceholder />
+        )}
+      </div>
+      <div className="flex-1 min-w-0 flex flex-col justify-center">
+        <p className="font-semibold text-sm text-foreground truncate">
+          {car.brand} {car.model}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {car.year}{car.mileage > 0 ? ` • ${car.mileage.toLocaleString('ru-RU')} км` : ''}
+        </p>
+        <p className="text-sm font-semibold text-foreground mt-0.5">
+          {formatCarPrice(car.price)}
+        </p>
+      </div>
+      <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity self-center pr-1">
+        <Eye className="w-4 h-4 text-primary" />
+      </div>
+    </Link>
+  );
 }
 
 function AiMarkdown({ content }: { content: string }) {
@@ -112,6 +205,13 @@ function MessageBubble({ msg }: { msg: LocalMessage }) {
                 : '...'
           )}
         </div>
+        {!isUser && msg.carPreviews && msg.carPreviews.length > 0 && (
+          <div className="w-full flex flex-col gap-2 mt-1">
+            {msg.carPreviews.map(car => (
+              <CarPreviewCard key={car.id} car={car} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -193,6 +293,7 @@ function Sidebar({
 export function AiPage() {
   const { user, loading: authLoading } = useAuth();
   const { T } = useLanguage();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -200,29 +301,56 @@ export function AiPage() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [loadingConversation, setLoadingConversation] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<boolean>(false);
+  const hadCarSearchRef = useRef<boolean>(false);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
 
-  useEffect(() => { window.scrollTo(0, 0); }, []);
-
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = useCallback((smooth = false) => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    if (smooth) {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    } else {
+      el.scrollTop = el.scrollHeight;
+    }
   }, []);
 
   useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
 
   useEffect(() => {
-    if (user) {
-      getConversations().then(data => setConversations(data.data)).catch(() => {});
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      setShowScrollBtn(el.scrollHeight - el.scrollTop - el.clientHeight > 120);
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  // messagesContainerRef is stable, but we want this to re-run if the node changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messagesContainerRef.current]);
+
+  // Sync active conversation ID to URL so back-button navigation restores it
+  useEffect(() => {
+    if (activeConversationId) {
+      setSearchParams({ c: activeConversationId }, { replace: true });
     }
-  }, [user]);
+  }, [activeConversationId, setSearchParams]);
 
   const loadConversation = useCallback(async (id: string) => {
     setLoadingConversation(true);
     try {
       const conv = await getConversation(id);
-      setMessages(conv.messages.map((m: AiMessage) => ({ id: m.id, role: m.role, content: m.content })));
+      const base = conv.messages.map((m: AiMessage) => ({ id: m.id, role: m.role, content: m.content }));
+      const withPreviews = await Promise.all(
+        base.map(async (m) => {
+          if (m.role !== 'assistant') return m;
+          const carPreviews = await fetchCarsByMentions(m.content);
+          return carPreviews.length > 0 ? { ...m, carPreviews } : m;
+        })
+      );
+      setMessages(withPreviews);
       setActiveConversationId(id);
     } catch {
       toast.error(T.ai.loadError);
@@ -231,9 +359,19 @@ export function AiPage() {
     }
   }, [T.ai.loadError]);
 
+  // On mount (after auth): load conversation from URL param if present
+  useEffect(() => {
+    if (!user) return;
+    getConversations().then(data => setConversations(data.data)).catch(() => {});
+    const convId = searchParams.get('c');
+    if (convId) loadConversation(convId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
   const startNewConversation = useCallback(() => {
     setMessages([]); setActiveConversationId(null); setInput('');
-  }, []);
+    setSearchParams({}, { replace: true });
+  }, [setSearchParams]);
 
   const handleDeleteConversation = useCallback(async (id: string) => {
     try {
@@ -257,6 +395,7 @@ export function AiPage() {
     setInput('');
     setIsStreaming(true);
     abortRef.current = false;
+    hadCarSearchRef.current = false;
 
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
 
@@ -265,6 +404,7 @@ export function AiPage() {
       (chunk) => {
         if (abortRef.current) return;
         if (chunk.type === 'tool_call') {
+          hadCarSearchRef.current = true;
           setMessages(prev => {
             const withoutOldTool = prev.filter(m => !m.isToolCall);
             return [...withoutOldTool, { id: `tool-${Date.now()}`, role: 'assistant', content: '', isToolCall: true, toolName: chunk.name }];
@@ -277,9 +417,25 @@ export function AiPage() {
       },
       (convId) => {
         setIsStreaming(false);
-        setMessages(prev => prev.filter(m => !m.isToolCall).map(m =>
-          m.id === assistantId ? { ...m, isStreaming: false } : m
-        ));
+        setMessages(prev => {
+          const updated = prev.filter(m => !m.isToolCall).map(m =>
+            m.id === assistantId ? { ...m, isStreaming: false } : m
+          );
+          if (hadCarSearchRef.current) {
+            const assistantMsg = updated.find(m => m.id === assistantId);
+            if (assistantMsg) {
+              fetchCarsByMentions(assistantMsg.content).then(carPreviews => {
+                if (carPreviews.length > 0) {
+                  setMessages(prev2 => prev2.map(m =>
+                    m.id === assistantId ? { ...m, carPreviews } : m
+                  ));
+                }
+              });
+            }
+            hadCarSearchRef.current = false;
+          }
+          return updated;
+        });
         if (convId && !activeConversationId) {
           setActiveConversationId(convId);
           getConversations().then(data => setConversations(data.data)).catch(() => {});
@@ -342,7 +498,7 @@ export function AiPage() {
         onToggle={() => setSidebarCollapsed(p => !p)}
       />
 
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 relative">
         {/* Topbar */}
         <div className="flex items-center gap-3 px-4 py-3 bg-card border-b border-border flex-shrink-0">
           <button onClick={() => setSidebarCollapsed(p => !p)}
@@ -365,7 +521,7 @@ export function AiPage() {
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-4 py-6">
+        <div ref={messagesContainerRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-6">
           {loadingConversation ? (
             <div className="flex items-center justify-center h-full">
               <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
@@ -375,10 +531,21 @@ export function AiPage() {
           ) : (
             <div className="max-w-3xl mx-auto space-y-4">
               {messages.map(msg => <MessageBubble key={msg.id} msg={msg} />)}
-              <div ref={messagesEndRef} />
             </div>
           )}
         </div>
+
+        {showScrollBtn && (
+          <button
+            onClick={() => scrollToBottom(true)}
+            className="absolute bottom-28 right-6 z-20 w-9 h-9 flex items-center justify-center
+              bg-foreground text-background rounded-full shadow-lg
+              hover:opacity-90 transition-all duration-200 hover:scale-110"
+            aria-label="Прокрутить вниз"
+          >
+            <ChevronDown className="w-5 h-5" />
+          </button>
+        )}
 
         {/* Notice */}
         <div className="px-4 pb-1 max-w-3xl mx-auto w-full">
