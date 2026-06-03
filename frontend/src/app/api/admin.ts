@@ -207,7 +207,7 @@ function mapListingRow(row: Record<string, unknown>): AdminCar {
     mileage: row.mileage as number,
     status: mapListingStatus((row.status as string) ?? 'active'),
     fuel_type: (row.engine_type as string | null) ?? null,
-    transmission: null,
+    transmission: (row.transmission as string | null) ?? null,
     body_type: (row.body_type as string | null) ?? null,
     engine_volume: row.displacement != null ? String(row.displacement) : null,
     engine_power: (row.power as number | null) ?? null,

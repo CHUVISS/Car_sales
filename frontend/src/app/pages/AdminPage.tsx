@@ -45,21 +45,27 @@ function formatMileage(m: number, lang: string): string {
   return `${new Intl.NumberFormat(lang === 'ru' ? 'ru-RU' : 'en-US').format(m)} ${lang === 'ru' ? 'км' : 'km'}`;
 }
 
-const _BODY_FALLBACK: Record<string, string> = { allroad: 'suv', crossover: 'suv', liftback: 'hatchback', van: 'minivan' };
+const _BODY_FALLBACK: Record<string, string> = {
+  allroad: 'suv', crossover: 'suv', liftback: 'hatchback', van: 'minivan',
+  cabrio: 'convertible', cabriolet: 'convertible', roadster: 'convertible',
+  estate: 'wagon', universal: 'wagon', fastback: 'hatchback',
+  mpvan: 'minivan', minibus: 'minivan',
+};
 function normalizeBodyType(raw: string | null): string {
   if (!raw) return '';
   const key = raw.toLowerCase().split(/[\s_]/)[0];
   return _BODY_FALLBACK[key] ?? key;
 }
-function normalizeFuelType(raw: string | null): string {
-  if (!raw) return '';
-  const v = raw.toLowerCase();
-  if (v.includes('бензин') || v === 'petrol' || v === 'gasoline') return 'petrol';
-  if (v.includes('дизел') || v === 'diesel') return 'diesel';
-  if (v.includes('электр') || v === 'electric') return 'electric';
-  if (v.includes('гибрид') || v === 'hybrid') return 'hybrid';
-  if (v.includes('газ') || v === 'gas' || v.includes('lpg')) return 'gas';
-  return v;
+function matchesFuel(dbValue: string, filterKey: string): boolean {
+  const v = dbValue.toLowerCase();
+  switch (filterKey) {
+    case 'petrol':   return v.includes('бензин') || v === 'petrol' || v === 'gasoline' || v.includes('бензинов');
+    case 'diesel':   return v.includes('дизел') || v === 'diesel' || v.includes('дизельн');
+    case 'electric': return v.includes('электр') || v === 'electric';
+    case 'hybrid':   return v.includes('гибрид') || v === 'hybrid';
+    case 'gas':      return v.includes('газ') || v === 'gas' || v.includes('lpg') || v.includes('cng');
+    default:         return v.includes(filterKey.toLowerCase());
+  }
 }
 function normalizeTransmission(raw: string | null): string {
   if (!raw) return '';
@@ -68,6 +74,17 @@ function normalizeTransmission(raw: string | null): string {
   if (v.includes('механ') || v === 'manual') return 'manual';
   if (v.includes('робот') || v === 'robot') return 'robot';
   if (v.includes('вариатор') || v === 'variator') return 'variator';
+  return v;
+}
+// normalizeFuelType kept for openEdit form; filter now uses matchesFuel
+function normalizeFuelType(raw: string | null): string {
+  if (!raw) return '';
+  const v = raw.toLowerCase();
+  if (v.includes('бензин') || v === 'petrol' || v === 'gasoline') return 'petrol';
+  if (v.includes('дизел') || v === 'diesel') return 'diesel';
+  if (v.includes('электр') || v === 'electric') return 'electric';
+  if (v.includes('гибрид') || v === 'hybrid') return 'hybrid';
+  if (v.includes('газ') || v === 'gas' || v.includes('lpg')) return 'gas';
   return v;
 }
 
@@ -170,9 +187,12 @@ function applyFilters(
     if (f.yearMax && car.year > Number(f.yearMax)) return false;
     if (f.brands.length && !f.brands.includes(car.brand)) return false;
     if (f.models.length && !f.models.includes(car.model)) return false;
-    if (f.transmissions.length && (!car.transmission || !f.transmissions.includes(car.transmission))) return false;
-    if (f.fuelTypes.length && (!car.fuel_type || !f.fuelTypes.includes(car.fuel_type))) return false;
-    if (f.bodyTypes.length && (!car.body_type || !f.bodyTypes.includes(car.body_type))) return false;
+    const carTransmission = normalizeTransmission(car.transmission);
+    const carBodyType = normalizeBodyType(car.body_type);
+    // Если у машины нет данных по коробке — не фильтруем (данные грузятся асинхронно)
+    if (f.transmissions.length && carTransmission && !f.transmissions.includes(carTransmission)) return false;
+    if (f.fuelTypes.length && car.fuel_type && !f.fuelTypes.some(ft => matchesFuel(car.fuel_type!, ft))) return false;
+    if (f.bodyTypes.length && (!carBodyType || !f.bodyTypes.includes(carBodyType))) return false;
     if (f.selectedGenIds.length) {
       const matched = f.selectedGenIds.some(genId => {
         const gen = availableGens.find(g => g.id === genId);
@@ -185,7 +205,7 @@ function applyFilters(
       const bodyTypes = f.selectedConfIds
         .map(id => availableConfs.find(c => c.id === id)?.body_type)
         .filter(Boolean) as string[];
-      if (bodyTypes.length > 0 && (!car.body_type || !bodyTypes.includes(car.body_type))) return false;
+      if (bodyTypes.length > 0 && (!carBodyType || !bodyTypes.includes(carBodyType))) return false;
     }
     return true;
   });
@@ -197,35 +217,65 @@ function MultiSelectDropdown({ label, options, selected, onToggle, onClear, allL
   allLabel: string; noOptionsLabel: string; clearLabel: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSearch('');
+      }
+    };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
+  const filtered = search.trim()
+    ? options.filter(o => o.label.toLowerCase().includes(search.toLowerCase()))
+    : options;
   const displayText = selected.length > 0
     ? selected.map(v => options.find(o => o.value === v)?.label ?? v).join(', ')
     : allLabel;
   return (
     <div className="relative" ref={ref}>
       <p className="text-xs font-semibold text-muted-foreground mb-1">{label}</p>
-      <button type="button" onClick={() => setOpen(!open)}
+      <button type="button" onClick={() => { setOpen(!open); setSearch(''); }}
         className={`w-full flex items-center justify-between px-3 py-2 bg-secondary rounded-lg text-sm text-left hover:bg-secondary/80 transition-colors border border-border ${selected.length > 0 ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
         <span className="truncate mr-2">{displayText}</span>
         <ChevronDown className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
         <div className="absolute z-20 w-full mt-1 bg-card border border-border rounded-lg shadow-lg overflow-hidden">
+          {options.length > 5 && (
+            <div className="p-2 border-b border-border">
+              <div className="flex items-center gap-2 px-2 py-1.5 bg-secondary rounded-md">
+                <Search className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                <input
+                  autoFocus
+                  type="text"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="flex-1 text-sm bg-transparent outline-none text-foreground placeholder:text-muted-foreground"
+                  placeholder="Поиск..."
+                />
+              </div>
+            </div>
+          )}
           <div className="max-h-44 overflow-y-auto py-1">
-            {options.length === 0 && <p className="px-3 py-4 text-sm text-muted-foreground text-center">{noOptionsLabel}</p>}
-            {options.map(opt => (
-              <label key={opt.value} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-secondary/50 text-sm text-foreground">
+            {filtered.length === 0
+              ? <p className="px-3 py-4 text-sm text-muted-foreground text-center">{noOptionsLabel}</p>
+              : filtered.map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => onToggle(opt.value)}
+                className="w-full flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-secondary/50 text-sm text-foreground text-left"
+              >
                 <div className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${selected.includes(opt.value) ? 'bg-primary border-primary' : 'border-border'}`}>
                   {selected.includes(opt.value) && <Check className="w-3 h-3 text-white" />}
                 </div>
-                <input type="checkbox" className="sr-only" checked={selected.includes(opt.value)} onChange={() => onToggle(opt.value)} />
                 {opt.label}
-              </label>
+              </button>
             ))}
           </div>
           {selected.length > 0 && (
@@ -531,6 +581,23 @@ function CarTableRow({ car, onEdit, onDelete, onStatusChange, onRowClick, carSta
 // CarsTab
 
 const ADMIN_PAGE_SIZE = 20;
+
+async function enrichAdminCars(cars: AdminCar[]): Promise<AdminCar[]> {
+  if (cars.length === 0) return cars;
+  const results = await Promise.allSettled(cars.map(c => carsApi.get(c.id)));
+  return cars.map((c, i) => {
+    const r = results[i];
+    if (r.status === 'fulfilled') {
+      return {
+        ...c,
+        transmission: r.value.transmission ?? c.transmission,
+        fuel_type: r.value.fuel_type ?? c.fuel_type,
+        body_type: r.value.body_type ?? c.body_type,
+      };
+    }
+    return c;
+  });
+}
 const TIME_SLOTS = ['08:00','09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00'];
 
 function CarsTab() {
@@ -663,8 +730,9 @@ function CarsTab() {
     if (filters.priceMax) f.price_max = Number(filters.priceMax);
     if (filters.yearMin) f.year_min = Number(filters.yearMin);
     if (filters.yearMax) f.year_max = Number(filters.yearMax);
-    if (filters.fuelTypes.length === 1) f.engine_type = filters.fuelTypes[0];
-    if (filters.bodyTypes.length === 1) f.body_type = filters.bodyTypes[0];
+    // engine_type и body_type НЕ передаём на сервер: в БД хранятся значения вида
+    // "Бензиновый" и "SEDAN", а фильтр использует ключи "petrol"/"sedan".
+    // Строгое равенство в SQL даст 0 результатов — фильтруем только на клиенте.
     if (filters.brands.length === 1) {
       const mark = marks.find(m => markLabel(m) === filters.brands[0]);
       if (mark) f.mark_id = mark.id;
@@ -675,20 +743,23 @@ function CarsTab() {
     }
     return f;
   }, [filters.priceMin, filters.priceMax, filters.yearMin, filters.yearMax,
-      filters.fuelTypes, filters.bodyTypes, filters.brands, filters.models, marks, availableModels]);
+      filters.brands, filters.models, marks, availableModels]);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true); setAllCars([]); setNextCursor(null); setHasMore(false);
     adminApi.getCars(serverFilters)
-      .then(res => {
+      .then(async res => {
         if (cancelled) return;
         setAllCars(res.data);
         setNextCursor(res.next_cursor);
         setHasMore(res.next_cursor !== null);
+        setLoading(false);
+        // Обогащаем данными из detail-эндпоинта (transmission, уточнённые fuel/body)
+        const enriched = await enrichAdminCars(res.data);
+        if (!cancelled) setAllCars(enriched);
       })
-      .catch(() => { if (!cancelled) toast.error(A.carsLoadError); })
-      .finally(() => { if (!cancelled) setLoading(false); });
+      .catch(() => { if (!cancelled) { toast.error(A.carsLoadError); setLoading(false); } });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(serverFilters), refreshKey]);
@@ -697,13 +768,19 @@ function CarsTab() {
     if (loadingMore || !hasMore || !nextCursor) return;
     setLoadingMore(true);
     adminApi.getCars({ ...serverFilters, cursor: nextCursor })
-      .then(res => {
+      .then(async res => {
         setAllCars(prev => [...prev, ...res.data]);
         setNextCursor(res.next_cursor);
         setHasMore(res.next_cursor !== null);
+        setLoadingMore(false);
+        // Обогащаем новую страницу в фоне
+        const enriched = await enrichAdminCars(res.data);
+        setAllCars(prev => {
+          const enrichedMap = new Map(enriched.map((c: AdminCar) => [c.id, c]));
+          return prev.map((c: AdminCar) => enrichedMap.get(c.id) ?? c);
+        });
       })
-      .catch(() => {})
-      .finally(() => setLoadingMore(false));
+      .catch(() => { setLoadingMore(false); });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadingMore, hasMore, nextCursor, JSON.stringify(serverFilters)]);
 
@@ -736,7 +813,6 @@ function CarsTab() {
   );
 
   const availableBrands = useMemo(() => marks.map(m => markLabel(m)).sort(), [marks]);
-  const isLoading = loading && allCars.length === 0;
   const handleReload = () => setRefreshKey(k => k + 1);
 
   const activeFiltersCount = [
@@ -989,8 +1065,6 @@ function CarsTab() {
       toast.error(err instanceof Error ? err.message : A.carStatusChangeError);
     }
   };
-
-  if (isLoading) return <LoadingSpinner />;
 
   return (
     <div className="flex gap-4">
