@@ -19,7 +19,7 @@ import {
 import { catalogApi, listingsApi } from '../api/catalog';
 import type { CatalogMark, CatalogModel, CatalogGeneration, CatalogConfiguration, CatalogModification, CatalogColor, GeoCity } from '../api/catalog';
 import { viewingsApi } from '../api/viewings';
-import { formatCatalogId } from '../api/cars';
+import { formatCatalogId, carsApi } from '../api/cars';
 import { useLanguage } from '../i18n/LanguageContext';
 
 type TabType = 'stats' | 'cars' | 'offers' | 'messages' | 'users';
@@ -43,6 +43,32 @@ function formatDate(iso: string, lang: string): string {
 }
 function formatMileage(m: number, lang: string): string {
   return `${new Intl.NumberFormat(lang === 'ru' ? 'ru-RU' : 'en-US').format(m)} ${lang === 'ru' ? 'км' : 'km'}`;
+}
+
+const _BODY_FALLBACK: Record<string, string> = { allroad: 'suv', crossover: 'suv', liftback: 'hatchback', van: 'minivan' };
+function normalizeBodyType(raw: string | null): string {
+  if (!raw) return '';
+  const key = raw.toLowerCase().split(/[\s_]/)[0];
+  return _BODY_FALLBACK[key] ?? key;
+}
+function normalizeFuelType(raw: string | null): string {
+  if (!raw) return '';
+  const v = raw.toLowerCase();
+  if (v.includes('бензин') || v === 'petrol' || v === 'gasoline') return 'petrol';
+  if (v.includes('дизел') || v === 'diesel') return 'diesel';
+  if (v.includes('электр') || v === 'electric') return 'electric';
+  if (v.includes('гибрид') || v === 'hybrid') return 'hybrid';
+  if (v.includes('газ') || v === 'gas' || v.includes('lpg')) return 'gas';
+  return v;
+}
+function normalizeTransmission(raw: string | null): string {
+  if (!raw) return '';
+  const v = raw.toLowerCase();
+  if (v.includes('автомат') || v === 'automatic') return 'automatic';
+  if (v.includes('механ') || v === 'manual') return 'manual';
+  if (v.includes('робот') || v === 'robot') return 'robot';
+  if (v.includes('вариатор') || v === 'variator') return 'variator';
+  return v;
 }
 
 const CAR_STATUS_COLORS: Record<string, string> = {
@@ -544,6 +570,8 @@ function CarsTab() {
   const emptyForm = { brand: '', model: '', year: '', price: '', mileage: '0', color: '', fuel_type: '', transmission: '', body_type: '', engine_volume: '', engine_power: '', description: '', vin: '', viewing_days: [] as string[], viewing_time_from: '09:00', viewing_time_to: '20:00', viewing_address: '' };
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
+  const [existingImages, setExistingImages] = useState<string[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
 
@@ -789,12 +817,82 @@ function CarsTab() {
     setFormViewingDays([]); setFormViewingFrom('10:00'); setFormViewingTo('18:00');
     setShowForm(true);
   };
-  const openEdit = (displayCar: AdminCarDisplay) => {
+  const openEdit = async (displayCar: AdminCarDisplay) => {
     const car = allCars.find(c => c.id === displayCar.id) ?? (displayCar as unknown as AdminCar);
     setEditCar(car);
-    const c = car as AdminCar & { viewing_days?: string[]; viewing_time_from?: string; viewing_time_to?: string; viewing_address?: string };
-    setForm({ brand: car.brand, model: car.model, year: String(car.year), price: String(car.price), mileage: String(car.mileage), color: car.color ?? '', fuel_type: car.fuel_type ?? '', transmission: car.transmission ?? '', body_type: car.body_type ?? '', engine_volume: car.engine_volume ?? '', engine_power: String(car.engine_power ?? ''), description: car.description ?? '', vin: car.vin ?? '', viewing_days: c.viewing_days ?? [], viewing_time_from: c.viewing_time_from ?? '09:00', viewing_time_to: c.viewing_time_to ?? '20:00', viewing_address: c.viewing_address ?? '' });
-    clearFiles(); setShowForm(true);
+    setForm({
+      brand: car.brand, model: car.model,
+      year: String(car.year), price: String(car.price), mileage: String(car.mileage),
+      color: car.color ?? '', fuel_type: car.fuel_type ?? '', transmission: car.transmission ?? '',
+      body_type: car.body_type ?? '', engine_volume: car.engine_volume ?? '',
+      engine_power: String(car.engine_power ?? ''), description: car.description ?? '',
+      vin: car.vin ?? '', viewing_days: [], viewing_time_from: '09:00', viewing_time_to: '20:00', viewing_address: '',
+    });
+    setFormColorId('');
+    setExistingImages([]);
+    clearFiles();
+    setShowForm(true);
+    setEditLoading(true);
+    try {
+      // Грузим данные листинга и viewing windows параллельно
+      const [detail, windows] = await Promise.all([
+        carsApi.get(car.id),
+        viewingsApi.getAvailableSlots(car.id).catch(() => []),
+      ]);
+
+      // Основные поля
+      setForm(p => ({
+        ...p,
+        fuel_type: normalizeFuelType(detail.fuel_type),
+        transmission: normalizeTransmission(detail.transmission),
+        body_type: normalizeBodyType(detail.body_type),
+        engine_volume: detail.engine_volume ?? p.engine_volume,
+        engine_power: detail.engine_power != null ? String(detail.engine_power) : p.engine_power,
+        description: detail.description ?? p.description,
+        vin: detail.vin ?? p.vin,
+        viewing_address: detail.sale_address ?? p.viewing_address,
+      }));
+      if (detail.color) setFormColorId(detail.color);
+      if (detail.condition) setFormCondition(detail.condition ?? '');
+
+      // Viewing windows → дни и время
+      if (windows.length > 0) {
+        // Определяем уникальные дни недели из конкретных дат
+        // WEEK_DAYS = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'] (Пн=0, Вс=6)
+        // JS getDay(): 0=вс, 1=пн... → индекс в WEEK_DAYS = (jsDay + 6) % 7
+        const uniqueDayNames = [...new Set(
+          windows.map(w => {
+            const [y, m, d] = w.window_date.split('-').map(Number);
+            const jsDay = new Date(y, m - 1, d).getDay();
+            return WEEK_DAYS[(jsDay + 6) % 7];
+          })
+        )];
+        // Берём время из первого окна (предполагаем единое расписание)
+        setForm(p => ({
+          ...p,
+          viewing_days: uniqueDayNames,
+          viewing_time_from: windows[0].time_from,
+          viewing_time_to: windows[0].time_to,
+        }));
+      }
+
+      // Фото с resolved URLs из mapDetail
+      setExistingImages(
+        [...detail.images]
+          .sort((a, b) => (a.is_primary ? -1 : b.is_primary ? 1 : a.sort_order - b.sort_order))
+          .map(img => img.url || img.thumbnail_url)
+          .filter(Boolean)
+      );
+
+      // VIN без маскировки — через admin-endpoint (в фоне, не блокирует UI)
+      adminApi.getListingDetail(car.id)
+        .then(d => { if (d.vin && typeof d.vin === 'string') setForm(p => ({ ...p, vin: d.vin as string })); })
+        .catch(() => { /* endpoint недоступен — VIN остаётся с маскировкой */ });
+    } catch (err) {
+      console.error('[AdminPage] openEdit detail fetch failed:', err);
+    } finally {
+      setEditLoading(false);
+    }
   };
 
   const saveViewingWindows = async (listingId: string) => {
@@ -1335,9 +1433,26 @@ function CarsTab() {
             {/* Edit mode: keep old fields */}
             {editCar && (
               <div className="space-y-4">
+                {editLoading && (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-secondary rounded-lg text-sm text-muted-foreground">
+                    <Loader2 className="w-4 h-4 animate-spin" /> {A.loading}
+                  </div>
+                )}
+
+                {/* Color selector */}
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-muted-foreground">{A.carFormColor}</label>
+                  <FormSearchSelect
+                    options={colors} value={formColorId}
+                    onChange={id => setFormColorId(id)}
+                    getLabel={c => lang === 'en' ? (c.name_en ?? c.name_ru) : c.name_ru}
+                    placeholder={T.listing.chooseColor}
+                    searchPlaceholder={T.listing.searchPlaceholder}
+                    noResults={T.listing.noResults} />
+                </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   {([
-                    ['color', A.carFormColor, 'text'],
                     ['engine_volume', A.carFormVolume, 'number'],
                     ['engine_power', A.carFormPower, 'number'],
                     ['vin', A.carFormVin, 'text'],
@@ -1369,6 +1484,25 @@ function CarsTab() {
                     </select>
                   </div>
                 </div>
+
+                {/* Existing photos */}
+                {existingImages.length > 0 && (
+                  <div>
+                    <label className="block text-xs font-semibold mb-2 text-muted-foreground">{A.carFormPhotos}</label>
+                    <div className="grid grid-cols-4 gap-2">
+                      {existingImages.map((src, i) => (
+                        <div key={i} className="relative aspect-square rounded-lg overflow-hidden bg-secondary">
+                          <img src={src} alt="" className="w-full h-full object-cover" />
+                          {i === 0 && (
+                            <span className="absolute bottom-1 left-1 text-[10px] bg-black/60 text-white px-1.5 py-0.5 rounded">
+                              {lang === 'en' ? 'Main' : 'Главное'}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div>
                   <label className="block text-xs font-semibold mb-1 text-muted-foreground">{A.carFormPhotos}</label>
                   <div className="border-2 border-dashed border-border rounded-lg p-4 text-center hover:bg-secondary/30 transition-colors cursor-pointer"
@@ -1399,6 +1533,18 @@ function CarsTab() {
                 <div>
                   <label className="block text-xs font-semibold mb-1 text-muted-foreground">{A.carFormDescription}</label>
                   <textarea value={form.description} rows={3} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} className={inputCls + ' resize-none'} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-2 text-muted-foreground">{T.listing.condition}</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {T.listing.conditionOptions.map((opt: { value: string; label: string; desc: string }) => (
+                      <button key={opt.value} type="button" onClick={() => setFormCondition(opt.value)}
+                        className={`flex flex-col items-start px-3 py-2 rounded-lg border text-left transition-colors ${formCondition === opt.value ? 'bg-primary/10 border-primary text-primary' : 'bg-secondary border-border text-foreground hover:bg-secondary/80'}`}>
+                        <span className="text-xs font-semibold">{opt.label}</span>
+                        <span className="text-xs text-muted-foreground">{opt.desc}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div className="pt-2 border-t border-border">
                   <p className="text-sm font-semibold text-foreground mb-3">{A.carFormViewings}</p>

@@ -365,6 +365,9 @@ export const adminApi = {
   deleteListing: (id: string): Promise<void> =>
     req<void>(`/listings/${id}`, { method: 'DELETE' }),
 
+  getListingDetail: (id: string): Promise<Record<string, unknown>> =>
+    req<Record<string, unknown>>(`/admin/listings/${id}`),
+
   // Moderation queue (pending listings) — replaces Car offers
   getOffers: async (_status?: CarOfferStatus, skip = 0, limit = 20) => {
     const listings = await req<Record<string, unknown>[]>(

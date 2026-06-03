@@ -149,9 +149,14 @@ interface ListingDetail {
   mileage: number;
   color_id: string | null;
   vin: string | null;
+  license_plate: string | null;
   description: string | null;
   condition: string | null;
   city_id: string;
+  sale_address: string | null;
+  viewing_enabled: boolean;
+  accepts_cash: boolean;
+  accepts_transfer: boolean;
   status: string;
   created_at: string;
   catalog_specs: Record<string, unknown> | null;
@@ -207,6 +212,10 @@ function mapDetail(d: ListingDetail): Car {
     description: d.description,
     condition: d.condition,
     city_name: null,
+    sale_address: d.sale_address,
+    viewing_enabled: d.viewing_enabled,
+    accepts_cash: d.accepts_cash,
+    accepts_transfer: d.accepts_transfer,
     status: mapStatus(d.status),
     created_at: d.created_at,
     images: d.images.map(img => ({
