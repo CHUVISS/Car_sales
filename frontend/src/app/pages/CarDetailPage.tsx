@@ -200,15 +200,17 @@ export function CarDetailPage() {
     ...(car.vin ? [[T.carDetail.specs.vin, car.vin]] : []),
   ];
 
+  const isAvailable = car.status === 'available';
+
   return (
-    <div className="min-h-screen bg-background">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="min-h-screen bg-background pb-20 lg:pb-0">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         <button onClick={() => navigate(-1)} className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground mb-6 transition-colors">
           <ArrowLeft className="w-5 h-5" />
           <span>{T.carDetail.back}</span>
         </button>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
           <div className="lg:col-span-2 space-y-6">
             {/* Галерея */}
             <div className="bg-card rounded-lg border border-border overflow-hidden">
@@ -255,11 +257,11 @@ export function CarDetailPage() {
             </div>
 
             {/* Заголовок */}
-            <div className="bg-card rounded-lg border border-border p-6">
+            <div className="bg-card rounded-lg border border-border p-4 sm:p-6">
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <div className="flex items-center gap-3 mb-2 flex-wrap">
-                    <h1 className="text-3xl font-semibold text-foreground">{car.brand} {car.model}</h1>
+                    <h1 className="text-2xl sm:text-3xl font-semibold text-foreground">{car.brand} {car.model}</h1>
                     {car.mileage === 0 && (
                       <span className="px-3 py-1 bg-accent text-accent-foreground rounded-full text-sm font-medium">{T.status.new}</span>
                     )}
@@ -308,9 +310,9 @@ export function CarDetailPage() {
                 </div>
               </div>
 
-              <div className="text-4xl font-semibold text-primary mb-6">{formatPrice(Number(car.price))}</div>
+              <div className="text-3xl sm:text-4xl font-semibold text-primary mb-4 sm:mb-6">{formatPrice(Number(car.price))}</div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
                 {[
                   [T.carDetail.specs.year, String(car.year)],
                   [T.carDetail.specs.mileage, formatMileage(car.mileage, lang)],
@@ -346,8 +348,8 @@ export function CarDetailPage() {
             )}
           </div>
 
-          {/* Боковая панель */}
-          <div className="space-y-6">
+          {/* Боковая панель — скрыта на мобиле, показывается с lg */}
+          <div className="hidden lg:block space-y-6">
             <div className="bg-card rounded-lg border border-border p-6 sticky top-20">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold text-foreground">{T.carDetail.actions}</h3>
@@ -582,6 +584,90 @@ export function CarDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Sticky bottom bar — только мобиль */}
+      {isAvailable && !reservationDone && !paymentUrl && (
+        <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border px-4 py-3 flex gap-3">
+          <a
+            href="tel:+79001234567"
+            className="flex-1 flex items-center justify-center gap-2 py-3 bg-accent text-accent-foreground rounded-lg font-medium text-sm"
+          >
+            <Phone className="w-4 h-4" />
+            <span>{T.carDetail.callBtn}</span>
+          </a>
+          <button
+            onClick={() => setShowBookingPanel(true)}
+            disabled={car.status === 'reserved'}
+            className="flex-1 flex items-center justify-center gap-2 py-3 bg-primary text-primary-foreground rounded-lg font-medium text-sm disabled:opacity-60"
+          >
+            <Calendar className="w-4 h-4" />
+            <span>{car.status === 'reserved' ? T.status.reserved : T.carDetail.bookViewing}</span>
+          </button>
+        </div>
+      )}
+
+      {/* Мобильная панель бронирования */}
+      {showBookingPanel && !paymentUrl && !reservationDone && (
+        <div className="lg:hidden fixed inset-0 z-50 flex flex-col justify-end">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setShowBookingPanel(false)} />
+          <div className="relative bg-card rounded-t-2xl p-5 max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-foreground text-lg">{T.carDetail.viewingDesc}</h3>
+              <button onClick={() => setShowBookingPanel(false)} className="p-1.5 text-muted-foreground hover:text-foreground">
+                ✕
+              </button>
+            </div>
+
+            {windowsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              </div>
+            ) : windows.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">{T.carDetail.noViewingTime}</p>
+            ) : (
+              <div className="space-y-3 mb-4">
+                {sortedDates.map((date) => (
+                  <div key={date}>
+                    <p className="text-xs text-muted-foreground mb-1.5">{formatWindowDate(date, lang)}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {groupedWindows[date].map((w) => (
+                        <button
+                          key={w.id}
+                          type="button"
+                          onClick={() => setSelectedWindowId(selectedWindowId === w.id ? null : w.id)}
+                          className={`px-3 py-2 rounded-lg text-sm border transition-colors ${
+                            selectedWindowId === w.id
+                              ? 'border-primary bg-primary/5 text-primary font-medium'
+                              : 'border-border hover:border-foreground/30 text-foreground'
+                          }`}
+                        >
+                          {w.time_from.slice(0, 5)}–{w.time_to.slice(0, 5)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="p-3 mb-4 rounded-lg bg-secondary/60 border border-border text-xs text-muted-foreground">
+              <p className="font-medium text-foreground mb-0.5">{T.carDetail.howBookingWorks}</p>
+              <p>{T.carDetail.bookingInfo}</p>
+            </div>
+
+            <button
+              onClick={handleReserve}
+              disabled={reserving}
+              className="flex items-center justify-center gap-2 w-full px-4 py-3.5 bg-primary text-primary-foreground rounded-xl font-medium disabled:opacity-50"
+            >
+              {reserving
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> {T.carDetail.creating}</>
+                : <><CreditCard className="w-4 h-4" /> {T.carDetail.reserveBtn}{selectedWindowId ? '' : T.carDetail.withoutTime}</>
+              }
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

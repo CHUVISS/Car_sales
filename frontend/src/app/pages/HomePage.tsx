@@ -158,9 +158,9 @@ export function HomePage() {
             className="w-full h-full object-cover opacity-20 transition-transform duration-500 group-hover:scale-105"
           />
         </div>
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 lg:py-32">
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-20 lg:py-32">
           <div className="max-w-2xl">
-            <h1 className="text-4xl lg:text-5xl font-semibold mb-4 transition-transform duration-300 group-hover:scale-105">
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold mb-4 transition-transform duration-300 group-hover:scale-105">
               {T.home.heroTitle}
             </h1>
             <p className="text-lg opacity-90 mb-8 transition-transform duration-300 group-hover:scale-105 origin-left">
@@ -222,7 +222,7 @@ export function HomePage() {
           </Link>
         </div>
         {loadingCars ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="bg-card rounded-lg border border-border overflow-hidden">
                 <div className="aspect-[4/3] bg-secondary animate-pulse" />
@@ -235,7 +235,7 @@ export function HomePage() {
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {cars.map(car => <HomeCarCard key={car.id} car={car} />)}
           </div>
         )}
@@ -247,7 +247,7 @@ export function HomePage() {
           <h2 className="text-3xl font-semibold text-center text-foreground mb-12 transition-transform duration-300 group-hover:scale-105">
             {T.home.advantages}
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
             {[
               { icon: Shield,  title: T.home.qualityTitle, desc: T.home.qualityDesc },
               { icon: Wallet,  title: T.home.dealsTitle,   desc: T.home.dealsDesc },
