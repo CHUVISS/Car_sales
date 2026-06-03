@@ -834,13 +834,28 @@ function CarsTab() {
     setShowForm(true);
     setEditLoading(true);
     try {
-      // Грузим данные листинга и viewing windows параллельно
-      const [detail, windows] = await Promise.all([
+      // Все три запроса параллельно; adminDetail и windows не блокируют при ошибке
+      const [detail, windows, adminDetail] = await Promise.all([
         carsApi.get(car.id),
-        viewingsApi.getAvailableSlots(car.id).catch(() => []),
+        viewingsApi.getAvailableSlots(car.id).catch(() => [] as import('../api/viewings').ViewingWindow[]),
+        adminApi.getListingDetail(car.id).catch(() => null as Record<string, unknown> | null),
       ]);
 
-      // Основные поля
+      // VIN: если admin-endpoint вернул незамаскированный — используем его
+      const vin = (typeof adminDetail?.vin === 'string' && !adminDetail.vin.includes('*'))
+        ? adminDetail.vin
+        : (detail.vin ?? '');
+
+      // Viewing windows: дни и время
+      const uniqueDayNames = windows.length > 0
+        ? [...new Set(windows.map(w => {
+            const [y, mo, d] = w.window_date.split('-').map(Number);
+            // JS getDay(): 0=вс,1=пн...6=сб → WEEK_DAYS (Пн=0,Вс=6): (jsDay+6)%7
+            return WEEK_DAYS[(new Date(y, mo - 1, d).getDay() + 6) % 7];
+          }))]
+        : [];
+
+      // Единый вызов setForm — никаких конфликтов батчинга
       setForm(p => ({
         ...p,
         fuel_type: normalizeFuelType(detail.fuel_type),
@@ -849,45 +864,24 @@ function CarsTab() {
         engine_volume: detail.engine_volume ?? p.engine_volume,
         engine_power: detail.engine_power != null ? String(detail.engine_power) : p.engine_power,
         description: detail.description ?? p.description,
-        vin: detail.vin ?? p.vin,
+        vin,
         viewing_address: detail.sale_address ?? p.viewing_address,
+        ...(windows.length > 0 && {
+          viewing_days: uniqueDayNames,
+          viewing_time_from: windows[0].time_from.slice(0, 5),
+          viewing_time_to: windows[0].time_to.slice(0, 5),
+        }),
       }));
+
       if (detail.color) setFormColorId(detail.color);
       if (detail.condition) setFormCondition(detail.condition ?? '');
 
-      // Viewing windows → дни и время
-      if (windows.length > 0) {
-        // Определяем уникальные дни недели из конкретных дат
-        // WEEK_DAYS = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'] (Пн=0, Вс=6)
-        // JS getDay(): 0=вс, 1=пн... → индекс в WEEK_DAYS = (jsDay + 6) % 7
-        const uniqueDayNames = [...new Set(
-          windows.map(w => {
-            const [y, m, d] = w.window_date.split('-').map(Number);
-            const jsDay = new Date(y, m - 1, d).getDay();
-            return WEEK_DAYS[(jsDay + 6) % 7];
-          })
-        )];
-        // Берём время из первого окна (предполагаем единое расписание)
-        setForm(p => ({
-          ...p,
-          viewing_days: uniqueDayNames,
-          viewing_time_from: windows[0].time_from,
-          viewing_time_to: windows[0].time_to,
-        }));
-      }
-
-      // Фото с resolved URLs из mapDetail
       setExistingImages(
         [...detail.images]
           .sort((a, b) => (a.is_primary ? -1 : b.is_primary ? 1 : a.sort_order - b.sort_order))
           .map(img => img.url || img.thumbnail_url)
           .filter(Boolean)
       );
-
-      // VIN без маскировки — через admin-endpoint (в фоне, не блокирует UI)
-      adminApi.getListingDetail(car.id)
-        .then(d => { if (d.vin && typeof d.vin === 'string') setForm(p => ({ ...p, vin: d.vin as string })); })
-        .catch(() => { /* endpoint недоступен — VIN остаётся с маскировкой */ });
     } catch (err) {
       console.error('[AdminPage] openEdit detail fetch failed:', err);
     } finally {
@@ -990,8 +984,14 @@ function CarsTab() {
     }
   };
 
-  const handleStatusChange = async (_id: string, _status: string) => {
-    toast.error(A.carStatusChangeError);
+  const handleStatusChange = async (id: string, newStatus: string) => {
+    try {
+      await adminApi.changeListingStatus(id, newStatus);
+      setAllCars(prev => prev.map(c => c.id === id ? { ...c, status: newStatus as AdminCar['status'] } : c));
+      toast.success(A.carStatusChangeSuccess ?? 'Статус обновлён');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : A.carStatusChangeError);
+    }
   };
 
   if (isLoading) return <LoadingSpinner />;

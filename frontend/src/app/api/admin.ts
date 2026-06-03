@@ -368,6 +368,21 @@ export const adminApi = {
   getListingDetail: (id: string): Promise<Record<string, unknown>> =>
     req<Record<string, unknown>>(`/admin/listings/${id}`),
 
+  changeListingStatus: (id: string, carStatus: string): Promise<{ id: string; status: string }> => {
+    // Конвертируем frontend CarStatus → backend ListingStatus
+    const statusMap: Record<string, string> = {
+      available: 'active',
+      reserved: 'reserved',
+      sold: 'sold',
+      inactive: 'archived',
+    };
+    const backendStatus = statusMap[carStatus] ?? carStatus;
+    return req<{ id: string; status: string }>(
+      `/admin/listings/${id}/status`,
+      { method: 'PATCH', body: JSON.stringify({ status: backendStatus }) }
+    );
+  },
+
   // Moderation queue (pending listings) — replaces Car offers
   getOffers: async (_status?: CarOfferStatus, skip = 0, limit = 20) => {
     const listings = await req<Record<string, unknown>[]>(
