@@ -621,7 +621,6 @@ function CarsTab() {
       .then(results => setAvailableModels(results.flat()))
       .catch(() => {})
       .finally(() => setModelsLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.brands, marks]);
 
   useEffect(() => {
@@ -630,7 +629,6 @@ function CarsTab() {
     const modelId = availableModels.find(m => modelLabel(m) === filters.models[0])?.id;
     if (!modelId) return;
     catalogApi.getGenerations(modelId).then(setAvailableGens).catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.models, availableModels]);
 
   useEffect(() => {
@@ -676,7 +674,6 @@ function CarsTab() {
       if (model) f.model_id = model.id;
     }
     return f;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.priceMin, filters.priceMax, filters.yearMin, filters.yearMax,
       filters.fuelTypes, filters.bodyTypes, filters.brands, filters.models, marks, availableModels]);
 
@@ -725,7 +722,6 @@ function CarsTab() {
 
   const filteredCars = useMemo(
     () => applyFilters(allCars, filters, debouncedSearch, availableGens, availableConfs),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [allCars, filters, debouncedSearch, availableGens, availableConfs]
   );
 
@@ -841,8 +837,8 @@ function CarsTab() {
         adminApi.getListingDetail(car.id).catch(() => null as Record<string, unknown> | null),
       ]);
 
-      // VIN: если admin-endpoint вернул незамаскированный — используем его
-      const vin = (typeof adminDetail?.vin === 'string' && !adminDetail.vin.includes('*'))
+      // VIN: admin-endpoint возвращает полный незамаскированный VIN
+      const vin = typeof adminDetail?.vin === 'string'
         ? adminDetail.vin
         : (detail.vin ?? '');
 
@@ -988,7 +984,7 @@ function CarsTab() {
     try {
       await adminApi.changeListingStatus(id, newStatus);
       setAllCars(prev => prev.map(c => c.id === id ? { ...c, status: newStatus as AdminCar['status'] } : c));
-      toast.success(A.carStatusChangeSuccess ?? 'Статус обновлён');
+      toast.success('Статус обновлён');
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : A.carStatusChangeError);
     }

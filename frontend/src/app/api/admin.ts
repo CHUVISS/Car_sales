@@ -254,7 +254,7 @@ function mapTicketToMessage(ticket: Record<string, unknown>): AdminMessage {
     car_id: (ticket.listing_id as string | null) ?? null,
     assigned_to: (ticket.assignee_id as string | null) ?? null,
     created_at: ticket.created_at as string,
-    updated_at: ticket.updated_at as string ?? ticket.created_at as string,
+    updated_at: (ticket.updated_at as string) ?? (ticket.created_at as string),
   };
 }
 
