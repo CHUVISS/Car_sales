@@ -2,9 +2,10 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import {
   Send, Bot, User, Plus, Trash2, MessageSquare,
-  ChevronLeft, Loader2, Car, Zap, AlertCircle, Eye, ChevronDown,
+  ChevronLeft, Loader2, Car, Zap, AlertCircle, Eye, ChevronDown, Square,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
   streamChat, getConversations, getConversation, deleteConversation,
   type AiMessage, type AiConversation,
@@ -26,47 +27,30 @@ interface LocalMessage {
   carPreviews?: CarType[];
 }
 
-const YEAR_RE = /\(((?:19|20)\d{2})\)/gi;
-const PRICE_RE = /[Цц]ена[:\s]+([\d\s]+)\s*(?:руб|₽)/gi;
-
-function parseCarMentions(content: string): Array<{ year: number; price: number }> {
-  const years: number[] = [];
-  const prices: number[] = [];
-  YEAR_RE.lastIndex = 0;
-  PRICE_RE.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = YEAR_RE.exec(content)) !== null) years.push(parseInt(m[1], 10));
-  while ((m = PRICE_RE.exec(content)) !== null) {
-    const p = parseInt(m[1].replace(/\s/g, ''), 10);
-    if (!isNaN(p) && p > 0) prices.push(p);
-  }
-  const count = Math.min(years.length, prices.length);
-  return Array.from({ length: count }, (_, i) => ({ year: years[i], price: prices[i] }));
-}
+const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 
 async function fetchCarsByMentions(content: string): Promise<CarType[]> {
-  const mentions = parseCarMentions(content);
-  if (mentions.length === 0) return [];
-  const results = await Promise.allSettled(
-    mentions.map(async ({ year, price }) => {
-      const res = await carsApi.list({ year_from: year, year_to: year, price_from: price, price_to: price, limit: 5 });
-      if (res.data.length === 0) return null;
-      for (const row of res.data) {
-        const full = await carsApi.get(row.id).catch(() => null);
-        if (full && full.images.length > 0) return full;
+  UUID_RE.lastIndex = 0;
+  const uuids: string[] = [];
+  let u: RegExpExecArray | null;
+  while ((u = UUID_RE.exec(content)) !== null) uuids.push(u[0]);
+
+  if (uuids.length > 0) {
+    const results = await Promise.allSettled(
+      [...new Set(uuids)].map(id => carsApi.get(id).catch(() => null))
+    );
+    const cars: CarType[] = [];
+    const seen = new Set<string>();
+    for (const r of results) {
+      if (r.status === 'fulfilled' && r.value && !seen.has(r.value.id)) {
+        seen.add(r.value.id);
+        cars.push(r.value);
       }
-      return carsApi.get(res.data[0].id).catch(() => null);
-    })
-  );
-  const cars: CarType[] = [];
-  const seen = new Set<string>();
-  for (const r of results) {
-    if (r.status === 'fulfilled' && r.value && !seen.has(r.value.id)) {
-      seen.add(r.value.id);
-      cars.push(r.value);
     }
+    if (cars.length > 0) return cars;
   }
-  return cars;
+
+  return [];
 }
 
 function formatCarPrice(price: number): string {
@@ -116,20 +100,22 @@ function CarPreviewCard({ car }: { car: CarType }) {
 }
 
 function AiMarkdown({ content }: { content: string }) {
+  const normalized = content
+    .replace(/_/g, ' ')
+    // Скрываем строки с UUID (ID объявления не нужен пользователю)
+    .replace(/^[^\n]*\bID\b[^\n]*[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}[^\n]*\n?/gim, '')
+    // Скрываем строки где город/город содержит только цифры (city_id вместо названия)
+    .replace(/^[^\n]*[Гг]ород[^\n]*:\s*\d{6,}[^\n]*\n?/gm, '');
   return (
     <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
       components={{
-        // Параграфы
         p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
-        // Жирный
         strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-        // Курсив
         em: ({ children }) => <em className="italic">{children}</em>,
-        // Заголовки
         h1: ({ children }) => <p className="font-bold text-base mb-1">{children}</p>,
         h2: ({ children }) => <p className="font-semibold text-sm mb-1">{children}</p>,
         h3: ({ children }) => <p className="font-semibold text-sm mb-0.5">{children}</p>,
-        // Ненумерованный список
         ul: ({ children }) => <ul className="my-1.5 space-y-0.5 pl-1">{children}</ul>,
         li: ({ children }) => (
           <li className="flex gap-2">
@@ -137,25 +123,35 @@ function AiMarkdown({ content }: { content: string }) {
             <span>{children}</span>
           </li>
         ),
-        // Нумерованный список
         ol: ({ children }) => <ol className="my-1.5 space-y-0.5 pl-1 list-decimal list-inside">{children}</ol>,
-        // Код inline
         code: ({ children }) => (
           <code className="px-1.5 py-0.5 bg-black/10 dark:bg-white/10 rounded text-[0.8em] font-mono">
             {children}
           </code>
         ),
-        // Блок кода
         pre: ({ children }) => (
           <pre className="my-2 p-3 bg-black/10 dark:bg-white/10 rounded-xl text-xs font-mono overflow-x-auto leading-relaxed">
             {children}
           </pre>
         ),
-        // Горизонтальная линия
         hr: () => <hr className="my-2 border-current opacity-20" />,
+        table: ({ children }) => (
+          <div className="overflow-x-auto my-2">
+            <table className="w-full text-sm border-collapse">{children}</table>
+          </div>
+        ),
+        thead: ({ children }) => <thead className="border-b border-current/20">{children}</thead>,
+        tbody: ({ children }) => <tbody>{children}</tbody>,
+        tr: ({ children }) => <tr className="border-b border-current/10 last:border-0">{children}</tr>,
+        th: ({ children }) => (
+          <th className="text-left font-semibold px-3 py-1.5 text-xs opacity-70 uppercase tracking-wide">
+            {children}
+          </th>
+        ),
+        td: ({ children }) => <td className="px-3 py-1.5">{children}</td>,
       }}
     >
-      {content}
+      {normalized}
     </ReactMarkdown>
   );
 }
@@ -303,7 +299,7 @@ export function AiPage() {
   const [loadingConversation, setLoadingConversation] = useState(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const abortRef = useRef<boolean>(false);
+  const abortRef = useRef<AbortController | null>(null);
   const hadCarSearchRef = useRef<boolean>(false);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
 
@@ -394,7 +390,8 @@ export function AiPage() {
     setMessages(prev => [...prev, userMsg, assistantMsg]);
     setInput('');
     setIsStreaming(true);
-    abortRef.current = false;
+    const controller = new AbortController();
+    abortRef.current = controller;
     hadCarSearchRef.current = false;
 
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
@@ -402,7 +399,7 @@ export function AiPage() {
     await streamChat(
       text.trim(), activeConversationId,
       (chunk) => {
-        if (abortRef.current) return;
+        if (controller.signal.aborted) return;
         if (chunk.type === 'tool_call') {
           hadCarSearchRef.current = true;
           setMessages(prev => {
@@ -421,18 +418,16 @@ export function AiPage() {
           const updated = prev.filter(m => !m.isToolCall).map(m =>
             m.id === assistantId ? { ...m, isStreaming: false } : m
           );
-          if (hadCarSearchRef.current) {
-            const assistantMsg = updated.find(m => m.id === assistantId);
-            if (assistantMsg) {
-              fetchCarsByMentions(assistantMsg.content).then(carPreviews => {
-                if (carPreviews.length > 0) {
-                  setMessages(prev2 => prev2.map(m =>
-                    m.id === assistantId ? { ...m, carPreviews } : m
-                  ));
-                }
-              });
-            }
-            hadCarSearchRef.current = false;
+          hadCarSearchRef.current = false;
+          const assistantMsgFinal = updated.find(m => m.id === assistantId);
+          if (assistantMsgFinal) {
+            fetchCarsByMentions(assistantMsgFinal.content).then(carPreviews => {
+              if (carPreviews.length > 0) {
+                setMessages(prev2 => prev2.map(m =>
+                  m.id === assistantId ? { ...m, carPreviews } : m
+                ));
+              }
+            });
           }
           return updated;
         });
@@ -447,8 +442,18 @@ export function AiPage() {
           m.id === assistantId ? { ...m, content: error, isStreaming: false } : m
         ));
       },
+      controller.signal,
     );
   }, [isStreaming, activeConversationId]);
+
+  const cancelStream = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setIsStreaming(false);
+    setMessages(prev => prev.filter(m => !m.isToolCall).map(m =>
+      m.isStreaming ? { ...m, isStreaming: false } : m
+    ));
+  }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(input); }
@@ -570,13 +575,24 @@ export function AiPage() {
                 className="flex-1 resize-none bg-transparent outline-none text-sm text-foreground placeholder:text-muted-foreground max-h-40 leading-relaxed"
                 style={{ height: 'auto' }}
               />
-              <button
-                onClick={() => sendMessage(input)}
-                disabled={!input.trim() || isStreaming}
-                className="flex-shrink-0 w-9 h-9 bg-foreground text-background rounded-xl flex items-center justify-center hover:opacity-90 transition-opacity disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                {isStreaming ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              </button>
+              {isStreaming ? (
+                <button
+                  onClick={cancelStream}
+                  className="flex-shrink-0 w-9 h-9 bg-foreground text-background rounded-xl flex items-center justify-center hover:opacity-90 transition-opacity relative"
+                  aria-label="Отменить запрос"
+                >
+                  <Loader2 className="w-full h-full p-1.5 animate-spin absolute inset-0" />
+                  <Square className="w-3 h-3 relative z-10 fill-current" />
+                </button>
+              ) : (
+                <button
+                  onClick={() => sendMessage(input)}
+                  disabled={!input.trim()}
+                  className="flex-shrink-0 w-9 h-9 bg-foreground text-background rounded-xl flex items-center justify-center hover:opacity-90 transition-opacity disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              )}
             </div>
             <p className="text-xs text-muted-foreground text-center mt-2">
               {T.ai.enterSend}

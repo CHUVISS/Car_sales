@@ -42,6 +42,7 @@ export interface CatalogColor {
   hex_code: string | null;
 }
 
+
 export interface GeoCity {
   id: string;
   name_ru: string;
