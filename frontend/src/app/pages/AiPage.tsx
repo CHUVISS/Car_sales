@@ -249,6 +249,24 @@ function Sidebar({
   onToggle: () => void;
 }) {
   const { T } = useLanguage();
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+
+  const handleDeleteClick = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setConfirmId(id);
+  };
+
+  const handleConfirm = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (confirmId) onDelete(confirmId);
+    setConfirmId(null);
+  };
+
+  const handleCancel = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setConfirmId(null);
+  };
+
   return (
     <aside className={`flex flex-col bg-card border-r border-border transition-all duration-300 ${
       collapsed ? 'w-0 overflow-hidden' : 'w-64'
@@ -264,23 +282,49 @@ function Sidebar({
         {conversations.length === 0 && (
           <p className="text-xs text-muted-foreground text-center py-8 px-4">{T.ai.noChats}</p>
         )}
-        {conversations.map(conv => (
-          <div key={conv.id}
-            className={`group flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition-colors ${
-              activeId === conv.id ? 'bg-foreground text-background' : 'hover:bg-secondary text-foreground'
-            }`}
-            onClick={() => onSelect(conv.id)}>
-            <MessageSquare className="w-4 h-4 flex-shrink-0 opacity-60" />
-            <span className="text-sm truncate flex-1">{conv.title ?? T.ai.newDialog}</span>
-            <button
-              onClick={e => { e.stopPropagation(); onDelete(conv.id); }}
-              className={`opacity-0 group-hover:opacity-100 p-1 rounded transition-all ${
-                activeId === conv.id ? 'hover:bg-white/20' : 'hover:bg-destructive/10 hover:text-destructive'
-              }`}>
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        ))}
+        {conversations.map(conv => {
+          const isActive = activeId === conv.id;
+          const isConfirming = confirmId === conv.id;
+
+          return (
+            <div key={conv.id}
+              className={`group flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition-colors ${
+                isActive ? 'bg-foreground text-background' : 'hover:bg-secondary text-foreground'
+              }`}
+              onClick={() => !isConfirming && onSelect(conv.id)}>
+              <MessageSquare className="w-4 h-4 flex-shrink-0 opacity-60 shrink-0" />
+
+              {isConfirming ? (
+                <div className="flex items-center gap-1.5 flex-1 min-w-0" onClick={e => e.stopPropagation()}>
+                  <span className="text-xs text-destructive font-medium truncate flex-1">Удалить?</span>
+                  <button
+                    onClick={handleConfirm}
+                    className="text-xs px-1.5 py-0.5 bg-destructive text-white rounded hover:opacity-90 transition-opacity shrink-0">
+                    Да
+                  </button>
+                  <button
+                    onClick={handleCancel}
+                    className={`text-xs px-1.5 py-0.5 rounded transition-colors shrink-0 ${
+                      isActive ? 'bg-white/20 hover:bg-white/30' : 'bg-secondary hover:bg-secondary/80'
+                    }`}>
+                    Нет
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <span className="text-sm truncate flex-1">{conv.title ?? T.ai.newDialog}</span>
+                  <button
+                    onClick={e => handleDeleteClick(e, conv.id)}
+                    className={`opacity-0 group-hover:opacity-100 p-1 rounded transition-all ${
+                      isActive ? 'hover:bg-white/20' : 'hover:bg-destructive/10 hover:text-destructive'
+                    }`}>
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </>
+              )}
+            </div>
+          );
+        })}
       </div>
     </aside>
   );
@@ -301,6 +345,7 @@ export function AiPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const hadCarSearchRef = useRef<boolean>(false);
+  const collectedListingIdsRef = useRef<string[]>([]);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
 
   const scrollToBottom = useCallback((smooth = false) => {
@@ -393,6 +438,7 @@ export function AiPage() {
     const controller = new AbortController();
     abortRef.current = controller;
     hadCarSearchRef.current = false;
+    collectedListingIdsRef.current = [];
 
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
 
@@ -402,6 +448,11 @@ export function AiPage() {
         if (controller.signal.aborted) return;
         if (chunk.type === 'tool_call') {
           hadCarSearchRef.current = true;
+          if (chunk.listing_ids && chunk.listing_ids.length > 0) {
+            collectedListingIdsRef.current = [
+              ...new Set([...collectedListingIdsRef.current, ...chunk.listing_ids]),
+            ];
+          }
           setMessages(prev => {
             const withoutOldTool = prev.filter(m => !m.isToolCall);
             return [...withoutOldTool, { id: `tool-${Date.now()}`, role: 'assistant', content: '', isToolCall: true, toolName: chunk.name }];
@@ -420,14 +471,37 @@ export function AiPage() {
           );
           hadCarSearchRef.current = false;
           const assistantMsgFinal = updated.find(m => m.id === assistantId);
+          const directIds = collectedListingIdsRef.current;
+          collectedListingIdsRef.current = [];
+
           if (assistantMsgFinal) {
-            fetchCarsByMentions(assistantMsgFinal.content).then(carPreviews => {
+            const loadPreviews = async () => {
+              let carPreviews: CarType[] = [];
+
+              if (directIds.length > 0) {
+                const results = await Promise.allSettled(
+                  directIds.map(id => carsApi.get(id).catch(() => null))
+                );
+                const seen = new Set<string>();
+                for (const r of results) {
+                  if (r.status === 'fulfilled' && r.value && !seen.has(r.value.id)) {
+                    seen.add(r.value.id);
+                    carPreviews.push(r.value);
+                  }
+                }
+              }
+
+              if (carPreviews.length === 0) {
+                carPreviews = await fetchCarsByMentions(assistantMsgFinal.content);
+              }
+
               if (carPreviews.length > 0) {
                 setMessages(prev2 => prev2.map(m =>
                   m.id === assistantId ? { ...m, carPreviews } : m
                 ));
               }
-            });
+            };
+            loadPreviews();
           }
           return updated;
         });

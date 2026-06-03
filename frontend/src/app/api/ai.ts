@@ -25,6 +25,7 @@ export interface StreamChunk {
   message?: string;
   conversation_id?: string;
   name?: string;
+  listing_ids?: string[];
 }
 
 export async function streamChat(
