@@ -3,10 +3,8 @@ import { Search, Shield, Wallet, Headset, Heart } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 import { CarImagePlaceholder } from '../components/CarImagePlaceholder';
-import { toast } from 'sonner';
 import { carsApi, type Car, formatCatalogId } from '../api/cars';
 import { catalogApi, type CatalogMark } from '../api/catalog';
-import { messagesApi } from '../api/messages';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useFavorites } from '../hooks/useFavorites';
 
@@ -66,7 +64,6 @@ function HomeCarCard({ car }: { car: Car }) {
   );
 }
 
-const inputCls = "w-full px-4 py-3 bg-secondary text-foreground placeholder:text-muted-foreground rounded-lg outline-none focus:ring-2 focus:ring-primary border border-transparent focus:border-primary";
 
 export function HomePage() {
   useEffect(() => { window.scrollTo(0, 0); }, []);
@@ -150,39 +147,6 @@ export function HomePage() {
     return () => { cancelled = true; };
   }, []);
 
-  // ─── Форма обратной связи ─────────────────────────────────────────────────
-  const [formName, setFormName] = useState('');
-  const [formPhone, setFormPhone] = useState('');
-  const [formComment, setFormComment] = useState('');
-  const [formEmail, setFormEmail] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-
-  const handleLeadSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formEmail) { toast.error(T.home.emailRequired); return; }
-    if (!localStorage.getItem('access_token')) {
-      toast.error(T.home.loginRequired, {
-        action: { label: T.nav.signIn, onClick: () => navigate('/auth') },
-      });
-      return;
-    }
-    setSubmitting(true);
-    try {
-      await messagesApi.send({
-        name: formName, email: formEmail,
-        phone: formPhone || undefined,
-        body: formComment || 'Заявка с главной страницы',
-        message_type: 'callback',
-      });
-      toast.success(T.home.requestSuccess);
-      setFormName(''); setFormPhone(''); setFormComment(''); setFormEmail('');
-    } catch {
-      toast.error(T.home.requestError);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-background">
       {/* Герой */}
@@ -194,9 +158,9 @@ export function HomePage() {
             className="w-full h-full object-cover opacity-20 transition-transform duration-500 group-hover:scale-105"
           />
         </div>
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 lg:py-32">
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-20 lg:py-32">
           <div className="max-w-2xl">
-            <h1 className="text-4xl lg:text-5xl font-semibold mb-4 transition-transform duration-300 group-hover:scale-105">
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold mb-4 transition-transform duration-300 group-hover:scale-105">
               {T.home.heroTitle}
             </h1>
             <p className="text-lg opacity-90 mb-8 transition-transform duration-300 group-hover:scale-105 origin-left">
@@ -258,7 +222,7 @@ export function HomePage() {
           </Link>
         </div>
         {loadingCars ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="bg-card rounded-lg border border-border overflow-hidden">
                 <div className="aspect-[4/3] bg-secondary animate-pulse" />
@@ -271,7 +235,7 @@ export function HomePage() {
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {cars.map(car => <HomeCarCard key={car.id} car={car} />)}
           </div>
         )}
@@ -283,7 +247,7 @@ export function HomePage() {
           <h2 className="text-3xl font-semibold text-center text-foreground mb-12 transition-transform duration-300 group-hover:scale-105">
             {T.home.advantages}
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
             {[
               { icon: Shield,  title: T.home.qualityTitle, desc: T.home.qualityDesc },
               { icon: Wallet,  title: T.home.dealsTitle,   desc: T.home.dealsDesc },

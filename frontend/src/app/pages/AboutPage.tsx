@@ -3,6 +3,7 @@ import { Shield, Award, Users, Clock } from 'lucide-react';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 import { useLanguage } from '../i18n/LanguageContext';
 
+import carsImage from '../../assets/cars.jpg';
 import alexImage from '../../assets/Alex_1.png';
 import matveyImage from '../../assets/Matt.png';
 import alekseyImage from '../../assets/Alex2_1.png';
@@ -79,7 +80,7 @@ export function AboutPage() {
               group-hover:shadow-[0_0_32px_8px_hsl(var(--primary)/0.35)]
               group-hover:ring-2 group-hover:ring-primary/20">
               <ImageWithFallback
-                src="https://myauctionsheet.com/blog/wp-content/uploads/2020/06/Car-Auctions.jpg"
+                src={carsImage}
                 alt="Наш автосалон"
                 className="w-full h-[400px] object-cover transition-transform duration-500 ease-out group-hover:scale-110"
               />

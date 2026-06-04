@@ -34,19 +34,11 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   try {
     res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
   } catch {
-    // Network-level error (server unreachable, DNS, etc.) → treat as 503
-    window.location.href = '/503';
     throw new HttpError(503, 'Network error');
   }
 
   if (!res.ok) {
-    // 5xx — navigate to the appropriate error page instead of silently toasting
-    if (res.status >= 500) {
-      const code = [500, 502, 503, 504].includes(res.status) ? res.status : 500;
-      window.location.href = `/${code}`;
-      throw new HttpError(res.status, `Server error ${res.status}`);
-    }
-    const error = await res.json().catch(() => ({ detail: 'Unknown error' }));
+    const error = await res.json().catch(() => ({ detail: `Server error ${res.status}` }));
     throw new HttpError(res.status, error.detail ?? 'Request failed');
   }
 

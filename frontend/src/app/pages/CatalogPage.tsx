@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo, useRef, useCallback, type KeyboardEvent, 
 import { SlidersHorizontal, X, ChevronDown, Check, Search, LayoutGrid, List, Heart, Plus } from 'lucide-react';
 import { carsApi, formatCatalogId } from '../api/cars';
 import { catalogApi } from '../api/catalog';
-import type { CatalogMark, CatalogModel, CatalogGeneration, CatalogConfiguration, CatalogModification } from '../api/catalog';
+import type { CatalogMark, CatalogModel, CatalogGeneration, CatalogConfiguration, CatalogModification, CatalogColor } from '../api/catalog';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 import { CarImagePlaceholder } from '../components/CarImagePlaceholder';
 import { useFavorites } from '../hooks/useFavorites';
@@ -12,24 +12,127 @@ import { useLanguage } from '../i18n/LanguageContext';
 
 const PAGE_SIZE = 30;
 
-/** Batch-fetch full listing details to attach images (list endpoint returns none). */
+/** Batch-fetch full listing details to attach images, color, transmission and other detail-only fields. */
 async function enrichWithImages(cars: CarType[]): Promise<CarType[]> {
   if (cars.length === 0) return cars;
   const results = await Promise.allSettled(cars.map(c => carsApi.get(c.id)));
   return cars.map((c, i) => {
     const r = results[i];
-    if (r.status === 'fulfilled' && r.value.images.length > 0) {
-      return { ...c, images: r.value.images };
+    if (r.status === 'fulfilled') {
+      // Merge all detail fields; preserve brand/model/city_name from list (cleaner values)
+      return { ...c, ...r.value, brand: c.brand, model: c.model, city_name: r.value.city_name ?? c.city_name };
     }
     return c;
   });
 }
-const ALL_COLORS = ['Белый', 'Синий', 'Серый', 'Красный', 'Серебристый', 'Черный'];
-
 function markLabel(m: CatalogMark) { return m.name ?? m.cyrillic_name ?? formatCatalogId(m.id); }
 function modelLabel(m: CatalogModel) { return m.name ?? formatCatalogId(m.id); }
 
 const inputCls = "w-full px-3 py-2 bg-secondary text-foreground placeholder:text-muted-foreground rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary border border-transparent focus:border-primary";
+
+function ColorFilter({ colors, selected, onToggle, onClear }: {
+  colors: CatalogColor[];
+  selected: string[];
+  onToggle: (id: string) => void;
+  onClear: () => void;
+}) {
+  const { lang, T } = useLanguage();
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const colorLabel = (c: CatalogColor) => {
+    if (lang === 'en') {
+      return c.name_en ?? c.id.charAt(0).toUpperCase() + c.id.slice(1).replace(/_/g, ' ');
+    }
+    return c.name_ru;
+  };
+
+  const filtered = colors.filter(c => colorLabel(c).toLowerCase().includes(search.toLowerCase()));
+
+  const displayText = selected.length > 0
+    ? selected.map(id => { const c = colors.find(x => x.id === id); return c ? colorLabel(c) : id; }).join(', ')
+    : (T.common.selectPlaceholder ?? 'Выберите...');
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="font-semibold text-foreground">{T.catalog.color}</h3>
+        {selected.length > 0 && (
+          <button type="button" onClick={e => { e.stopPropagation(); onClear(); }} className="text-xs text-destructive hover:underline flex items-center gap-1">
+            <X className="w-3 h-3" />{T.catalog.clearFilter}
+          </button>
+        )}
+      </div>
+
+      <button type="button" onClick={() => setIsOpen(o => !o)}
+        className={`w-full flex items-center justify-between px-3 py-2 bg-secondary rounded-lg text-sm text-left hover:bg-secondary/80 transition-colors min-h-[40px] border border-border ${selected.length > 0 ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
+        <span className="overflow-hidden text-ellipsis whitespace-nowrap" title={displayText}>{displayText}</span>
+        <ChevronDown className={`w-4 h-4 transition-transform flex-shrink-0 ml-2 ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {isOpen && (
+        <div className="mt-2 bg-card border border-border rounded-lg shadow-sm overflow-hidden">
+          <div className="p-2 border-b border-border">
+            <input
+              type="text"
+              placeholder={T.common.searchPlaceholder}
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full px-3 py-2 text-sm bg-secondary text-foreground placeholder:text-muted-foreground rounded outline-none focus:ring-2 focus:ring-primary"
+              autoFocus
+            />
+          </div>
+          <div className="max-h-48 overflow-y-auto">
+            {filtered.length > 0 ? filtered.map(c => {
+              const isSelected = selected.includes(c.id);
+              return (
+                <label key={c.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-secondary/50 text-foreground text-sm">
+                  <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors flex-shrink-0 ${isSelected ? 'bg-primary border-primary' : 'border-border'}`}>
+                    {isSelected && <Check className="w-3 h-3 text-primary-foreground" />}
+                  </div>
+                  <input type="checkbox" className="sr-only" checked={isSelected} onChange={() => onToggle(c.id)} />
+                  {c.hex_code && (
+                    <span className="w-3.5 h-3.5 rounded-full flex-shrink-0 border border-black/10 dark:border-white/10" style={{ backgroundColor: c.hex_code }} />
+                  )}
+                  <span>{colorLabel(c)}</span>
+                </label>
+              );
+            }) : (
+              <div className="px-3 py-4 text-center text-sm text-muted-foreground">{T.common.noResults}</div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const BODY_TYPE_LABELS: Record<string, { ru: string; en: string }> = {
+  SEDAN: { ru: 'Седан', en: 'Sedan' },
+  HATCHBACK: { ru: 'Хэтчбек', en: 'Hatchback' },
+  SUV: { ru: 'Внедорожник', en: 'SUV' },
+  COUPE: { ru: 'Купе', en: 'Coupe' },
+  MINIVAN: { ru: 'Минивэн', en: 'Minivan' },
+  PICKUP: { ru: 'Пикап', en: 'Pickup' },
+  CONVERTIBLE: { ru: 'Кабриолет', en: 'Convertible' },
+  WAGON: { ru: 'Универсал', en: 'Wagon' },
+  LIFTBACK: { ru: 'Лифтбэк', en: 'Liftback' },
+  VAN: { ru: 'Фургон', en: 'Van' },
+  CROSSOVER: { ru: 'Кроссовер', en: 'Crossover' },
+  ALLROAD: { ru: 'Вседорожник', en: 'Allroad' },
+};
+
+function labelBodyType(id: string, lang: string): string {
+  const key = id.split(/[\s_]/)[0].toUpperCase();
+  const entry = BODY_TYPE_LABELS[key];
+  if (entry) return lang === 'en' ? entry.en : entry.ru;
+  return id.charAt(0).toUpperCase() + id.slice(1).toLowerCase();
+}
+
+function labelTransmission(id: string, T: { transmission: Record<string, string> }): string {
+  const key = id.toLowerCase() as keyof typeof T.transmission;
+  return T.transmission[key] ?? (id.charAt(0).toUpperCase() + id.slice(1));
+}
 
 function formatPrice(p: number) {
   return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(p);
@@ -37,8 +140,6 @@ function formatPrice(p: number) {
 function formatMileage(m: number, lang?: string) {
   return `${new Intl.NumberFormat(lang === 'en' ? 'en-US' : 'ru-RU').format(m)} км`;
 }
-function normalizeColor(c: string) { return c.trim().toLowerCase().replace(/ё/g, 'е'); }
-
 /** Match a DB engine_type string (Russian) against an English filter key. */
 function matchesFuel(dbValue: string, filterKey: string): boolean {
   const v = dbValue.toLowerCase();
@@ -55,8 +156,8 @@ function matchesFuel(dbValue: string, filterKey: string): boolean {
 // Filter helpers
 
 function SearchableMultiSelect<T extends string>({
-  label, options, selected, onToggle, onClear, placeholder,
-}: { label: string; options: { value: T; label: string }[]; selected: T[]; onToggle: (v: T) => void; onClear: () => void; placeholder?: string }) {
+  label, options, selected, onToggle, onClear, placeholder, openUp = false,
+}: { label: string; options: { value: T; label: string }[]; selected: T[]; onToggle: (v: T) => void; onClear: () => void; placeholder?: string; openUp?: boolean }) {
   const { T } = useLanguage();
   const ph = placeholder ?? T.common.selectPlaceholder;
   const [isOpen, setIsOpen] = useState(false);
@@ -81,7 +182,7 @@ function SearchableMultiSelect<T extends string>({
         <ChevronDown className={`w-4 h-4 transition-transform flex-shrink-0 ml-2 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
       {isOpen && (
-        <div className="absolute z-20 w-full mt-2 bg-card border border-border rounded-lg shadow-lg overflow-hidden">
+        <div className={`absolute z-20 w-full bg-card border border-border rounded-lg shadow-lg overflow-hidden ${openUp ? 'bottom-full mb-2' : 'mt-2'}`}>
           <div className="p-2 border-b border-border">
             <input type="text" placeholder={T.common.searchPlaceholder} value={search} onChange={e => setSearch(e.target.value)}
               className="w-full px-3 py-2 text-sm bg-secondary text-foreground placeholder:text-muted-foreground rounded outline-none focus:ring-2 focus:ring-primary" autoFocus />
@@ -253,7 +354,7 @@ function ListRow({ car }: { car: CarType }) {
       {/* Фото */}
       <div className="relative w-44 flex-shrink-0 rounded-lg overflow-hidden bg-secondary self-stretch min-h-[110px]">
         {img ? (
-          <ImageWithFallback src={img.thumbnail_url} alt={`${car.brand} ${car.model}`}
+          <ImageWithFallback src={img.url || img.thumbnail_url} alt={`${car.brand} ${car.model}`}
             className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 ${isSoldOrInactive ? 'brightness-75' : ''}`} />
         ) : (
           <CarImagePlaceholder />
@@ -354,7 +455,9 @@ function BoardSearch({ cars, onSelect }: { cars: CarType[]; onSelect: (car: CarT
               <button key={car.id} type="button" onMouseEnter={() => setHi(i)} onClick={() => handleSelect(car)}
                 className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${hi === i ? 'bg-secondary' : 'hover:bg-secondary/50'}`}>
                 <div className="w-12 h-9 bg-secondary rounded overflow-hidden flex-shrink-0 border border-border">
-                  {img ? <img src={img.thumbnail_url} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-xs">🚗</div>}
+                  {img && (img.url || img.thumbnail_url)
+                    ? <ImageWithFallback src={img.url || img.thumbnail_url} alt="" className="w-full h-full object-cover" />
+                    : <CarImagePlaceholder />}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-foreground truncate">{car.brand} {car.model} {car.year}</p>
@@ -375,21 +478,20 @@ export function CatalogPage() {
   useEffect(() => { window.scrollTo(0, 0); }, []);
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { T } = useLanguage();
+  const { T, lang } = useLanguage();
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>(
+    () => (localStorage.getItem('catalogViewMode') as 'grid' | 'list') ?? 'grid'
+  );
 
-  const TRANSMISSIONS = [
-    ['automatic', T.transmission.automatic], ['manual', T.transmission.manual],
-    ['robot', T.transmission.robot], ['variator', T.transmission.variator],
-  ] as const;
+  const handleSetViewMode = useCallback((mode: 'grid' | 'list') => {
+    setViewMode(mode);
+    localStorage.setItem('catalogViewMode', mode);
+  }, []);
+
   const FUELS = [
     ['petrol', T.fuel.petrol], ['diesel', T.fuel.diesel],
     ['electric', T.fuel.electric], ['hybrid', T.fuel.hybrid], ['gas', T.fuel.gas],
-  ] as const;
-  const BODY_TYPES = [
-    T.body.sedan, 'Хэтчбек', 'Универсал', T.body.suv, 'Кроссовер',
-    T.body.coupe, T.body.minivan, T.body.pickup, T.body.convertible, 'Лифтбек', 'Фургон',
   ] as const;
 
   const [displayPriceMin, setDisplayPriceMin] = useState('');
@@ -414,6 +516,7 @@ export function CatalogPage() {
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
 
   const [marks, setMarks] = useState<CatalogMark[]>([]);
+  const [catalogColors, setCatalogColors] = useState<CatalogColor[]>([]);
   const [availableModels, setAvailableModels] = useState<CatalogModel[]>([]);
   const [selectedGenIds, setSelectedGenIds] = useState<string[]>([]);
   const [selectedConfIds, setSelectedConfIds] = useState<string[]>([]);
@@ -468,6 +571,7 @@ export function CatalogPage() {
 
   useEffect(() => {
     catalogApi.searchMarks('').then(setMarks).catch(() => {});
+    catalogApi.getColors().then(setCatalogColors).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -566,6 +670,22 @@ export function CatalogPage() {
     return () => observer.disconnect();
   }, [loadMore, hasMore, loading]);
 
+  const bodyTypeOptions = useMemo(() => {
+    const seen = new Set<string>();
+    return allCars
+      .filter(c => c.body_type && !seen.has(c.body_type) && !!seen.add(c.body_type))
+      .map(c => ({ value: c.body_type!, label: labelBodyType(c.body_type!, lang) }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [allCars, lang]);
+
+  const transmissionOptions = useMemo(() => {
+    const seen = new Set<string>();
+    return allCars
+      .filter(c => c.transmission && !seen.has(c.transmission) && !!seen.add(c.transmission))
+      .map(c => ({ value: c.transmission! as Transmission, label: labelTransmission(c.transmission!, T) }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [allCars, T]);
+
   const filteredCars = useMemo(() => {
     let result = [...allCars];
     if (searchQuery.trim()) {
@@ -574,13 +694,12 @@ export function CatalogPage() {
     }
     if (selectedBrands.length > 0) result = result.filter(c => selectedBrands.includes(c.brand));
     if (selectedModels.length > 0) result = result.filter(c => selectedModels.includes(c.model));
-    if (selectedTransmissions.length > 0) result = result.filter(c => !c.transmission || selectedTransmissions.includes(c.transmission as Transmission));
+    if (selectedTransmissions.length > 0) result = result.filter(c => c.transmission && selectedTransmissions.includes(c.transmission as Transmission));
     if (selectedFuels.length > 0) result = result.filter(c => !c.fuel_type || selectedFuels.some(f => matchesFuel(c.fuel_type!, f)));
     if (selectedColors.length > 0) {
-      const norm = selectedColors.map(normalizeColor);
-      result = result.filter(c => !c.color || norm.includes(normalizeColor(c.color)));
+      result = result.filter(c => c.color && selectedColors.includes(c.color));
     }
-    if (selectedBodyTypes.length > 0) result = result.filter(c => c.body_type && selectedBodyTypes.some(bt => bt.toLowerCase() === c.body_type!.toLowerCase()));
+    if (selectedBodyTypes.length > 0) result = result.filter(c => c.body_type && selectedBodyTypes.includes(c.body_type));
     const pMin = priceMin ? Number(priceMin) : null;
     const pMax = priceMax ? Number(priceMax) : null;
     const mMin = mileageMin ? Number(mileageMin) : null;
@@ -669,10 +788,27 @@ export function CatalogPage() {
           onClear={() => setSelectedModifIds([])}
         />
       )}
-      <SearchableMultiSelect label={T.catalog.transmission} options={TRANSMISSIONS.map(([v, l]) => ({ value: v as Transmission, label: l }))} selected={selectedTransmissions} onToggle={v => setSelectedTransmissions(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])} onClear={() => setSelectedTransmissions([])} />
+      <SearchableMultiSelect
+        label={T.catalog.transmission}
+        options={transmissionOptions}
+        selected={selectedTransmissions}
+        onToggle={v => setSelectedTransmissions(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])}
+        onClear={() => setSelectedTransmissions([])}
+      />
       <SearchableMultiSelect label={T.catalog.fuelType} options={FUELS.map(([v, l]) => ({ value: v as FuelType, label: l }))} selected={selectedFuels} onToggle={v => setSelectedFuels(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])} onClear={() => setSelectedFuels([])} />
-      <SearchableMultiSelect label={T.catalog.bodyType} options={BODY_TYPES.map(b => ({ value: b, label: b }))} selected={selectedBodyTypes} onToggle={v => setSelectedBodyTypes(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])} onClear={() => setSelectedBodyTypes([])} />
-      <SearchableMultiSelect label={T.catalog.color} options={ALL_COLORS.map(c => ({ value: c, label: c }))} selected={selectedColors} onToggle={v => setSelectedColors(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])} onClear={() => setSelectedColors([])} />
+      <SearchableMultiSelect
+        label={T.catalog.bodyType}
+        options={bodyTypeOptions}
+        selected={selectedBodyTypes}
+        onToggle={v => setSelectedBodyTypes(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])}
+        onClear={() => setSelectedBodyTypes([])}
+      />
+      <ColorFilter
+        colors={catalogColors}
+        selected={selectedColors}
+        onToggle={v => setSelectedColors(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])}
+        onClear={() => setSelectedColors([])}
+      />
       {hasActiveFilters && (
         <button onClick={resetFilters} className="w-full px-4 py-2 text-sm text-destructive hover:bg-destructive/10 rounded-lg transition-colors border border-destructive/30">
           {T.catalog.resetFilters}
@@ -765,11 +901,11 @@ export function CatalogPage() {
               </button>
               <SortDropdown value={sortBy} onChange={setSortBy} />
               <div className="flex items-center border border-border rounded-lg overflow-hidden flex-shrink-0">
-                <button onClick={() => setViewMode('grid')} title="Сетка"
+                <button onClick={() => handleSetViewMode('grid')} title="Сетка"
                   className={`p-2.5 transition-colors ${viewMode === 'grid' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground hover:text-foreground'}`}>
                   <LayoutGrid className="w-4 h-4" />
                 </button>
-                <button onClick={() => setViewMode('list')} title="Список"
+                <button onClick={() => handleSetViewMode('list')} title="Список"
                   className={`p-2.5 transition-colors ${viewMode === 'list' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground hover:text-foreground'}`}>
                   <List className="w-4 h-4" />
                 </button>

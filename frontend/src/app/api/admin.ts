@@ -207,7 +207,7 @@ function mapListingRow(row: Record<string, unknown>): AdminCar {
     mileage: row.mileage as number,
     status: mapListingStatus((row.status as string) ?? 'active'),
     fuel_type: (row.engine_type as string | null) ?? null,
-    transmission: null,
+    transmission: (row.transmission as string | null) ?? null,
     body_type: (row.body_type as string | null) ?? null,
     engine_volume: row.displacement != null ? String(row.displacement) : null,
     engine_power: (row.power as number | null) ?? null,
@@ -254,7 +254,7 @@ function mapTicketToMessage(ticket: Record<string, unknown>): AdminMessage {
     car_id: (ticket.listing_id as string | null) ?? null,
     assigned_to: (ticket.assignee_id as string | null) ?? null,
     created_at: ticket.created_at as string,
-    updated_at: ticket.updated_at as string ?? ticket.created_at as string,
+    updated_at: (ticket.updated_at as string) ?? (ticket.created_at as string),
   };
 }
 
@@ -364,6 +364,24 @@ export const adminApi = {
 
   deleteListing: (id: string): Promise<void> =>
     req<void>(`/listings/${id}`, { method: 'DELETE' }),
+
+  getListingDetail: (id: string): Promise<Record<string, unknown>> =>
+    req<Record<string, unknown>>(`/admin/listings/${id}`),
+
+  changeListingStatus: (id: string, carStatus: string): Promise<{ id: string; status: string }> => {
+    // Конвертируем frontend CarStatus → backend ListingStatus
+    const statusMap: Record<string, string> = {
+      available: 'active',
+      reserved: 'reserved',
+      sold: 'sold',
+      inactive: 'archived',
+    };
+    const backendStatus = statusMap[carStatus] ?? carStatus;
+    return req<{ id: string; status: string }>(
+      `/admin/listings/${id}/status`,
+      { method: 'PATCH', body: JSON.stringify({ status: backendStatus }) }
+    );
+  },
 
   // Moderation queue (pending listings) — replaces Car offers
   getOffers: async (_status?: CarOfferStatus, skip = 0, limit = 20) => {

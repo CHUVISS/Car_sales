@@ -13,13 +13,13 @@ import {
   type AdminUser, type AdminCar, type AdminCarOffer,
   type AdminMessage, type DashboardStats,
   type UserCreate, type UserRole, type UserStatus,
-  type CarOfferStatus, type MessageStatus, type CarStatus,
+  type CarOfferStatus, type MessageStatus,
   type AdminListingFilters,
 } from '../api/admin';
 import { catalogApi, listingsApi } from '../api/catalog';
 import type { CatalogMark, CatalogModel, CatalogGeneration, CatalogConfiguration, CatalogModification, CatalogColor, GeoCity } from '../api/catalog';
 import { viewingsApi } from '../api/viewings';
-import { formatCatalogId } from '../api/cars';
+import { formatCatalogId, carsApi } from '../api/cars';
 import { useLanguage } from '../i18n/LanguageContext';
 
 type TabType = 'stats' | 'cars' | 'offers' | 'messages' | 'users';
@@ -43,6 +43,49 @@ function formatDate(iso: string, lang: string): string {
 }
 function formatMileage(m: number, lang: string): string {
   return `${new Intl.NumberFormat(lang === 'ru' ? 'ru-RU' : 'en-US').format(m)} ${lang === 'ru' ? 'км' : 'km'}`;
+}
+
+const _BODY_FALLBACK: Record<string, string> = {
+  allroad: 'suv', crossover: 'suv', liftback: 'hatchback', van: 'minivan',
+  cabrio: 'convertible', cabriolet: 'convertible', roadster: 'convertible',
+  estate: 'wagon', universal: 'wagon', fastback: 'hatchback',
+  mpvan: 'minivan', minibus: 'minivan',
+};
+function normalizeBodyType(raw: string | null): string {
+  if (!raw) return '';
+  const key = raw.toLowerCase().split(/[\s_]/)[0];
+  return _BODY_FALLBACK[key] ?? key;
+}
+function matchesFuel(dbValue: string, filterKey: string): boolean {
+  const v = dbValue.toLowerCase();
+  switch (filterKey) {
+    case 'petrol':   return v.includes('бензин') || v === 'petrol' || v === 'gasoline' || v.includes('бензинов');
+    case 'diesel':   return v.includes('дизел') || v === 'diesel' || v.includes('дизельн');
+    case 'electric': return v.includes('электр') || v === 'electric';
+    case 'hybrid':   return v.includes('гибрид') || v === 'hybrid';
+    case 'gas':      return v.includes('газ') || v === 'gas' || v.includes('lpg') || v.includes('cng');
+    default:         return v.includes(filterKey.toLowerCase());
+  }
+}
+function normalizeTransmission(raw: string | null): string {
+  if (!raw) return '';
+  const v = raw.toLowerCase();
+  if (v.includes('автомат') || v === 'automatic') return 'automatic';
+  if (v.includes('механ') || v === 'manual') return 'manual';
+  if (v.includes('робот') || v === 'robot') return 'robot';
+  if (v.includes('вариатор') || v === 'variator') return 'variator';
+  return v;
+}
+// normalizeFuelType kept for openEdit form; filter now uses matchesFuel
+function normalizeFuelType(raw: string | null): string {
+  if (!raw) return '';
+  const v = raw.toLowerCase();
+  if (v.includes('бензин') || v === 'petrol' || v === 'gasoline') return 'petrol';
+  if (v.includes('дизел') || v === 'diesel') return 'diesel';
+  if (v.includes('электр') || v === 'electric') return 'electric';
+  if (v.includes('гибрид') || v === 'hybrid') return 'hybrid';
+  if (v.includes('газ') || v === 'gas' || v.includes('lpg')) return 'gas';
+  return v;
 }
 
 const CAR_STATUS_COLORS: Record<string, string> = {
@@ -144,9 +187,12 @@ function applyFilters(
     if (f.yearMax && car.year > Number(f.yearMax)) return false;
     if (f.brands.length && !f.brands.includes(car.brand)) return false;
     if (f.models.length && !f.models.includes(car.model)) return false;
-    if (f.transmissions.length && (!car.transmission || !f.transmissions.includes(car.transmission))) return false;
-    if (f.fuelTypes.length && (!car.fuel_type || !f.fuelTypes.includes(car.fuel_type))) return false;
-    if (f.bodyTypes.length && (!car.body_type || !f.bodyTypes.includes(car.body_type))) return false;
+    const carTransmission = normalizeTransmission(car.transmission);
+    const carBodyType = normalizeBodyType(car.body_type);
+    // Если у машины нет данных по коробке — не фильтруем (данные грузятся асинхронно)
+    if (f.transmissions.length && carTransmission && !f.transmissions.includes(carTransmission)) return false;
+    if (f.fuelTypes.length && car.fuel_type && !f.fuelTypes.some(ft => matchesFuel(car.fuel_type!, ft))) return false;
+    if (f.bodyTypes.length && (!carBodyType || !f.bodyTypes.includes(carBodyType))) return false;
     if (f.selectedGenIds.length) {
       const matched = f.selectedGenIds.some(genId => {
         const gen = availableGens.find(g => g.id === genId);
@@ -159,7 +205,7 @@ function applyFilters(
       const bodyTypes = f.selectedConfIds
         .map(id => availableConfs.find(c => c.id === id)?.body_type)
         .filter(Boolean) as string[];
-      if (bodyTypes.length > 0 && (!car.body_type || !bodyTypes.includes(car.body_type))) return false;
+      if (bodyTypes.length > 0 && (!carBodyType || !bodyTypes.includes(carBodyType))) return false;
     }
     return true;
   });
@@ -171,35 +217,65 @@ function MultiSelectDropdown({ label, options, selected, onToggle, onClear, allL
   allLabel: string; noOptionsLabel: string; clearLabel: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSearch('');
+      }
+    };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
+  const filtered = search.trim()
+    ? options.filter(o => o.label.toLowerCase().includes(search.toLowerCase()))
+    : options;
   const displayText = selected.length > 0
     ? selected.map(v => options.find(o => o.value === v)?.label ?? v).join(', ')
     : allLabel;
   return (
     <div className="relative" ref={ref}>
       <p className="text-xs font-semibold text-muted-foreground mb-1">{label}</p>
-      <button type="button" onClick={() => setOpen(!open)}
+      <button type="button" onClick={() => { setOpen(!open); setSearch(''); }}
         className={`w-full flex items-center justify-between px-3 py-2 bg-secondary rounded-lg text-sm text-left hover:bg-secondary/80 transition-colors border border-border ${selected.length > 0 ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
         <span className="truncate mr-2">{displayText}</span>
         <ChevronDown className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
         <div className="absolute z-20 w-full mt-1 bg-card border border-border rounded-lg shadow-lg overflow-hidden">
+          {options.length > 5 && (
+            <div className="p-2 border-b border-border">
+              <div className="flex items-center gap-2 px-2 py-1.5 bg-secondary rounded-md">
+                <Search className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                <input
+                  autoFocus
+                  type="text"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="flex-1 text-sm bg-transparent outline-none text-foreground placeholder:text-muted-foreground"
+                  placeholder="Поиск..."
+                />
+              </div>
+            </div>
+          )}
           <div className="max-h-44 overflow-y-auto py-1">
-            {options.length === 0 && <p className="px-3 py-4 text-sm text-muted-foreground text-center">{noOptionsLabel}</p>}
-            {options.map(opt => (
-              <label key={opt.value} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-secondary/50 text-sm text-foreground">
+            {filtered.length === 0
+              ? <p className="px-3 py-4 text-sm text-muted-foreground text-center">{noOptionsLabel}</p>
+              : filtered.map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => onToggle(opt.value)}
+                className="w-full flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-secondary/50 text-sm text-foreground text-left"
+              >
                 <div className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${selected.includes(opt.value) ? 'bg-primary border-primary' : 'border-border'}`}>
                   {selected.includes(opt.value) && <Check className="w-3 h-3 text-white" />}
                 </div>
-                <input type="checkbox" className="sr-only" checked={selected.includes(opt.value)} onChange={() => onToggle(opt.value)} />
                 {opt.label}
-              </label>
+              </button>
             ))}
           </div>
           {selected.length > 0 && (
@@ -505,6 +581,23 @@ function CarTableRow({ car, onEdit, onDelete, onStatusChange, onRowClick, carSta
 // CarsTab
 
 const ADMIN_PAGE_SIZE = 20;
+
+async function enrichAdminCars(cars: AdminCar[]): Promise<AdminCar[]> {
+  if (cars.length === 0) return cars;
+  const results = await Promise.allSettled(cars.map(c => carsApi.get(c.id)));
+  return cars.map((c, i) => {
+    const r = results[i];
+    if (r.status === 'fulfilled') {
+      return {
+        ...c,
+        transmission: r.value.transmission ?? c.transmission,
+        fuel_type: r.value.fuel_type ?? c.fuel_type,
+        body_type: r.value.body_type ?? c.body_type,
+      };
+    }
+    return c;
+  });
+}
 const TIME_SLOTS = ['08:00','09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00'];
 
 function CarsTab() {
@@ -544,6 +637,8 @@ function CarsTab() {
   const emptyForm = { brand: '', model: '', year: '', price: '', mileage: '0', color: '', fuel_type: '', transmission: '', body_type: '', engine_volume: '', engine_power: '', description: '', vin: '', viewing_days: [] as string[], viewing_time_from: '09:00', viewing_time_to: '20:00', viewing_address: '' };
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
+  const [existingImages, setExistingImages] = useState<string[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
 
@@ -593,7 +688,6 @@ function CarsTab() {
       .then(results => setAvailableModels(results.flat()))
       .catch(() => {})
       .finally(() => setModelsLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.brands, marks]);
 
   useEffect(() => {
@@ -602,7 +696,6 @@ function CarsTab() {
     const modelId = availableModels.find(m => modelLabel(m) === filters.models[0])?.id;
     if (!modelId) return;
     catalogApi.getGenerations(modelId).then(setAvailableGens).catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.models, availableModels]);
 
   useEffect(() => {
@@ -637,8 +730,9 @@ function CarsTab() {
     if (filters.priceMax) f.price_max = Number(filters.priceMax);
     if (filters.yearMin) f.year_min = Number(filters.yearMin);
     if (filters.yearMax) f.year_max = Number(filters.yearMax);
-    if (filters.fuelTypes.length === 1) f.engine_type = filters.fuelTypes[0];
-    if (filters.bodyTypes.length === 1) f.body_type = filters.bodyTypes[0];
+    // engine_type и body_type НЕ передаём на сервер: в БД хранятся значения вида
+    // "Бензиновый" и "SEDAN", а фильтр использует ключи "petrol"/"sedan".
+    // Строгое равенство в SQL даст 0 результатов — фильтруем только на клиенте.
     if (filters.brands.length === 1) {
       const mark = marks.find(m => markLabel(m) === filters.brands[0]);
       if (mark) f.mark_id = mark.id;
@@ -648,22 +742,24 @@ function CarsTab() {
       if (model) f.model_id = model.id;
     }
     return f;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.priceMin, filters.priceMax, filters.yearMin, filters.yearMax,
-      filters.fuelTypes, filters.bodyTypes, filters.brands, filters.models, marks, availableModels]);
+      filters.brands, filters.models, marks, availableModels]);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true); setAllCars([]); setNextCursor(null); setHasMore(false);
     adminApi.getCars(serverFilters)
-      .then(res => {
+      .then(async res => {
         if (cancelled) return;
         setAllCars(res.data);
         setNextCursor(res.next_cursor);
         setHasMore(res.next_cursor !== null);
+        setLoading(false);
+        // Обогащаем данными из detail-эндпоинта (transmission, уточнённые fuel/body)
+        const enriched = await enrichAdminCars(res.data);
+        if (!cancelled) setAllCars(enriched);
       })
-      .catch(() => { if (!cancelled) toast.error(A.carsLoadError); })
-      .finally(() => { if (!cancelled) setLoading(false); });
+      .catch(() => { if (!cancelled) { toast.error(A.carsLoadError); setLoading(false); } });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(serverFilters), refreshKey]);
@@ -672,13 +768,19 @@ function CarsTab() {
     if (loadingMore || !hasMore || !nextCursor) return;
     setLoadingMore(true);
     adminApi.getCars({ ...serverFilters, cursor: nextCursor })
-      .then(res => {
+      .then(async res => {
         setAllCars(prev => [...prev, ...res.data]);
         setNextCursor(res.next_cursor);
         setHasMore(res.next_cursor !== null);
+        setLoadingMore(false);
+        // Обогащаем новую страницу в фоне
+        const enriched = await enrichAdminCars(res.data);
+        setAllCars(prev => {
+          const enrichedMap = new Map(enriched.map((c: AdminCar) => [c.id, c]));
+          return prev.map((c: AdminCar) => enrichedMap.get(c.id) ?? c);
+        });
       })
-      .catch(() => {})
-      .finally(() => setLoadingMore(false));
+      .catch(() => { setLoadingMore(false); });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadingMore, hasMore, nextCursor, JSON.stringify(serverFilters)]);
 
@@ -697,7 +799,6 @@ function CarsTab() {
 
   const filteredCars = useMemo(
     () => applyFilters(allCars, filters, debouncedSearch, availableGens, availableConfs),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [allCars, filters, debouncedSearch, availableGens, availableConfs]
   );
 
@@ -712,7 +813,6 @@ function CarsTab() {
   );
 
   const availableBrands = useMemo(() => marks.map(m => markLabel(m)).sort(), [marks]);
-  const isLoading = loading && allCars.length === 0;
   const handleReload = () => setRefreshKey(k => k + 1);
 
   const activeFiltersCount = [
@@ -789,12 +889,76 @@ function CarsTab() {
     setFormViewingDays([]); setFormViewingFrom('10:00'); setFormViewingTo('18:00');
     setShowForm(true);
   };
-  const openEdit = (displayCar: AdminCarDisplay) => {
+  const openEdit = async (displayCar: AdminCarDisplay) => {
     const car = allCars.find(c => c.id === displayCar.id) ?? (displayCar as unknown as AdminCar);
     setEditCar(car);
-    const c = car as AdminCar & { viewing_days?: string[]; viewing_time_from?: string; viewing_time_to?: string; viewing_address?: string };
-    setForm({ brand: car.brand, model: car.model, year: String(car.year), price: String(car.price), mileage: String(car.mileage), color: car.color ?? '', fuel_type: car.fuel_type ?? '', transmission: car.transmission ?? '', body_type: car.body_type ?? '', engine_volume: car.engine_volume ?? '', engine_power: String(car.engine_power ?? ''), description: car.description ?? '', vin: car.vin ?? '', viewing_days: c.viewing_days ?? [], viewing_time_from: c.viewing_time_from ?? '09:00', viewing_time_to: c.viewing_time_to ?? '20:00', viewing_address: c.viewing_address ?? '' });
-    clearFiles(); setShowForm(true);
+    setForm({
+      brand: car.brand, model: car.model,
+      year: String(car.year), price: String(car.price), mileage: String(car.mileage),
+      color: car.color ?? '', fuel_type: car.fuel_type ?? '', transmission: car.transmission ?? '',
+      body_type: car.body_type ?? '', engine_volume: car.engine_volume ?? '',
+      engine_power: String(car.engine_power ?? ''), description: car.description ?? '',
+      vin: car.vin ?? '', viewing_days: [], viewing_time_from: '09:00', viewing_time_to: '20:00', viewing_address: '',
+    });
+    setFormColorId('');
+    setExistingImages([]);
+    clearFiles();
+    setShowForm(true);
+    setEditLoading(true);
+    try {
+      // Все три запроса параллельно; adminDetail и windows не блокируют при ошибке
+      const [detail, windows, adminDetail] = await Promise.all([
+        carsApi.get(car.id),
+        viewingsApi.getAvailableSlots(car.id).catch(() => [] as import('../api/viewings').ViewingWindow[]),
+        adminApi.getListingDetail(car.id).catch(() => null as Record<string, unknown> | null),
+      ]);
+
+      // VIN: admin-endpoint возвращает полный незамаскированный VIN
+      const vin = typeof adminDetail?.vin === 'string'
+        ? adminDetail.vin
+        : (detail.vin ?? '');
+
+      // Viewing windows: дни и время
+      const uniqueDayNames = windows.length > 0
+        ? [...new Set(windows.map(w => {
+            const [y, mo, d] = w.window_date.split('-').map(Number);
+            // JS getDay(): 0=вс,1=пн...6=сб → WEEK_DAYS (Пн=0,Вс=6): (jsDay+6)%7
+            return WEEK_DAYS[(new Date(y, mo - 1, d).getDay() + 6) % 7];
+          }))]
+        : [];
+
+      // Единый вызов setForm — никаких конфликтов батчинга
+      setForm(p => ({
+        ...p,
+        fuel_type: normalizeFuelType(detail.fuel_type),
+        transmission: normalizeTransmission(detail.transmission),
+        body_type: normalizeBodyType(detail.body_type),
+        engine_volume: detail.engine_volume ?? p.engine_volume,
+        engine_power: detail.engine_power != null ? String(detail.engine_power) : p.engine_power,
+        description: detail.description ?? p.description,
+        vin,
+        viewing_address: detail.sale_address ?? p.viewing_address,
+        ...(windows.length > 0 && {
+          viewing_days: uniqueDayNames,
+          viewing_time_from: windows[0].time_from.slice(0, 5),
+          viewing_time_to: windows[0].time_to.slice(0, 5),
+        }),
+      }));
+
+      if (detail.color) setFormColorId(detail.color);
+      if (detail.condition) setFormCondition(detail.condition ?? '');
+
+      setExistingImages(
+        [...detail.images]
+          .sort((a, b) => (a.is_primary ? -1 : b.is_primary ? 1 : a.sort_order - b.sort_order))
+          .map(img => img.url || img.thumbnail_url)
+          .filter(Boolean)
+      );
+    } catch (err) {
+      console.error('[AdminPage] openEdit detail fetch failed:', err);
+    } finally {
+      setEditLoading(false);
+    }
   };
 
   const saveViewingWindows = async (listingId: string) => {
@@ -892,11 +1056,15 @@ function CarsTab() {
     }
   };
 
-  const handleStatusChange = async (_id: string, _status: string) => {
-    toast.error(A.carStatusChangeError);
+  const handleStatusChange = async (id: string, newStatus: string) => {
+    try {
+      await adminApi.changeListingStatus(id, newStatus);
+      setAllCars(prev => prev.map(c => c.id === id ? { ...c, status: newStatus as AdminCar['status'] } : c));
+      toast.success('Статус обновлён');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : A.carStatusChangeError);
+    }
   };
-
-  if (isLoading) return <LoadingSpinner />;
 
   return (
     <div className="flex gap-4">
@@ -1335,9 +1503,26 @@ function CarsTab() {
             {/* Edit mode: keep old fields */}
             {editCar && (
               <div className="space-y-4">
+                {editLoading && (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-secondary rounded-lg text-sm text-muted-foreground">
+                    <Loader2 className="w-4 h-4 animate-spin" /> {A.loading}
+                  </div>
+                )}
+
+                {/* Color selector */}
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-muted-foreground">{A.carFormColor}</label>
+                  <FormSearchSelect
+                    options={colors} value={formColorId}
+                    onChange={id => setFormColorId(id)}
+                    getLabel={c => lang === 'en' ? (c.name_en ?? c.name_ru) : c.name_ru}
+                    placeholder={T.listing.chooseColor}
+                    searchPlaceholder={T.listing.searchPlaceholder}
+                    noResults={T.listing.noResults} />
+                </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   {([
-                    ['color', A.carFormColor, 'text'],
                     ['engine_volume', A.carFormVolume, 'number'],
                     ['engine_power', A.carFormPower, 'number'],
                     ['vin', A.carFormVin, 'text'],
@@ -1369,6 +1554,25 @@ function CarsTab() {
                     </select>
                   </div>
                 </div>
+
+                {/* Existing photos */}
+                {existingImages.length > 0 && (
+                  <div>
+                    <label className="block text-xs font-semibold mb-2 text-muted-foreground">{A.carFormPhotos}</label>
+                    <div className="grid grid-cols-4 gap-2">
+                      {existingImages.map((src, i) => (
+                        <div key={i} className="relative aspect-square rounded-lg overflow-hidden bg-secondary">
+                          <img src={src} alt="" className="w-full h-full object-cover" />
+                          {i === 0 && (
+                            <span className="absolute bottom-1 left-1 text-[10px] bg-black/60 text-white px-1.5 py-0.5 rounded">
+                              {lang === 'en' ? 'Main' : 'Главное'}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div>
                   <label className="block text-xs font-semibold mb-1 text-muted-foreground">{A.carFormPhotos}</label>
                   <div className="border-2 border-dashed border-border rounded-lg p-4 text-center hover:bg-secondary/30 transition-colors cursor-pointer"
@@ -1399,6 +1603,18 @@ function CarsTab() {
                 <div>
                   <label className="block text-xs font-semibold mb-1 text-muted-foreground">{A.carFormDescription}</label>
                   <textarea value={form.description} rows={3} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} className={inputCls + ' resize-none'} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-2 text-muted-foreground">{T.listing.condition}</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {T.listing.conditionOptions.map((opt: { value: string; label: string; desc: string }) => (
+                      <button key={opt.value} type="button" onClick={() => setFormCondition(opt.value)}
+                        className={`flex flex-col items-start px-3 py-2 rounded-lg border text-left transition-colors ${formCondition === opt.value ? 'bg-primary/10 border-primary text-primary' : 'bg-secondary border-border text-foreground hover:bg-secondary/80'}`}>
+                        <span className="text-xs font-semibold">{opt.label}</span>
+                        <span className="text-xs text-muted-foreground">{opt.desc}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div className="pt-2 border-t border-border">
                   <p className="text-sm font-semibold text-foreground mb-3">{A.carFormViewings}</p>

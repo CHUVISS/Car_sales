@@ -25,6 +25,7 @@ export interface StreamChunk {
   message?: string;
   conversation_id?: string;
   name?: string;
+  listing_ids?: string[];
 }
 
 export async function streamChat(
@@ -33,6 +34,7 @@ export async function streamChat(
   onChunk: (chunk: StreamChunk) => void,
   onDone: (conversationId: string | null) => void,
   onError: (error: string) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   const token = localStorage.getItem('access_token');
   if (!token) {
@@ -40,14 +42,22 @@ export async function streamChat(
     return;
   }
 
-  const res = await fetch(`${BASE_URL}/ai/chat`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ message, conversation_id: conversationId }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}/ai/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ message, conversation_id: conversationId }),
+      signal,
+    });
+  } catch (e) {
+    if ((e as Error).name === 'AbortError') return;
+    onError('Ошибка запроса');
+    return;
+  }
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: 'Ошибка сервера' }));
@@ -65,27 +75,33 @@ export async function streamChat(
   const decoder = new TextDecoder();
   let buffer = '';
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() ?? '';
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue;
-      try {
-        const chunk: StreamChunk = JSON.parse(line.slice(6));
-        if (chunk.type === 'done') {
-          onDone(chunk.conversation_id ?? null);
-        } else if (chunk.type === 'error') {
-          onError(chunk.message ?? 'Ошибка');
-        } else {
-          onChunk(chunk);
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const chunk: StreamChunk = JSON.parse(line.slice(6));
+          if (chunk.type === 'done') {
+            onDone(chunk.conversation_id ?? null);
+          } else if (chunk.type === 'error') {
+            onError(chunk.message ?? 'Ошибка');
+          } else {
+            onChunk(chunk);
+          }
+        } catch {
+          // ignore parse errors
         }
-      } catch {
-        // ignore parse errors
       }
     }
+  } catch (e) {
+    if ((e as Error).name !== 'AbortError') onError('Ошибка чтения потока');
+  } finally {
+    reader.releaseLock();
   }
 }
 

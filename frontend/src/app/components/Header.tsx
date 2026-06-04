@@ -117,7 +117,7 @@ function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-80 bg-card border border-border rounded-xl shadow-xl z-50 overflow-hidden">
+        <div className="absolute right-0 top-full mt-2 w-80 max-w-[calc(100vw-1rem)] bg-card border border-border rounded-xl shadow-xl z-50 overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
             <span className="font-semibold text-sm text-foreground">{T.notifications.title}</span>
@@ -238,39 +238,41 @@ export function Header() {
         </div>
 
         {mobileMenuOpen && (
-          <div className="md:hidden py-4 border-t border-border">
-            <nav className="flex flex-col gap-4">
-              <Link to="/catalog" onClick={() => setMobileMenuOpen(false)} className="text-foreground hover:text-primary transition-colors">{T.nav.listings}</Link>
-              <Link to="/ai" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-1.5 text-foreground hover:text-primary transition-colors">
+          <div className="md:hidden py-2 border-t border-border">
+            <nav className="flex flex-col">
+              <Link to="/catalog" onClick={() => setMobileMenuOpen(false)} className="flex items-center py-3 px-1 text-foreground hover:text-primary transition-colors">{T.nav.listings}</Link>
+              <Link to="/ai" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-1.5 py-3 px-1 text-foreground hover:text-primary transition-colors">
                 <Bot className="w-4 h-4" />{T.nav.ai}
               </Link>
-              <Link to="/about" onClick={() => setMobileMenuOpen(false)} className="text-foreground hover:text-primary transition-colors">{T.nav.about}</Link>
-              <a href="tel:+79001234567" className="flex items-center gap-2 text-foreground hover:text-primary transition-colors">
+              <Link to="/about" onClick={() => setMobileMenuOpen(false)} className="flex items-center py-3 px-1 text-foreground hover:text-primary transition-colors">{T.nav.about}</Link>
+              <a href="tel:+79001234567" className="flex items-center gap-2 py-3 px-1 text-foreground hover:text-primary transition-colors">
                 <Phone className="w-5 h-5" />
                 <span>+7 (900) 123-45-67</span>
               </a>
-              {user ? (
-                <>
-                  <Link to="/profile" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg w-fit">
-                    <User className="w-5 h-5" />
-                    <span>{user.full_name}</span>
-                  </Link>
-                  {(user.role === 'admin' || user.role === 'manager') && (
-                    <Link to="/admin" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 bg-secondary text-foreground rounded-lg w-fit text-sm">
-                      {user.role === 'admin' ? T.nav.admin : T.nav.manager}
+              <div className="pt-3 mt-1 border-t border-border flex flex-col gap-3 pb-2">
+                {user ? (
+                  <>
+                    <Link to="/profile" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2 px-4 py-3 bg-primary text-primary-foreground rounded-lg">
+                      <User className="w-5 h-5" />
+                      <span className="font-medium">{user.full_name}</span>
                     </Link>
-                  )}
-                  <button onClick={handleLogout} className="flex items-center gap-2 text-destructive w-fit">
-                    <LogOut className="w-5 h-5" />
-                    <span>{T.nav.signOut}</span>
-                  </button>
-                </>
-              ) : (
-                <Link to="/profile" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg w-fit">
-                  <User className="w-5 h-5" />
-                  <span>{T.nav.signIn}</span>
-                </Link>
-              )}
+                    {(user.role === 'admin' || user.role === 'manager') && (
+                      <Link to="/admin" onClick={() => setMobileMenuOpen(false)} className="px-4 py-3 bg-secondary text-foreground rounded-lg text-sm text-center">
+                        {user.role === 'admin' ? T.nav.admin : T.nav.manager}
+                      </Link>
+                    )}
+                    <button onClick={handleLogout} className="flex items-center gap-2 py-3 px-1 text-destructive">
+                      <LogOut className="w-5 h-5" />
+                      <span>{T.nav.signOut}</span>
+                    </button>
+                  </>
+                ) : (
+                  <Link to="/profile" onClick={() => setMobileMenuOpen(false)} className="flex items-center justify-center gap-2 px-4 py-3 bg-primary text-primary-foreground rounded-lg font-medium">
+                    <User className="w-5 h-5" />
+                    <span>{T.nav.signIn}</span>
+                  </Link>
+                )}
+              </div>
             </nav>
           </div>
         )}

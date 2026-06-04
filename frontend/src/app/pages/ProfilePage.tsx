@@ -397,7 +397,11 @@ function SecurityTab() {
       setCurrentPwd(''); setNewPwd(''); setConfirmPwd('');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : T.common.error;
-      toast.error(msg.includes('incorrect') ? T.profile.settingsTab.wrongCurrentPassword : msg);
+      if (msg.includes('incorrect') || msg.includes('Incorrect')) {
+        toast.error(T.profile.settingsTab.wrongCurrentPassword);
+      } else {
+        toast.error(msg || T.common.error);
+      }
     } finally {
       setSaving(false);
     }
